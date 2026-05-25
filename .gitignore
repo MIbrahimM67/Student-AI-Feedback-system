@@ -1,0 +1,28 @@
+# Python Caches & Dependencies
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+ENV/
+env/
+backend/.env
+
+# Node Dependencies & NextJS builds
+node_modules/
+.next/
+out/
+build/
+frontend/.env.local
+frontend/.env
+
+# Mock Local Storage & Temp Output files
+backend/temp_mock_storage/
+*.pdf
+*.xlsx
+*.zip
+
+# Operating System Files
+.DS_Store
+Thumbs.db

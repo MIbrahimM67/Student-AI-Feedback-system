@@ -1,0 +1,130 @@
+@import "tailwindcss";
+
+:root {
+  /* --- GradeWise Editorial Warm-Light Theme Design Tokens --- */
+  --bg-base: #fbfaf7;
+  --bg-surface: #ffffff;
+  --bg-elevated: #f4f2eb;
+  --bg-overlay: rgba(0, 0, 0, 0.02);
+  
+  --border-subtle: rgba(24, 24, 22, 0.05);
+  --border-default: rgba(24, 24, 22, 0.08);
+  --border-strong: rgba(24, 24, 22, 0.16);
+  
+  --text-primary: #1c1c18;      /* Deep Obsidian Charcoal */
+  --text-secondary: #5e5c54;    /* Warm Muted Slate */
+  --text-muted: #8e8b80;
+  
+  --accent: #1c1c18;            /* Obsidian Dark Brand Primary */
+  --accent-hover: #33332f;
+  --accent-glow: rgba(28, 28, 24, 0.05);
+  
+  --success: #15803d;           /* Deep Forest Emerald */
+  --success-glow: rgba(21, 128, 61, 0.06);
+  --warning: #b45309;           /* Terracotta Amber */
+  --danger: #b91c1c;            /* Dark Crimson */
+  
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(24, 24, 22, 0.06);
+  --glass-blur: 12px;
+  
+  --font-sans: var(--font-sans), 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-display), 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+@theme inline {
+  --color-background: var(--bg-base);
+  --color-foreground: var(--text-primary);
+  
+  --color-surface: var(--bg-surface);
+  --color-elevated: var(--bg-elevated);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-default: var(--border-default);
+  --color-border-strong: var(--border-strong);
+  
+  --color-primary: var(--accent);
+  --color-secondary: var(--success);
+  
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
+  --font-mono: var(--font-mono);
+  
+  --animate-shimmer: shimmer 2s infinite;
+  --animate-float: float 5s ease-in-out infinite;
+}
+
+/* Custom Overrides for GradeWise Warm Editorial Aesthetic */
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  letter-spacing: -0.015em;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Beautiful Heading styling */
+h1, h2, h3, h4, .text-display {
+  font-family: var(--font-display);
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.code-text {
+  font-family: var(--font-mono);
+}
+
+/* Elegant Scrollbars for warm canvas */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(28, 28, 24, 0.08);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(28, 28, 24, 0.18);
+}
+
+/* Shimmer Loading animation */
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-5px); }
+  100% { transform: translateY(0px); }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, var(--bg-elevated) 25%, var(--bg-surface) 50%, var(--bg-elevated) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s infinite;
+}
+
+/* Premium Bookish Dev Card */
+.dev-card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(28, 28, 24, 0.03), 0 4px 12px rgba(28, 28, 24, 0.02);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.dev-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 4px 16px rgba(28, 28, 24, 0.06), 0 10px 30px rgba(28, 28, 24, 0.04);
+}
+
+/* Claude Split Pane scroll constraint */
+.pane-scroll {
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}

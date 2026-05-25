@@ -1,0 +1,21 @@
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyA6At7iOboQzyar-ekum_lkNYZbVYiMAnY",
+  authDomain: "ai-student-feedback-system.firebaseapp.com",
+  projectId: "ai-student-feedback-system",
+  storageBucket: "ai-student-feedback-system.firebasestorage.app",
+  messagingSenderId: "787630213331",
+  appId: "1:787630213331:web:aaedd892dfd2e9a649ac26",
+  measurementId: "G-Z5HVL8N3RT"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
