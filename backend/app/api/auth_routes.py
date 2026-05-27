@@ -1,98 +1,133 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
-from typing import Dict, Any, Optional
-from datetime import datetime
-from backend.app.firebase import db
-from backend.app.utils.security import get_current_user
+"""
+GradeWise v3 — auth routes.
 
-router = APIRouter(prefix="/api/auth", tags=["Authentication"])
+POST /api/auth/sync-user   — called by the frontend after Google Sign-In.
+                             Creates or updates the user row in Postgres.
+                             Returns the user's full profile (including role).
+POST /api/auth/select-role — first-time role selection. Writes to Postgres.
+GET  /api/auth/me          — return current user profile from Postgres.
 
-class RoleSelectionRequest(BaseModel):
-    role: str # 'student' or 'instructor'
+Role is stored in the Postgres `users` table — never in localStorage.
+The frontend reads it from here on every session restore.
+"""
+from __future__ import annotations
 
-class SyncUserRequest(BaseModel):
-    email: str
-    displayName: str
-    photoURL: Optional[str] = None
+import logging
+from datetime import datetime, timezone
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Header
+
+from app.auth.firebase import verify_id_token
+from app.db.postgres import get_conn
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+DEV_ORG_ID = "00000000-0000-0000-0000-000000000001"  # seeded in init.sql
+
+
+async def _get_verified_uid(authorization: Annotated[str, Header()]) -> str:
+    """Dependency: verify Firebase token, return uid."""
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Missing Bearer token")
+    token = authorization.removeprefix("Bearer ")
+    try:
+        claims = verify_id_token(token)
+        return claims["uid"]
+    except Exception as e:
+        raise HTTPException(401, f"Invalid token: {e}") from e
+
+
+async def _get_user_row(uid: str, org_id: str) -> dict | None:
+    async with get_conn(org_id) as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM users WHERE uid = $1", uid
+        )
+    return dict(row) if row else None
+
 
 @router.post("/sync-user")
-async def sync_user(payload: SyncUserRequest, user: Dict[str, Any] = Depends(get_current_user)):
+async def sync_user(
+    body: dict,
+    uid: str = Depends(_get_verified_uid),
+):
     """
-    Called upon successful frontend Google OAuth login. Syncs profile details in Firestore.
+    Called by the frontend immediately after Google Sign-In.
+    Creates the user if new (role = '', triggers onboarding).
+    Returns the full user profile so the frontend knows the role immediately.
     """
-    uid = user["uid"]
-    logger_msg = f"Syncing user login: {uid} | {payload.email}"
-    
-    try:
-        user_ref = db.collection("users").document(uid)
-        snapshot = user_ref.get()
-        if not snapshot.exists:
-            user_data = {
-                "uid": uid,
-                "email": payload.email,
-                "displayName": payload.displayName,
-                "photoURL": payload.photoURL,
-                "role": "", # Initialized empty to prompt role onboarding select deck
-                "facultyStatus": "none",
-                "proStatus": "inactive",
-                "warningCount": 0,
-                "blockedUntil": None,
-                "createdAt": datetime.utcnow().isoformat(),
-                "updatedAt": datetime.utcnow().isoformat()
-            }
-            user_ref.set(user_data)
-            return {"status": "created", "user": user_data}
-        else:
-            # Refresh standard display items
-            existing_data = snapshot.to_dict() or {}
-            existing_data.update({
-                "displayName": payload.displayName,
-                "photoURL": payload.photoURL,
-                "updatedAt": datetime.utcnow().isoformat()
-            })
-            user_ref.update(existing_data)
-            return {"status": "synchronized", "user": existing_data}
-            
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database synchronization error: {e}"
-        )
+    email = body.get("email", "")
+    display_name = body.get("displayName", "")
+    photo_url = body.get("photoURL", "")
+    now = datetime.now(timezone.utc).isoformat()
 
-@router.get("/me")
-async def get_me(user: Dict[str, Any] = Depends(get_current_user)):
-    """
-    Returns full profile settings of the currently authenticated active session.
-    """
-    return user
+    # Determine org_id (single-org for MVP — each user is their own org on first login)
+    # In a multi-tenant build, look up the org by email domain or invite token.
+    async with get_conn() as conn:
+        # Check if user exists (bypass RLS with superuser context here)
+        existing = await conn.fetchrow("SELECT org_id FROM users WHERE uid = $1", uid)
+        org_id = str(existing["org_id"]) if existing else DEV_ORG_ID
+
+    async with get_conn(org_id) as conn:
+        await conn.execute(
+            """
+            INSERT INTO users (uid, org_id, email, display_name, photo_url, role,
+                               faculty_status, pro_status, warning_count, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, 'student', 'none', 'inactive', 0, $6, $6)
+            ON CONFLICT (uid) DO UPDATE
+              SET display_name = EXCLUDED.display_name,
+                  photo_url    = EXCLUDED.photo_url,
+                  updated_at   = EXCLUDED.updated_at
+            """,
+            uid, org_id, email, display_name, photo_url, now,
+        )
+        row = await conn.fetchrow("SELECT * FROM users WHERE uid = $1", uid)
+
+    return {"user": dict(row)}
+
 
 @router.post("/select-role")
-async def select_role(payload: RoleSelectionRequest, user: Dict[str, Any] = Depends(get_current_user)):
+async def select_role(
+    body: dict,
+    uid: str = Depends(_get_verified_uid),
+):
     """
-    Permits students and instructors to choose their role on initial sign-up onboarding.
+    First-time role selection. Writes the role to Postgres — not localStorage.
+    Only allowed to set 'student' or 'instructor' (admin is granted by admin only).
     """
-    uid = user["uid"]
-    role = payload.role.lower()
-    
-    if role not in ["student", "instructor"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Role selection must be either 'student' or 'instructor'."
+    role = body.get("role", "")
+    if role not in ("student", "instructor"):
+        raise HTTPException(400, "role must be 'student' or 'instructor'")
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    async with get_conn() as conn:
+        existing = await conn.fetchrow("SELECT org_id FROM users WHERE uid = $1", uid)
+        if not existing:
+            raise HTTPException(404, "User not found. Call /sync-user first.")
+        org_id = str(existing["org_id"])
+
+    async with get_conn(org_id) as conn:
+        await conn.execute(
+            "UPDATE users SET role = $1, updated_at = $2 WHERE uid = $3",
+            role, now, uid,
         )
-        
-    try:
-        user_ref = db.collection("users").document(uid)
-        user_ref.update({
-            "role": role,
-            "updatedAt": datetime.utcnow().isoformat()
-        })
-        
-        # Read refreshed document
-        refreshed = user_ref.get().to_dict()
-        return {"status": "role_updated", "user": refreshed}
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update user role: {e}"
-        )
+        row = await conn.fetchrow("SELECT * FROM users WHERE uid = $1", uid)
+
+    return {"user": dict(row)}
+
+
+@router.get("/me")
+async def get_me(uid: str = Depends(_get_verified_uid)):
+    """Return the current user's Postgres profile."""
+    async with get_conn() as conn:
+        row = await conn.fetchrow("SELECT org_id FROM users WHERE uid = $1", uid)
+        if not row:
+            raise HTTPException(404, "User not found.")
+        org_id = str(row["org_id"])
+
+    async with get_conn(org_id) as conn:
+        row = await conn.fetchrow("SELECT * FROM users WHERE uid = $1", uid)
+
+    return {"user": dict(row)}

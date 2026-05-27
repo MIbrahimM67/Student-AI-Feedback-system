@@ -1,0 +1,31 @@
+# API
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
+pydantic-settings==2.5.2
+
+# DB
+asyncpg==0.29.0
+sqlalchemy[asyncio]==2.0.35
+
+# Jobs
+celery==5.4.0
+redis==5.0.8
+
+# HTTP / LLM client
+httpx==0.27.2
+tenacity==9.0.0
+
+# Auth / files
+firebase-admin==6.5.0
+
+# OCR / docs / exports
+pytesseract==0.3.13
+pillow==10.4.0
+pypdf==4.3.1
+python-docx==1.1.2
+openpyxl==3.1.5
+reportlab==4.2.2
+
+# Dev / observability
+structlog==24.4.0

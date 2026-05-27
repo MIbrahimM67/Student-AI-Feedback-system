@@ -1,85 +1,135 @@
-import uvicorn
-import logging
-from fastapi import FastAPI, Request, status
+"""
+GradeWise v3 — FastAPI application entry point.
+
+Wires up:
+  - asyncpg pool (Postgres)
+  - aioredis (cache)
+  - ResilientLLM (DigitalOcean Gradient)
+  - All API routers
+
+Phase 0 endpoints:
+  GET  /health         → {status, postgres, redis}
+  POST /_debug/embed   → test Gradient embed end-to-end
+
+Full routes added in later phases.
+"""
+from __future__ import annotations
+
+import os
+from contextlib import asynccontextmanager
+
+import redis.asyncio as aioredis
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from backend.app.config import settings
-from backend.app.api import auth_routes, student_routes, instructor_routes, admin_routes
+from pydantic import BaseModel
 
-# Initialize Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("main")
+from app.db.postgres import init_pool, close_pool, get_pool
+from app.services.llm_provider import build_llm_from_env
+from app.config import settings
 
-# Initialize FastAPI App
+# ---- App state --------------------------------------------------------------
+_redis = None
+_llm = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _redis, _llm
+
+    await init_pool()
+    _redis = aioredis.from_url(os.environ["REDIS_URL"], decode_responses=True)
+    _llm = build_llm_from_env()
+
+    try:
+        yield
+    finally:
+        await close_pool()
+        if _redis:
+            await _redis.aclose()
+
+
 app = FastAPI(
     title=settings.APP_NAME,
-    description="Full-stack AI-Powered Student Assignment Feedback System Backend APIs.",
-    version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc"
+    version="3.0.0",
+    lifespan=lifespan,
 )
-
-# CORS Policy configuration
-origins = [
-    "http://localhost:3000",
-    "https://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:8000"
-]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # For flexible FYP local demonstrations
+    allow_origins=["*"],   # Tighten to your Vercel domain in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Register Endpoints Routers
-app.include_router(auth_routes.router)
-app.include_router(student_routes.router)
-app.include_router(instructor_routes.router)
-app.include_router(admin_routes.router)
 
-# --- GLOBAL MIDDLEWARE & DIAGNOSTIC ROOT ---
+# ---- Dependency helpers (import these in route files) -----------------------
 
-@app.middleware("http")
-async def db_request_logger_middleware(request: Request, call_next):
-    """
-    HTTP traffic and operational processing latency logger.
-    """
-    import time
-    start = time.time()
-    response = await call_next(request)
-    latency = time.time() - start
-    logger.info(f"API Traffic: {request.method} {request.url.path} | Status {response.status_code} | Duration {int(latency*1000)}ms")
-    return response
+def get_redis():
+    assert _redis is not None, "Redis not initialised"
+    return _redis
 
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    """
-    Catches all unhandled syntax/runtime bugs and packages them safely inside a JSON response.
-    """
-    logger.critical(f"Unhandled runtime exception caught at {request.url.path}: {exc}", exc_info=True)
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": f"System error has occurred: {str(exc)}"}
+
+def get_llm():
+    assert _llm is not None, "LLM not initialised"
+    return _llm
+
+
+# ---- /health ----------------------------------------------------------------
+
+@app.get("/health", tags=["ops"])
+async def health() -> dict:
+    pg_ok = "fail"
+    redis_ok = "fail"
+    try:
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute("SELECT 1")
+        pg_ok = "ok"
+    except Exception:
+        pass
+    try:
+        r = get_redis()
+        await r.ping()
+        redis_ok = "ok"
+    except Exception:
+        pass
+
+    overall = "ok" if pg_ok == "ok" and redis_ok == "ok" else "degraded"
+    return {"status": overall, "postgres": pg_ok, "redis": redis_ok}
+
+
+# ---- /_debug/embed (Phase 0 acceptance check) --------------------------------
+
+class EmbedRequest(BaseModel):
+    text: str
+
+
+@app.post("/_debug/embed", tags=["ops"])
+async def debug_embed(req: EmbedRequest) -> dict:
+    """Embed a string via Gradient — proves the LLM abstraction works end-to-end."""
+    llm = get_llm()
+    vectors = await llm.embed(
+        texts=[req.text],
+        model=settings.GRADIENT_EMBED_MODEL,
     )
-
-@app.get("/")
-async def root():
-    """
-    Base server diagnostics health status route.
-    """
-    import sys
-    from backend.app.firebase import is_mock_firebase
+    v = vectors[0]
     return {
-        "status": "online",
-        "service": settings.APP_NAME,
-        "python": sys.version,
-        "database": "mock_in_memory" if is_mock_firebase else "firebase_firestore_cloud",
-        "documentation": "/docs"
+        "dim": len(v),
+        "preview": [round(x, 4) for x in v[:6]],
+        "model": settings.GRADIENT_EMBED_MODEL,
     }
 
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=settings.PORT, reload=settings.DEBUG)
+
+# ---- Route registration (Phase 1+) -----------------------------------------
+# Uncomment as each phase is implemented:
+
+from app.api.auth_routes import router as auth_router
+from app.api.student_routes import router as student_router
+from app.api.instructor_routes import router as instructor_router
+from app.api.admin_routes import router as admin_router
+
+app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(student_router, prefix="/api/student", tags=["student"])
+app.include_router(instructor_router, prefix="/api/instructor", tags=["instructor"])
+app.include_router(admin_router, prefix="/api/admin", tags=["admin"])

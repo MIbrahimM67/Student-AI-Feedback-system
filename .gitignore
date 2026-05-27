@@ -7,21 +7,31 @@ __pycache__/
 venv/
 ENV/
 env/
-backend/.env
+
+# Environment files — NEVER commit
+.env
+.env.*
+!.env.example
+
+# Firebase Service Account keys — NEVER commit
+*firebase-adminsdk*.json
+*service-account*.json
 
 # Node Dependencies & NextJS builds
 node_modules/
 .next/
 out/
 build/
-frontend/.env.local
-frontend/.env
 
-# Mock Local Storage & Temp Output files
-backend/temp_mock_storage/
+# Generated outputs
 *.pdf
 *.xlsx
 *.zip
+
+# Docker / local data volumes
+postgres_data/
+redis_data/
+temp_firebase_credentials.json
 
 # Operating System Files
 .DS_Store

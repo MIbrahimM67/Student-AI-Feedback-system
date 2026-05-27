@@ -1,0 +1,84 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: feedback
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: feedback
+      # Forwarded into init.sql so we don't hardcode the app_user password there.
+      APP_USER_PASSWORD: ${APP_USER_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/00_init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U feedback -d feedback"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build: ./backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      # The API connects as app_user, NOT the superuser, so RLS is enforced.
+      DATABASE_URL: postgresql+asyncpg://app_user:${APP_USER_PASSWORD}@postgres:5432/feedback
+      REDIS_URL: redis://redis:6379/0
+      GRADIENT_API_KEY: ${GRADIENT_API_KEY}
+      GRADIENT_BASE_URL: ${GRADIENT_BASE_URL}
+      GRADIENT_EMBED_MODEL: ${GRADIENT_EMBED_MODEL:-bge-m3}
+      GRADIENT_RERANK_MODEL: ${GRADIENT_RERANK_MODEL:-bge-reranker-v2-m3}
+      GRADIENT_MODEL_SPECIALIST: ${GRADIENT_MODEL_SPECIALIST:-gpt-oss-120b}
+      GRADIENT_MODEL_JUDGE: ${GRADIENT_MODEL_JUDGE:-qwen3-32b}
+      GRADIENT_MODEL_SENIOR: ${GRADIENT_MODEL_SENIOR:-gpt-oss-120b}
+      GRADIENT_MODEL_UTILITY: ${GRADIENT_MODEL_UTILITY:-gpt-oss-20b}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY}
+      FIREBASE_STORAGE_BUCKET: ${FIREBASE_STORAGE_BUCKET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build: ./backend
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
+    volumes:
+      - ./backend:/app
+    environment:
+      DATABASE_URL: postgresql+asyncpg://app_user:${APP_USER_PASSWORD}@postgres:5432/feedback
+      REDIS_URL: redis://redis:6379/0
+      GRADIENT_API_KEY: ${GRADIENT_API_KEY}
+      GRADIENT_BASE_URL: ${GRADIENT_BASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
