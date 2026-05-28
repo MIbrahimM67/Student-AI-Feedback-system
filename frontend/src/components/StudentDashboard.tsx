@@ -14,6 +14,7 @@ interface SubmissionSummary {
   id: string;
   type: string;
   file_name: string | null;
+  question_text: string | null;
   status: string;
   created_at: string;
   ai_overall_score: number | null;
@@ -357,7 +358,7 @@ export const StudentDashboard: React.FC = () => {
 
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-bold text-[#1c1c18] truncate">
-                    {sub.file_name || `${sub.type} submission`}
+                    {sub.file_name || (sub.question_text ? (sub.question_text.length > 50 ? sub.question_text.substring(0, 50) + "..." : sub.question_text) : `${sub.type} submission`)}
                   </p>
                   <p className="text-[10px] text-[#8e8b80] mt-0.5 font-mono">
                     {new Date(sub.created_at).toLocaleString()}
