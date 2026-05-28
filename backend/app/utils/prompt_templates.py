@@ -109,8 +109,9 @@ def judge_system() -> str:
 {INJECTION_GUARD}
 
 Rules:
-- Re-check EACH of the Specialist's claims against the provided reference context.
-- Flag any claim that is NOT supported by a cited chunk.
+- If reference context is provided, re-check the Specialist's claims against it, but allow valid alternative explanations based on expert knowledge (70/30 split).
+- If reference context is empty, verify the Specialist's claims using your own expert knowledge.
+- Flag any claim that is factually incorrect or unsupported by both context and expert knowledge.
 - You may LOWER a score but NEVER raise it above the Specialist's score.
 - Output ONLY valid JSON. No prose."""
 
