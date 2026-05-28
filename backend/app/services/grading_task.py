@@ -6,6 +6,7 @@ Orchestrates: load submission → extract text → scan → pipeline → persist
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import tempfile
@@ -237,13 +238,13 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
             """,
             report_id, org_id, submission_id, batch_id,
             report.overallScore, report.maxScore, report.status,
-            report_dict,
+            json.dumps(report_dict),
             avg_confidence, now,
-            {
+            json.dumps({
                 "specialist": settings.GRADIENT_MODEL_SPECIALIST,
                 "judge": settings.GRADIENT_MODEL_JUDGE,
                 "senior": settings.GRADIENT_MODEL_SENIOR,
-            },
+            }),
         )
         await conn.execute(
             "UPDATE submissions SET status = 'graded' WHERE id = $1", submission_id
