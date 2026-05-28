@@ -59,7 +59,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setUser(response.data.user);
+      const backendUser = response.data.user;
+      setUser({
+        uid: backendUser.uid,
+        email: backendUser.email,
+        displayName: backendUser.display_name || "User",
+        photoURL: backendUser.photo_url || "",
+        role: backendUser.role,
+        facultyStatus: backendUser.faculty_status,
+        proStatus: backendUser.pro_status,
+        warningCount: backendUser.warning_count,
+        blockedUntil: backendUser.blocked_until,
+        createdAt: backendUser.created_at,
+        updatedAt: backendUser.updated_at,
+      });
       setError(null);
     } catch (err: any) {
       console.error("Backend sync failed:", err);
@@ -127,7 +140,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         { role },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setUser(response.data.user);
+      const backendUser = response.data.user;
+      setUser({
+        uid: backendUser.uid,
+        email: backendUser.email,
+        displayName: backendUser.display_name || "User",
+        photoURL: backendUser.photo_url || "",
+        role: backendUser.role,
+        facultyStatus: backendUser.faculty_status,
+        proStatus: backendUser.pro_status,
+        warningCount: backendUser.warning_count,
+        blockedUntil: backendUser.blocked_until,
+        createdAt: backendUser.created_at,
+        updatedAt: backendUser.updated_at,
+      });
       setError(null);
     } catch (err: any) {
       console.error("Role selection failed:", err);
