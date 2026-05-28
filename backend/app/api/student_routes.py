@@ -275,7 +275,29 @@ async def get_feedback(
             ),
         }
 
+    # Parse the AI payload from the DB (stored as JSONB string or dict)
+    import json as _json
+    payload = report["final_payload"]
+    if isinstance(payload, str):
+        payload = _json.loads(payload)
+    if payload is None:
+        payload = {}
+
     return {
-        "report": dict(report),
-        "feedback": report["final_payload"],
+        "report": {
+            "id": str(report["id"]),
+            "submissionId": submission_id,
+            "overallScore": float(report["ai_overall_score"] or 0),
+            "maxScore": float(report["ai_max_score"] or 100),
+            "status": report["final_status"] or payload.get("status", "needs_review"),
+            "summary": payload.get("summary", ""),
+            "strengths": payload.get("strengths", []),
+            "weaknesses": payload.get("weaknesses", []),
+            "suggestions": payload.get("suggestions", []),
+            "finalComments": payload.get("finalComments", ""),
+            "rubricScores": payload.get("rubricScores", []),
+            "extractedText": payload.get("extractedText", ""),
+            "pdfUrl": report["pdf_url"],
+            "publishedAt": report["published_at"].isoformat() if report["published_at"] else None,
+        }
     }
