@@ -243,7 +243,29 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
         await conn.execute(
             "UPDATE submissions SET status = 'graded' WHERE id = $1", submission_id
         )
-        if batch_id:
+
+        # Auto-publish student single submissions — they don't need instructor review.
+        # Batch submissions stay at 'graded' for the instructor review workflow.
+        if not batch_id:
+            await conn.execute(
+                """
+                UPDATE submissions SET status = 'published' WHERE id = $1
+                """,
+                submission_id,
+            )
+            await conn.execute(
+                """
+                UPDATE feedback_reports SET
+                  final_overall_score = ai_overall_score,
+                  final_max_score     = ai_max_score,
+                  final_status        = ai_status,
+                  final_payload       = ai_payload,
+                  published_at        = $2
+                WHERE submission_id = $1
+                """,
+                submission_id, now,
+            )
+        else:
             col = "needs_review_count" if needs_review else "processed_files"
             await conn.execute(
                 f"UPDATE batches SET {col} = {col} + 1 WHERE id = $1", batch_id
