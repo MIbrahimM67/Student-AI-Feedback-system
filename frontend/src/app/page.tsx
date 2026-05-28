@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 
 export default function Home() {
-  const { user, loading, logout, selectRole } = useAuth();
+  const { user, loading, logout } = useAuth();
 
   // Full Screen Monospace IDE Loading Screen
   if (loading) {
@@ -45,7 +45,7 @@ export default function Home() {
               </span>
             </div>
             <span className="text-[10px] font-mono font-bold text-[#5e5c54] border border-[#dfdbd3] py-1 px-3.5 rounded-full uppercase tracking-wider bg-[#f4f2eb]">
-              GradeWise Engine v1.0
+              GradeWise Engine v3.0
             </span>
           </div>
         </header>
@@ -103,25 +103,9 @@ export default function Home() {
             
             <div className="space-y-1">
               {activeRole === "student" && (
-                <div className="space-y-2.5">
-                  <div className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-xl font-bold text-xs bg-white border border-[#dfdbd3] text-[#1c1c18] shadow-sm">
-                    <GraduationCap className="w-4 h-4 text-violet-650" />
-                    Student Console
-                  </div>
-                  
-                  <button
-                    onClick={async () => {
-                      try {
-                        await selectRole("instructor");
-                      } catch (err) {
-                        console.error("Failed to upgrade role:", err);
-                      }
-                    }}
-                    className="w-full flex items-center gap-2 py-2.5 px-3 rounded-xl border border-[#dfdbd3] hover:border-[#1c1c18] hover:bg-white text-[#5e5c54] hover:text-[#1c1c18] font-bold text-[10px] tracking-wider uppercase transition-all active:scale-98 cursor-pointer mt-2 bg-[#eae7e1]/30 shadow-2xs"
-                  >
-                    <Landmark className="w-3.5 h-3.5 text-[#5e5c54]" />
-                    Switch to Faculty Hub
-                  </button>
+                <div className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-xl font-bold text-xs bg-white border border-[#dfdbd3] text-[#1c1c18] shadow-sm">
+                  <GraduationCap className="w-4 h-4 text-violet-650" />
+                  Student Console
                 </div>
               )}
 

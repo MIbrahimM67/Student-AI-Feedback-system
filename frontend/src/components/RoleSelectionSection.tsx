@@ -2,74 +2,80 @@
 
 import React from "react";
 import { useAuth } from "@/context/AuthContext";
-import { GraduationCap, Landmark, Sparkles } from "lucide-react";
+import { GraduationCap, Landmark, Loader2, AlertTriangle } from "lucide-react";
 
 export const RoleSelectionSection: React.FC = () => {
-  const { selectRole, loading, error, user } = useAuth();
+  const { selectRole, loading, error } = useAuth();
 
   return (
-    <div className="flex-1 flex flex-col justify-center items-center px-6 relative overflow-hidden py-16 bg-[#fbfaf7]">
-      {/* Dynamic Warm Glow Backdrops */}
-      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[35rem] h-[35rem] bg-amber-500/5 rounded-full blur-[120px] -z-10" />
-      
-      <div className="max-w-xl w-full text-center space-y-7 z-10">
-        
-        {/* Onboarding Badge */}
-        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#f4f2eb] border border-[#dfdbd3] text-[#5e5c54] text-xs font-bold animate-float">
-          <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-          Onboarding Profile Setup
-        </div>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#fbfaf7] px-4">
+      <div className="w-full max-w-md">
 
-        {/* Dynamic Greeting */}
-        <div className="space-y-3">
-          <h1 className="text-3xl md:text-4xl font-extrabold text-[#1c1c18] font-display tracking-tight">
-            Welcome, {user?.displayName || "Academic User"}
-          </h1>
-          <p className="text-[#5e5c54] text-sm max-w-sm mx-auto font-sans font-medium leading-relaxed">
-            Choose your core portal interface. This setting directs your dashboard consoles and privileges.
+        {/* Header */}
+        <div className="text-center mb-10">
+          <div className="w-12 h-12 rounded-2xl bg-[#1c1c18] flex items-center justify-center mx-auto mb-4 shadow-lg">
+            <span className="text-white font-bold text-lg font-mono">G</span>
+          </div>
+          <h1 className="text-2xl font-bold text-[#1c1c18] font-display">Welcome to GradeWise</h1>
+          <p className="text-sm text-[#5e5c54] mt-2">
+            Select your role to continue. This is stored securely in the database.
           </p>
         </div>
 
-        {error && (
-          <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-750 text-xs font-bold leading-relaxed">
-            {error}
+        {/* Role Cards */}
+        <div className="grid grid-cols-2 gap-4">
+          <button
+            id="role-student"
+            onClick={() => selectRole("student")}
+            disabled={loading}
+            className="group flex flex-col items-center gap-4 p-6 rounded-2xl border-2 border-[#dfdbd3] bg-white hover:border-[#1c1c18] hover:shadow-md transition-all cursor-pointer disabled:opacity-50"
+          >
+            <div className="w-12 h-12 rounded-xl bg-violet-50 flex items-center justify-center group-hover:bg-violet-100 transition-colors">
+              <GraduationCap className="w-6 h-6 text-violet-700" />
+            </div>
+            <div className="text-center">
+              <p className="text-sm font-bold text-[#1c1c18]">Student</p>
+              <p className="text-[11px] text-[#8e8b80] mt-0.5 leading-relaxed">
+                Submit assignments and view AI feedback
+              </p>
+            </div>
+          </button>
+
+          <button
+            id="role-instructor"
+            onClick={() => selectRole("instructor")}
+            disabled={loading}
+            className="group flex flex-col items-center gap-4 p-6 rounded-2xl border-2 border-[#dfdbd3] bg-white hover:border-[#1c1c18] hover:shadow-md transition-all cursor-pointer disabled:opacity-50"
+          >
+            <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center group-hover:bg-green-100 transition-colors">
+              <Landmark className="w-6 h-6 text-green-700" />
+            </div>
+            <div className="text-center">
+              <p className="text-sm font-bold text-[#1c1c18]">Instructor</p>
+              <p className="text-[11px] text-[#8e8b80] mt-0.5 leading-relaxed">
+                Manage subjects, upload references, grade batches
+              </p>
+            </div>
+          </button>
+        </div>
+
+        {loading && (
+          <div className="flex items-center justify-center gap-2 mt-6 text-xs text-[#5e5c54]">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Setting up your account...
           </div>
         )}
 
-        {/* Roles Selection Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
-          
-          {/* Option: Student Console */}
-          <button
-            onClick={() => selectRole("student")}
-            disabled={loading}
-            className="group dev-card bg-white p-8 rounded-3xl border border-[#dfdbd3] hover:border-violet-500 hover:shadow-lg transition-all duration-300 flex flex-col items-center text-center cursor-pointer disabled:pointer-events-none disabled:opacity-50"
-          >
-            <div className="p-4 bg-violet-50 border border-violet-200 text-violet-700 rounded-2xl mb-5 group-hover:scale-105 transition-all duration-300">
-              <GraduationCap className="w-8 h-8" />
-            </div>
-            <h3 className="text-lg font-bold text-[#1c1c18] font-display mb-2">Student Portal</h3>
-            <p className="text-xs text-[#5e5c54] leading-relaxed font-sans font-medium">
-              Submit essays, programming codes, or handwriting scans to receive detailed automated reports.
-            </p>
-          </button>
+        {error && (
+          <div className="flex items-start gap-2 mt-4 p-3 rounded-xl bg-red-50 border border-red-200">
+            <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+            <p className="text-xs text-red-700">{error}</p>
+          </div>
+        )}
 
-          {/* Option: Instructor Console */}
-          <button
-            onClick={() => selectRole("instructor")}
-            disabled={loading}
-            className="group dev-card bg-white p-8 rounded-3xl border border-[#dfdbd3] hover:border-cyan-500 hover:shadow-lg transition-all duration-300 flex flex-col items-center text-center cursor-pointer disabled:pointer-events-none disabled:opacity-50"
-          >
-            <div className="p-4 bg-cyan-50 border border-cyan-200 text-cyan-700 rounded-2xl mb-5 group-hover:scale-105 transition-all duration-300">
-              <Landmark className="w-8 h-8" />
-            </div>
-            <h3 className="text-lg font-bold text-[#1c1c18] font-display mb-2">Instructor Hub</h3>
-            <p className="text-xs text-[#5e5c54] leading-relaxed font-sans font-medium">
-              Upload class batches, check plagiarism metrics, customize rubrics, and export aggregated grade sheets.
-            </p>
-          </button>
-
-        </div>
+        <p className="text-center text-[10px] text-[#8e8b80] mt-8">
+          Role is saved permanently in the database — you can change it later from settings.
+        </p>
       </div>
     </div>
   );
