@@ -176,7 +176,7 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
             from app.services.code_sandbox_service import code_sandbox_service
             ext = os.path.splitext(sub["file_name"] or ".py")[1].lower()
             lang = "python" if ext == ".py" else ("cpp" if ext in (".cpp", ".cc") else "java")
-            result = await code_sandbox_service.execute_code(extracted_text, lang)
+            result = await code_sandbox_service.execute_code(extracted_text, lang, stdin_text=sub.get("stdin_text"))
             code_execution_result = (
                 f"Exit code: {result.get('exitCode')}\n"
                 f"Stdout:\n{result.get('stdout', '')}\n"

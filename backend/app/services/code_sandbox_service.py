@@ -27,7 +27,7 @@ class CodeSandboxService:
             self.has_docker = False
             logger.warning(f"Docker is not available ({e}). Sandbox will run in secure simulation mode.")
 
-    async def execute_code(self, code_text: str, language: str) -> Dict[str, Any]:
+    async def execute_code(self, code_text: str, language: str, stdin_text: Optional[str] = None) -> Dict[str, Any]:
         """
         Executes code inside a sandbox or simulation.
         Returns:
@@ -57,14 +57,14 @@ class CodeSandboxService:
         # If Docker is available, attempt real sandboxed execution
         if self.has_docker and not settings.USE_MOCKS:
             try:
-                return await self._run_in_docker(code_text, lang)
+                return await self._run_in_docker(code_text, lang, stdin_text)
             except Exception as e:
                 logger.error(f"Docker execution failed: {e}. Falling back to simulation.")
 
         # Default secure local simulation
-        return self._run_code_simulation(code_text, lang)
+        return self._run_code_simulation(code_text, lang, stdin_text)
 
-    async def _run_in_docker(self, code_text: str, lang: str) -> Dict[str, Any]:
+    async def _run_in_docker(self, code_text: str, lang: str, stdin_text: Optional[str] = None) -> Dict[str, Any]:
         # Ephemeral file storage
         with tempfile.TemporaryDirectory() as temp_dir:
             file_name = "solution.py" if lang == "python" else ("solution.cpp" if lang == "cpp" else "Main.java")
@@ -73,16 +73,23 @@ class CodeSandboxService:
             with open(host_file_path, "w", encoding="utf-8") as f:
                 f.write(code_text)
 
+            stdin_cmd = ""
+            if stdin_text is not None:
+                stdin_file_path = os.path.join(temp_dir, "stdin.txt")
+                with open(stdin_file_path, "w", encoding="utf-8") as f:
+                    f.write(stdin_text)
+                stdin_cmd = " < /sandbox/stdin.txt"
+
             # Define image and commands based on language
             if lang == "python":
                 image = "python:3.10-slim"
-                cmd = f"python /sandbox/solution.py"
+                cmd = f"sh -c 'python /sandbox/solution.py{stdin_cmd}'"
             elif lang == "cpp":
                 image = "gcc:latest"
-                cmd = "sh -c 'g++ -o /sandbox/run /sandbox/solution.cpp && /sandbox/run'"
+                cmd = f"sh -c 'g++ -o /sandbox/run /sandbox/solution.cpp && /sandbox/run{stdin_cmd}'"
             else: # java
                 image = "openjdk:17-slim"
-                cmd = "sh -c 'javac /sandbox/Main.java && java -cp /sandbox Main'"
+                cmd = f"sh -c 'javac /sandbox/Main.java && java -cp /sandbox Main{stdin_cmd}'"
 
             # Mount temp folder inside container
             volumes = {temp_dir: {"bind": "/sandbox", "mode": "rw"}}
@@ -142,7 +149,7 @@ class CodeSandboxService:
                 logger.error(f"Error executing in Docker container: {e}")
                 raise e
 
-    def _run_code_simulation(self, code_text: str, lang: str) -> Dict[str, Any]:
+    def _run_code_simulation(self, code_text: str, lang: str, stdin_text: Optional[str] = None) -> Dict[str, Any]:
         """
         Performs static check logic and constructs authentic execution traces without running code.
         """

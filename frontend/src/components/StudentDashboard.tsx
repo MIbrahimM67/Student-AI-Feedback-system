@@ -44,6 +44,7 @@ export const StudentDashboard: React.FC = () => {
   const [questionText, setQuestionText] = useState("");
   const [referenceFile, setReferenceFile] = useState<File | null>(null);
   const [inputText, setInputText] = useState("");
+  const [stdinText, setStdinText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [stage, setStage] = useState("");
@@ -105,6 +106,7 @@ export const StudentDashboard: React.FC = () => {
     if (questionText.trim()) form.append("question_text", questionText);
     if (referenceFile) form.append("reference_file", referenceFile);
     if (inputText.trim()) form.append("input_text", inputText);
+    if (stdinText.trim()) form.append("stdin_text", stdinText);
     if (file) form.append("file", file);
 
     try {
@@ -117,6 +119,7 @@ export const StudentDashboard: React.FC = () => {
       setQuestionText("");
       setReferenceFile(null);
       setInputText("");
+      setStdinText("");
       setFile(null);
       fetchHistory();
     } catch (err: any) {
@@ -239,6 +242,22 @@ export const StudentDashboard: React.FC = () => {
                     ? "Paste your code here, or upload a file..."
                     : "Type or paste your answer here..."
                 }
+              />
+            </div>
+          )}
+
+          {/* STDIN input (only for coding) */}
+          {type === "coding" && (
+            <div>
+              <label className="text-[10px] font-bold text-[#5e5c54] uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                Standard Input (stdin) <span className="text-gray-400 font-normal normal-case">- Optional</span>
+              </label>
+              <textarea
+                value={stdinText}
+                onChange={(e) => setStdinText(e.target.value)}
+                rows={3}
+                className="w-full text-xs font-mono border border-[#dfdbd3] rounded-xl px-3 py-2.5 bg-[#f4f2eb] text-[#1c1c18] placeholder-[#8e8b80] focus:outline-none focus:border-[#1c1c18] resize-none transition-colors"
+                placeholder="Enter input text exactly as the program expects it..."
               />
             </div>
           )}

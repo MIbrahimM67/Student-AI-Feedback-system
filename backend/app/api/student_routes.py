@@ -70,6 +70,7 @@ async def create_submission(
     question_text: Optional[str] = Form(""),
     rubric_text: Optional[str] = Form(""),
     input_text: Optional[str] = Form(""),
+    stdin_text: Optional[str] = Form(""),
     reference_file: Optional[UploadFile] = File(None),
     file: Optional[UploadFile] = File(None),
     user: dict = Depends(_get_student_profile),
@@ -160,13 +161,13 @@ async def create_submission(
             """
             INSERT INTO submissions
               (id, org_id, user_id, assignment_id, subject_id,
-               type, mode, question_text, rubric_text, input_text, 
+               type, mode, question_text, rubric_text, input_text, stdin_text,
                reference_file_url, reference_file_name, file_url, file_name, status, created_at)
-            VALUES ($1,$2,$3,$4,$5,$6,'single',$7,$8,$9,$10,$11,$12,$13,'uploaded',$14)
+            VALUES ($1,$2,$3,$4,$5,$6,'single',$7,$8,$9,$10,$11,$12,$13,$14,'uploaded',$15)
             """,
             submission_id, org_id, uid,
             assignment_id, subject_id,
-            type, question_text or None, rubric_text or None, input_text or None,
+            type, question_text or None, rubric_text or None, input_text or None, stdin_text or None,
             reference_file_url, reference_file_name, file_url, file_name, now,
         )
 

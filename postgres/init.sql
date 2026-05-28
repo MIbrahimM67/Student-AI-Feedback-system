@@ -288,6 +288,7 @@ CREATE TABLE submissions (
   type TEXT NOT NULL CHECK (type IN ('text','handwritten','coding','custom')),
   mode TEXT NOT NULL CHECK (mode IN ('single','batch')),
   input_text TEXT,
+  stdin_text TEXT,
   question_text TEXT,
   rubric_text TEXT,
   reference_file_url TEXT,
