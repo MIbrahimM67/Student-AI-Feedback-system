@@ -36,11 +36,29 @@ celery_app.conf.update(
 
 
 def _run_async(coro):
-    """Run an async coroutine from a sync Celery task."""
+    """Run an async coroutine from a sync Celery task.
+    
+    Creates a fresh event loop + asyncpg pool for every invocation.
+    Celery prefork workers spawn a new event loop on each task attempt,
+    so reusing a pool from a previous loop causes 'Future attached to a
+    different loop' errors.
+    """
+    from app.db.postgres import init_pool, close_pool
+
     loop = asyncio.new_event_loop()
     try:
+        # Always create a fresh pool bound to this event loop
+        try:
+            loop.run_until_complete(close_pool())
+        except Exception:
+            pass
+        loop.run_until_complete(init_pool())
         return loop.run_until_complete(coro)
     finally:
+        try:
+            loop.run_until_complete(close_pool())
+        except Exception:
+            pass
         loop.close()
 
 

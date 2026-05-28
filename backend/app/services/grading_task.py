@@ -46,15 +46,9 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
       5. Run 10-step pipeline
       6. Persist feedback_report
 
-    NOTE: The Celery worker is a separate process from FastAPI, so the asyncpg
-    pool is never initialized by the app lifespan. We lazily initialize it here.
+    NOTE: The asyncpg pool lifecycle is managed by _run_async in celery_app.py,
+    which creates a fresh pool for every Celery task execution.
     """
-    from app.db.postgres import init_pool, _pool
-    pool_was_none = _pool is None
-    if pool_was_none:
-        logger.info("Database pool not initialized — initializing now for Celery worker.")
-        await init_pool()
-
     llm = build_llm_from_env()
     redis = aioredis.from_url(os.environ["REDIS_URL"], decode_responses=True)
 
