@@ -40,6 +40,8 @@ export const StudentDashboard: React.FC = () => {
   const { user } = useAuth();
 
   const [type, setType] = useState("text");
+  const [questionText, setQuestionText] = useState("");
+  const [rubricText, setRubricText] = useState("");
   const [inputText, setInputText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -87,6 +89,8 @@ export const StudentDashboard: React.FC = () => {
 
     const form = new FormData();
     form.append("type", type);
+    if (questionText.trim()) form.append("question_text", questionText);
+    if (rubricText.trim()) form.append("rubric_text", rubricText);
     if (inputText.trim()) form.append("input_text", inputText);
     if (file) form.append("file", file);
 
@@ -97,6 +101,8 @@ export const StudentDashboard: React.FC = () => {
       });
       setSuccessId(res.data.submission_id);
       setStage("");
+      setQuestionText("");
+      setRubricText("");
       setInputText("");
       setFile(null);
       fetchHistory();
@@ -152,23 +158,53 @@ export const StudentDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Text input */}
+          {/* Ad-hoc Question Input */}
           <div>
             <label className="text-[10px] font-bold text-[#5e5c54] uppercase tracking-widest mb-1.5 block">
-              Answer Text {type !== "coding" && "(or upload a file below)"}
+              Question Prompt
             </label>
             <textarea
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              rows={6}
+              value={questionText}
+              onChange={(e) => setQuestionText(e.target.value)}
+              rows={3}
               className="w-full text-xs border border-[#dfdbd3] rounded-xl px-3 py-2.5 bg-white text-[#1c1c18] placeholder-[#8e8b80] focus:outline-none focus:border-[#1c1c18] resize-none transition-colors"
-              placeholder={
-                type === "coding"
-                  ? "Paste your code here, or upload a file..."
-                  : "Type or paste your answer here..."
-              }
+              placeholder="Type or paste the assignment question here..."
             />
           </div>
+
+          {/* Ad-hoc Rubric Input */}
+          <div>
+            <label className="text-[10px] font-bold text-[#5e5c54] uppercase tracking-widest mb-1.5 block">
+              Grading Rubric (Optional)
+            </label>
+            <textarea
+              value={rubricText}
+              onChange={(e) => setRubricText(e.target.value)}
+              rows={2}
+              className="w-full text-xs border border-[#dfdbd3] rounded-xl px-3 py-2.5 bg-white text-[#1c1c18] placeholder-[#8e8b80] focus:outline-none focus:border-[#1c1c18] resize-none transition-colors"
+              placeholder="e.g. Grammar (25%), Content (50%), Formatting (25%)"
+            />
+          </div>
+
+          {/* Text input */}
+          {type !== "handwritten" && (
+            <div>
+              <label className="text-[10px] font-bold text-[#5e5c54] uppercase tracking-widest mb-1.5 block">
+                Answer Text {type !== "coding" && "(or upload a file below)"}
+              </label>
+              <textarea
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                rows={6}
+                className="w-full text-xs border border-[#dfdbd3] rounded-xl px-3 py-2.5 bg-white text-[#1c1c18] placeholder-[#8e8b80] focus:outline-none focus:border-[#1c1c18] resize-none transition-colors"
+                placeholder={
+                  type === "coding"
+                    ? "Paste your code here, or upload a file..."
+                    : "Type or paste your answer here..."
+                }
+              />
+            </div>
+          )}
 
           {/* File upload */}
           <div>

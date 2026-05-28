@@ -288,6 +288,8 @@ CREATE TABLE submissions (
   type TEXT NOT NULL CHECK (type IN ('text','handwritten','coding','custom')),
   mode TEXT NOT NULL CHECK (mode IN ('single','batch')),
   input_text TEXT,
+  question_text TEXT,
+  rubric_text TEXT,
   file_url TEXT,
   file_name TEXT,
   status TEXT NOT NULL CHECK (status IN ('uploaded','processing','graded','approved','published','failed')) DEFAULT 'uploaded',
