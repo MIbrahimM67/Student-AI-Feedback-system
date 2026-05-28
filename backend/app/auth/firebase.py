@@ -27,7 +27,7 @@ def _init_firebase():
 
     project_id = os.environ.get("FIREBASE_PROJECT_ID", "")
     client_email = os.environ.get("FIREBASE_CLIENT_EMAIL", "")
-    private_key = os.environ.get("FIREBASE_PRIVATE_KEY", "").replace("\\n", "\n")
+    private_key = os.environ.get("FIREBASE_PRIVATE_KEY", "").strip("'").strip('"').replace("\\n", "\n")
     storage_bucket = os.environ.get("FIREBASE_STORAGE_BUCKET", "")
 
     if not all([project_id, client_email, private_key]):
