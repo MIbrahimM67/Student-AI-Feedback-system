@@ -63,6 +63,7 @@ async def create_submission(
     question_text: Optional[str] = Form(""),
     rubric_text: Optional[str] = Form(""),
     input_text: Optional[str] = Form(""),
+    reference_file: Optional[UploadFile] = File(None),
     file: Optional[UploadFile] = File(None),
     user: dict = Depends(_get_student_profile),
 ):
@@ -114,6 +115,35 @@ async def create_submission(
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
 
+    # ---- Reference File upload (Firebase Storage) ---------------------------
+    reference_file_url = None
+    reference_file_name = None
+    if reference_file and reference_file.filename:
+        content = await reference_file.read()
+        file_size_mb = len(content) / (1024 * 1024)
+        if file_size_mb > settings.STUDENT_MAX_FILE_MB:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Reference file exceeds the {settings.STUDENT_MAX_FILE_MB}MB student limit.",
+            )
+        reference_file_name = reference_file.filename
+        blob_name = f"submissions/{uid}/{submission_id}_ref_{reference_file_name}"
+        try:
+            bucket = get_storage_bucket()
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(reference_file_name)[1]) as tmp:
+                tmp.write(content)
+                tmp_path = tmp.name
+            blob = bucket.blob(blob_name)
+            blob.upload_from_filename(tmp_path)
+            blob.make_public()
+            reference_file_url = blob.public_url
+        except Exception as e:
+            logger.error("Reference storage upload failed: %s", e)
+            raise HTTPException(500, "Reference file upload failed.")
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
     if not input_text and not file_url:
         raise HTTPException(400, "Provide either input_text or a file.")
 
@@ -123,13 +153,14 @@ async def create_submission(
             """
             INSERT INTO submissions
               (id, org_id, user_id, assignment_id, subject_id,
-               type, mode, question_text, rubric_text, input_text, file_url, file_name, status, created_at)
-            VALUES ($1,$2,$3,$4,$5,$6,'single',$7,$8,$9,$10,$11,'uploaded',$12)
+               type, mode, question_text, rubric_text, input_text, 
+               reference_file_url, reference_file_name, file_url, file_name, status, created_at)
+            VALUES ($1,$2,$3,$4,$5,$6,'single',$7,$8,$9,$10,$11,$12,$13,'uploaded',$14)
             """,
             submission_id, org_id, uid,
             assignment_id, subject_id,
             type, question_text or None, rubric_text or None, input_text or None,
-            file_url, file_name, now,
+            reference_file_url, reference_file_name, file_url, file_name, now,
         )
 
     # ---- Enqueue grading task -----------------------------------------------

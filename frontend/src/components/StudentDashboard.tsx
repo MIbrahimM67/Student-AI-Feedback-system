@@ -41,7 +41,7 @@ export const StudentDashboard: React.FC = () => {
 
   const [type, setType] = useState("text");
   const [questionText, setQuestionText] = useState("");
-  const [rubricText, setRubricText] = useState("");
+  const [referenceFile, setReferenceFile] = useState<File | null>(null);
   const [inputText, setInputText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -54,6 +54,7 @@ export const StudentDashboard: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
+  const refFileRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchHistory = async () => {
@@ -90,7 +91,7 @@ export const StudentDashboard: React.FC = () => {
     const form = new FormData();
     form.append("type", type);
     if (questionText.trim()) form.append("question_text", questionText);
-    if (rubricText.trim()) form.append("rubric_text", rubricText);
+    if (referenceFile) form.append("reference_file", referenceFile);
     if (inputText.trim()) form.append("input_text", inputText);
     if (file) form.append("file", file);
 
@@ -102,7 +103,7 @@ export const StudentDashboard: React.FC = () => {
       setSuccessId(res.data.submission_id);
       setStage("");
       setQuestionText("");
-      setRubricText("");
+      setReferenceFile(null);
       setInputText("");
       setFile(null);
       fetchHistory();
@@ -161,29 +162,53 @@ export const StudentDashboard: React.FC = () => {
           {/* Ad-hoc Question Input */}
           <div>
             <label className="text-[10px] font-bold text-[#5e5c54] uppercase tracking-widest mb-1.5 block">
-              Question Prompt
+              Type Questions / Rubric
             </label>
             <textarea
               value={questionText}
               onChange={(e) => setQuestionText(e.target.value)}
               rows={3}
               className="w-full text-xs border border-[#dfdbd3] rounded-xl px-3 py-2.5 bg-white text-[#1c1c18] placeholder-[#8e8b80] focus:outline-none focus:border-[#1c1c18] resize-none transition-colors"
-              placeholder="Type or paste the assignment question here..."
+              placeholder="Type or paste the assignment question and grading criteria..."
             />
           </div>
 
-          {/* Ad-hoc Rubric Input */}
+          {/* Reference File upload */}
           <div>
             <label className="text-[10px] font-bold text-[#5e5c54] uppercase tracking-widest mb-1.5 block">
-              Grading Rubric (Optional)
+              Upload Relevant Material (Optional)
             </label>
-            <textarea
-              value={rubricText}
-              onChange={(e) => setRubricText(e.target.value)}
-              rows={2}
-              className="w-full text-xs border border-[#dfdbd3] rounded-xl px-3 py-2.5 bg-white text-[#1c1c18] placeholder-[#8e8b80] focus:outline-none focus:border-[#1c1c18] resize-none transition-colors"
-              placeholder="e.g. Grammar (25%), Content (50%), Formatting (25%)"
-            />
+            <div
+              onClick={() => refFileRef.current?.click()}
+              className={`w-full border-2 border-dashed rounded-xl p-3 flex flex-col items-center gap-1.5 cursor-pointer transition-all
+                ${referenceFile ? "border-[#1c1c18] bg-[#f5f3ef]" : "border-[#dfdbd3] hover:border-[#1c1c18] bg-white"}`}
+            >
+              {referenceFile ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4 text-green-600" />
+                  <span className="text-[10px] font-semibold text-[#1c1c18] text-center truncate max-w-full">{referenceFile.name}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setReferenceFile(null); }}
+                    className="text-[9px] text-red-500 hover:text-red-700 font-bold"
+                  >
+                    Remove
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4 text-[#8e8b80]" />
+                  <span className="text-[10px] text-[#8e8b80] text-center">Upload Question Paper/Rubric (PDF, Image)</span>
+                </>
+              )}
+              <input
+                ref={refFileRef}
+                type="file"
+                className="hidden"
+                accept=".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg"
+                onChange={(e) => setReferenceFile(e.target.files?.[0] || null)}
+              />
+            </div>
           </div>
 
           {/* Text input */}

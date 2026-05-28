@@ -290,6 +290,8 @@ CREATE TABLE submissions (
   input_text TEXT,
   question_text TEXT,
   rubric_text TEXT,
+  reference_file_url TEXT,
+  reference_file_name TEXT,
   file_url TEXT,
   file_name TEXT,
   status TEXT NOT NULL CHECK (status IN ('uploaded','processing','graded','approved','published','failed')) DEFAULT 'uploaded',
