@@ -234,6 +234,7 @@ async def run_pipeline(
     student_name: str = "Student",
     submission_id: str | None = None,
     code_execution_result: str | None = None,
+    reference_text: str | None = None,
 ) -> FeedbackReport:
     """
     Run the full 10-step hardened grading pipeline.
@@ -282,6 +283,13 @@ async def run_pipeline(
         qid = q["id"]
         q_criteria = rubric_criteria  # shared rubric for now; extend to per-question later
         q_chunks = chunk_map.get(qid, [])
+        if reference_text:
+            q_chunks.insert(0, {
+                "id": "ad-hoc-reference-material",
+                "text": reference_text,
+                "score": 1.0,
+                "concept_ids": []
+            })
         g_ctx = graph_contexts[qid]
 
         # Step 5: Specialist

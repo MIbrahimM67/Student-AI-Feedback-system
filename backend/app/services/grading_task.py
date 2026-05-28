@@ -113,6 +113,25 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
         await _mark_failed(org_id, submission_id, batch_id)
         return
 
+    # ---- Extract reference text ---------------------------------------------
+    reference_text = None
+    if sub.get("reference_file_url"):
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.get(sub["reference_file_url"])
+                resp.raise_for_status()
+
+            ext = os.path.splitext(sub.get("reference_file_name") or ".pdf")[1]
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+                tmp.write(resp.content)
+                tmp_path = tmp.name
+
+            reference_text = await ocr_service.extract_text(tmp_path, sub.get("reference_file_name") or "reference_file")
+            os.remove(tmp_path)
+        except Exception as e:
+            logger.warning("Reference text extraction failed for submission %s: %s", submission_id, e)
+
     # ---- Policy scan --------------------------------------------------------
     is_violated, reason = await warning_service.scan_and_enforce(
         org_id=org_id,
@@ -146,9 +165,11 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
     # ---- Build pipeline inputs ----------------------------------------------
     # If no assignment/questions, create a generic single-question wrapper
     if not questions:
+        q_text = sub.get("question_text") or "Evaluate the overall quality of this submission."
+        r_text = sub.get("rubric_text") or "Evaluate comprehensively."
         questions = [{
             "id": str(uuid.uuid4()),
-            "text": "Evaluate the overall quality of this submission.",
+            "text": q_text,
             "max_marks": 100,
             "display_order": 0,
         }]
@@ -156,7 +177,7 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
             "id": str(uuid.uuid4()),
             "name": "Overall Quality",
             "max_score": 100,
-            "description": "Evaluate comprehensively.",
+            "description": r_text,
         }]
 
     assignment_version = assignment["version"] if assignment else 1
@@ -176,6 +197,7 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
             student_name=student_name,
             submission_id=submission_id,
             code_execution_result=code_execution_result,
+            reference_text=reference_text,
         )
     except Exception as e:
         logger.error("Pipeline failed for submission %s: %s", submission_id, e)
