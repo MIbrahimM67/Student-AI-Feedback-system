@@ -64,7 +64,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err: any) {
       console.error("Backend sync failed:", err);
       const errMsg = err.response?.data?.detail || err.message || "Unknown error";
-      setError(`Server Error: ${errMsg}`);
+      setError(`Server Error (${API_URL}): ${errMsg}`);
       setUser(null);
     }
   };
