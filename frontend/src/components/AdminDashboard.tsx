@@ -31,7 +31,7 @@ interface WarningAlert {
 }
 
 export const AdminDashboard: React.FC = () => {
-  const { user, isMock } = useAuth();
+  const { user } = useAuth();
   
   // Dashboard Metrics & Data Lists State
   const [apps, setApps] = useState<FacultyApplication[]>([]);
@@ -47,75 +47,15 @@ export const AdminDashboard: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      if (isMock) {
-        // Hydrate simulated dashboard metrics
-        setApps([
-          {
-            id: "app_f0eb2cee",
-            userId: "mock_instructor_uid",
-            fullName: "Dr. Sarah Jenkins",
-            university: "Quaid-e-Azam University",
-            department: "Computer Science",
-            designation: "Assistant Professor",
-            officialEmail: "jenkins@qau.edu.pk",
-            proofFileUrl: "file:///i:/fyp implementation/backend/app/temp_mock_storage/faculty_proofs/proof.pdf",
-            status: "pending"
-          }
-        ]);
-        
-        setWarnings([
-          {
-            id: "warn_sub_df4f",
-            userId: "mock_student_uid",
-            submissionId: "sub_df4fd000",
-            reason: "Sensitive material detected: code phrase matching 'cheat sheet, leaked exam, confidential key'",
-            severity: "high",
-            status: "active",
-            createdAt: new Date().toISOString()
-          }
-        ]);
-
-        setAuditLogs([
-          {
-            id: "log_1",
-            actorId: "mock_student_uid",
-            action: "POLICY_VIOLATION",
-            details: "Submission flagged: Sensitive material matching leaks list",
-            timestamp: new Date().toISOString()
-          },
-          {
-            id: "log_2",
-            actorId: "mock_instructor_uid",
-            action: "FACULTY_APPLIED",
-            details: "Dr. Sarah Jenkins applied for faculty validation",
-            timestamp: new Date(Date.now() - 300000).toISOString()
-          }
-        ]);
-        return;
-      }
-
-      // Fetch from live FastAPI routes
-      const appsRes = await api.get("/api/admin/faculty-applications");
-      const warningsRes = await api.get("/api/admin/warnings");
-      
+      const [appsRes, warningsRes] = await Promise.all([
+        api.get("/api/admin/faculty-applications"),
+        api.get("/api/admin/warnings"),
+      ]);
       setApps(Array.isArray(appsRes.data) ? appsRes.data : []);
       setWarnings(Array.isArray(warningsRes.data) ? warningsRes.data : []);
-      
-      // Simulate/Pull logs
-      setAuditLogs([
-        {
-          id: "log_1",
-          actorId: "mock_student_uid",
-          action: "POLICY_VIOLATION",
-          details: "Submission flagged: Sensitive material matching leaks list",
-          timestamp: new Date().toISOString()
-        }
-      ]);
     } catch (err: any) {
-      console.warn("Failed to fetch administrative lists. Seeded mock backups.", err);
-      // Fallback
-      setApps([]);
-      setWarnings([]);
+      console.error("Failed to fetch admin data:", err);
+      setError(err.message || "Failed to load admin data.");
     } finally {
       setLoading(false);
     }
@@ -123,21 +63,16 @@ export const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     fetchAdminData();
-  }, [user, isMock]);
+  }, [user]);
 
   // Approve faculty application
   const handleApproveApp = async (id: string) => {
     setLoading(true);
     setError(null);
     try {
-      if (isMock) {
-        setApps(prev => prev.map(a => a.id === id ? { ...a, status: "approved" } : a));
-        setSuccessMsg("Instructor application approved successfully!");
-      } else {
-        await api.post(`/api/admin/faculty-applications/${id}/approve`);
-        setSuccessMsg("Faculty verification granted and privileges updated.");
-        fetchAdminData();
-      }
+      await api.post(`/api/admin/faculty-applications/${id}/approve`);
+      setSuccessMsg("Faculty verification granted and privileges updated.");
+      fetchAdminData();
     } catch (err: any) {
       setError(err.message || "Failed to approve application.");
     } finally {
@@ -149,18 +84,12 @@ export const AdminDashboard: React.FC = () => {
   const handleRejectApp = async (id: string) => {
     const reason = prompt("Please provide a reason for rejecting this application:") || "";
     if (!reason.trim()) return;
-
     setLoading(true);
     setError(null);
     try {
-      if (isMock) {
-        setApps(prev => prev.map(a => a.id === id ? { ...a, status: "rejected" } : a));
-        setSuccessMsg("Application rejected.");
-      } else {
-        await api.post(`/api/admin/faculty-applications/${id}/reject`, { reason });
-        setSuccessMsg("Faculty verification application rejected.");
-        fetchAdminData();
-      }
+      await api.post(`/api/admin/faculty-applications/${id}/reject`, { reason });
+      setSuccessMsg("Faculty verification application rejected.");
+      fetchAdminData();
     } catch (err: any) {
       setError(err.message || "Failed to reject application.");
     } finally {
@@ -173,14 +102,9 @@ export const AdminDashboard: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      if (isMock) {
-        setWarnings(prev => prev.filter(w => w.id !== id));
-        setSuccessMsg("Compliance warning dismissed! User count decremented.");
-      } else {
-        await api.post(`/api/admin/warnings/${id}/dismiss`);
-        setSuccessMsg("Warning dismissed. Counter levels reset in profiles.");
-        fetchAdminData();
-      }
+      await api.post(`/api/admin/warnings/${id}/dismiss`);
+      setSuccessMsg("Warning dismissed. Counter levels reset in profiles.");
+      fetchAdminData();
     } catch (err: any) {
       setError(err.message || "Failed to dismiss warning alert.");
     } finally {

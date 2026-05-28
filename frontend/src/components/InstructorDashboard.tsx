@@ -16,7 +16,7 @@ interface StagedStudent {
 }
 
 export const InstructorDashboard: React.FC = () => {
-  const { user, isMock } = useAuth();
+  const { user } = useAuth();
   
   // Faculty Verification Form State
   const [fullName, setFullName] = useState<string>("");
@@ -86,13 +86,6 @@ export const InstructorDashboard: React.FC = () => {
       });
 
       setSuccessMsg("Verification application submitted successfully. Pending administrative approval.");
-      // Trigger a local storage profile refresh simulation if mock
-      if (isMock) {
-        // Automatically approve for simulated ease-of-use
-        setTimeout(() => {
-          window.location.reload();
-        }, 1500);
-      }
     } catch (err: any) {
       setError(err.message || "Failed to submit verification request.");
     } finally {
