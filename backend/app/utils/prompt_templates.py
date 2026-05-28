@@ -13,7 +13,8 @@ from __future__ import annotations
 import json
 
 GROUNDING_RULE = (
-    "If reference context is provided, evaluate ONLY against it and cite the chunk_id behind every factual claim. "
+    "If reference context is provided, rely primarily on it (about 70%) to ground your evaluation and cite the chunk_id for direct factual claims. "
+    "However, use your own expert knowledge (about 30%) to accept valid alternative explanations, synonyms, and paraphrased answers that align with the core concepts. "
     "If the reference context is empty or absent, rely entirely on your own extensive expert knowledge to evaluate the student's answer accurately against the rubric. Do NOT fail the grading just because reference context is missing."
 )
 
