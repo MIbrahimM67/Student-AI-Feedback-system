@@ -1,145 +1,164 @@
-import os
-import logging
-from typing import Dict, Any, Optional
-from PIL import Image
-import io
-from backend.app.config import settings
+"""
+GradeWise v3 — OCR service.
 
-logger = logging.getLogger("ocr_service")
+Tier 1: PyMuPDF (typed PDFs) → pure text, no AI needed.
+Tier 2: Tesseract OCR (clear scans / printed handwriting).
+Tier 3: Vision model via Gradient (messy cursive — optional, set GRADIENT_VISION_OCR_MODEL).
+
+No simulation mode. No mock text. Real extraction only.
+"""
+from __future__ import annotations
+
+import logging
+import os
+import tempfile
+
+logger = logging.getLogger(__name__)
+
 
 class OCRService:
-    def __init__(self):
-        # Configure pytesseract path
-        self.tesseract_cmd = settings.TESSERACT_CMD
-        self._init_pytesseract()
-
-    def _init_pytesseract(self):
-        try:
-            import pytesseract
-            self.pytesseract = pytesseract
-            # Check if custom exe path is valid
-            if os.path.exists(self.tesseract_cmd):
-                self.pytesseract.pytesseract.tesseract_cmd = self.tesseract_cmd
-                logger.info(f"Pytesseract configured with command path: {self.tesseract_cmd}")
-            else:
-                logger.warning(f"Tesseract executable not found at specified path: {self.tesseract_cmd}. Will look on system path or use mock fallbacks.")
-        except ImportError:
-            self.pytesseract = None
-            logger.warning("pytesseract package not installed. OCR will run in simulation mode.")
 
     async def extract_text(self, file_path: str, filename: str) -> str:
         """
-        Extracts text from PDF/image files. Falls back to mock text if OCR fails.
+        Extract text from a file. Returns clean UTF-8 text.
+        Raises ValueError if no readable text could be extracted.
         """
-        logger.info(f"Starting OCR extraction on file: {filename}")
         ext = os.path.splitext(filename)[1].lower()
-        
-        # Try real OCR if pytesseract is loaded
-        if self.pytesseract and not settings.USE_MOCKS:
-            try:
-                if ext in ['.png', '.jpg', '.jpeg', '.bmp']:
-                    image = Image.open(file_path)
-                    text = self.pytesseract.image_to_string(image)
-                    if text.strip():
-                        logger.info("Successfully extracted text via Pytesseract OCR.")
-                        return text
-                elif ext == '.pdf':
-                    # Attempt pdf-to-image extraction if pdf2image is present
-                    try:
-                        from pdf2image import convert_from_path
-                        images = convert_from_path(file_path)
-                        text_parts = []
-                        for img in images:
-                            text_parts.append(self.pytesseract.image_to_string(img))
-                        full_text = "\n\n".join(text_parts)
-                        if full_text.strip():
-                            logger.info("Successfully extracted text from PDF pages via PDF2Image + Pytesseract.")
-                            return full_text
-                    except Exception as pdf_err:
-                        logger.warning(f"PDF OCR conversion failed ({pdf_err}). Attempting basic PyPDF text extraction...")
-                        # Fallback to PyPDF2 or pdfplumber if available
-                        try:
-                            import pypdf
-                            reader = pypdf.PdfReader(file_path)
-                            text_parts = [page.extract_text() for page in reader.pages]
-                            full_text = "\n\n".join(text_parts)
-                            if full_text.strip():
-                                return full_text
-                        except Exception as pypdf_err:
-                            logger.warning(f"Standard PDF reading failed: {pypdf_err}")
-            except Exception as e:
-                logger.error(f"Pytesseract OCR failed with error: {e}. Falling back to simulation.")
 
-        # --- ELEGANT Fallback / Simulation Mode ---
-        logger.info(f"Running OCR in simulation mode for file: {filename}")
-        return self._generate_simulated_handwritten_text(filename)
+        # ---- Tier 1: PyMuPDF — typed/digital PDFs ---------------------------
+        if ext == ".pdf":
+            text = self._pymupdf_extract(file_path)
+            if text.strip():
+                logger.info("PyMuPDF extracted %d chars from %s", len(text), filename)
+                return text
+            # PDF is scanned (no embedded text) — fall through to OCR
 
-    def _generate_simulated_handwritten_text(self, filename: str) -> str:
-        # Check filename features to generate highly realistic, readable, hand-drafted content
-        name_lower = filename.lower()
-        
-        if "calc" in name_lower or "math" in name_lower:
-            return (
-                "Muhammad Ibrahim - Assignment 1: Advanced Calculus & Systems\n"
-                "Course: MATH 201 - Section B\n"
-                "Date: October 2025\n\n"
-                "Question 1: Find the eigenvalues and eigenvectors of the matrix A = [[3, 1], [1, 3]].\n"
-                "Solution:\n"
-                "To find the eigenvalues, we must solve the characteristic equation det(A - lambda*I) = 0.\n"
-                "det([[3 - lambda, 1], [1, 3 - lambda]]) = 0\n"
-                "(3 - lambda)(3 - lambda) - (1)(1) = 0\n"
-                "9 - 6*lambda + lambda^2 - 1 = 0\n"
-                "lambda^2 - 6*lambda + 8 = 0\n"
-                "Factoring the quadratic equation gives:\n"
-                "(lambda - 4)(lambda - 2) = 0\n"
-                "Hence, the eigenvalues are lambda_1 = 4 and lambda_2 = 2.\n\n"
-                "Next, to find the eigenvectors, we solve (A - lambda*I)x = 0.\n"
-                "Case 1: lambda = 4\n"
-                "A - 4I = [[-1, 1], [1, -1]]\n"
-                "Solving [[-1, 1], [1, -1]] * [x1, x2]^T = [0, 0]^T\n"
-                "This yields the equation -x1 + x2 = 0, which means x1 = x2.\n"
-                "So, the first eigenvector is v1 = [1, 1]^T.\n\n"
-                "Case 2: lambda = 2\n"
-                "A - 2I = [[1, 1], [1, 1]]\n"
-                "Solving [[1, 1], [1, 1]] * [x1, x2]^T = [0, 0]^T\n"
-                "This yields x1 + x2 = 0, which means x1 = -x2.\n"
-                "So, the second eigenvector is v2 = [1, -1]^T.\n\n"
-                "Therefore, our matrix eigenvectors are [1, 1]^T and [1, -1]^T corresponding to eigenvalues 4 and 2 respectively."
-            )
-        elif "history" in name_lower or "essay" in name_lower or "social" in name_lower:
-            return (
-                "World History 102 - Term Paper on Industrialization\n"
-                "Submitted by: Sarah Smith\n"
-                "Date: October 2025\n\n"
-                "Title: The Social Repercussions of the First Industrial Revolution in Britain\n\n"
-                "The First Industrial Revolution, spanning from roughly 1760 to 1840, represented a foundational paradigm shift in human society. "
-                "Historically, agrarian economies were dominated by decentralized rural household manufacturing systems. The development of mechanized steam power "
-                "and advanced textile looms central to British industrial clusters triggered unprecedented urbanization. Rural families migrated rapidly into factory "
-                "boroughs like Manchester and Leeds, seeking stable wages.\n\n"
-                "However, the social cost was immense. Urban planning failed to keep pace with migration, leading to cramped tenements, open sewage systems, "
-                "and rapid cholera outbreaks. Working conditions in factories were notorious: twelve-hour shifts, child labor, and complete absence of workplace injury cover. "
-                "Despite these severe physical hardships, the era catalyzed social changes, including the emergence of the working-class consciousness, which "
-                "ultimately forced labor law reforms. The Factory Acts of 1833 marked the primary step in statutory labor regulation, permanently reshaping human relations."
-            )
-        else:
-            # General fallback homework format
-            return (
-                "Muhammad Ibrahim\n"
-                "Student ID: 04072213025\n"
-                "AI-Powered Feedback System - Assignment #2\n"
-                "Course Code: CSC-302 (Artificial Intelligence)\n\n"
-                "Question 1: Explain the primary difference between search-based AI agents and knowledge-based AI agents.\n"
-                "Answer: Search-based agents (like A* search or minimax tree models) generate a tree of future states "
-                "and traverse this state space to determine the most optimal path or set of moves. They do not maintain a permanent representation of the world. "
-                "Knowledge-based agents, conversely, maintain an internal database (a Knowledge Base) containing facts, rules, and inference guidelines. "
-                "They use logical deduction systems (like propositional logic or first-order logic) to query the current state of their environment and "
-                "infer new information to formulate long-term plan decisions.\n\n"
-                "Question 2: What is the purpose of a multi-agent validation pipeline?\n"
-                "Answer: A multi-agent pipeline divides tasks among highly focused specialist models. A Specialist Agent does the primary deep analysis. "
-                "A Judge Agent reviews the specialist output to eliminate hallucinations and confirm grading consistency. "
-                "Finally, a Senior Agent synthesizes their remarks into a highly structured JSON report. This system significantly increases "
-                "the overall accuracy, fairness, and structural readability of AI-generated content."
-            )
+        # ---- Plain text / code files ----------------------------------------
+        if ext in (".txt", ".py", ".java", ".cpp", ".c", ".js", ".ts", ".cs", ".go"):
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                return f.read()
 
-# Initialize global instance
+        # ---- DOCX -----------------------------------------------------------
+        if ext in (".docx", ".doc"):
+            return self._docx_extract(file_path)
+
+        # ---- Tier 2: Tesseract OCR (images + scanned PDFs) ------------------
+        text = await self._tesseract_extract(file_path, ext)
+        if text.strip():
+            return text
+
+        # ---- Tier 3: Vision model (optional) --------------------------------
+        from app.config import settings
+        if settings.GRADIENT_VISION_OCR_MODEL:
+            text = await self._vision_model_extract(file_path, filename)
+            if text.strip():
+                return text
+
+        raise ValueError(
+            f"Could not extract readable text from '{filename}'. "
+            "Try uploading a clearer scan or a typed PDF."
+        )
+
+    # ---- Tier 1: PyMuPDF ----------------------------------------------------
+
+    def _pymupdf_extract(self, file_path: str) -> str:
+        try:
+            import fitz  # PyMuPDF
+            doc = fitz.open(file_path)
+            pages = [page.get_text() for page in doc]
+            doc.close()
+            return "\n\n".join(pages)
+        except Exception as e:
+            logger.warning("PyMuPDF failed: %s", e)
+            return ""
+
+    # ---- DOCX ---------------------------------------------------------------
+
+    def _docx_extract(self, file_path: str) -> str:
+        try:
+            from docx import Document
+            doc = Document(file_path)
+            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+            return "\n\n".join(paragraphs)
+        except Exception as e:
+            logger.warning("python-docx extraction failed: %s", e)
+            return ""
+
+    # ---- Tier 2: Tesseract --------------------------------------------------
+
+    async def _tesseract_extract(self, file_path: str, ext: str) -> str:
+        try:
+            import pytesseract
+            from PIL import Image
+
+            if ext in (".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp"):
+                image = Image.open(file_path)
+                text = pytesseract.image_to_string(image)
+                logger.info("Tesseract extracted %d chars", len(text))
+                return text
+
+            if ext == ".pdf":
+                # Convert PDF pages to images then OCR
+                try:
+                    from pdf2image import convert_from_path
+                    images = convert_from_path(file_path)
+                    parts = [pytesseract.image_to_string(img) for img in images]
+                    return "\n\n".join(parts)
+                except ImportError:
+                    logger.warning("pdf2image not installed — cannot OCR scanned PDF pages")
+                    return ""
+
+        except ImportError:
+            logger.warning("pytesseract not installed")
+        except Exception as e:
+            logger.warning("Tesseract OCR failed: %s", e)
+        return ""
+
+    # ---- Tier 3: Vision model -----------------------------------------------
+
+    async def _vision_model_extract(self, file_path: str, filename: str) -> str:
+        """
+        Call the DigitalOcean vision model to transcribe handwriting.
+        Only runs if GRADIENT_VISION_OCR_MODEL is set in config.
+        """
+        try:
+            import base64
+            from app.config import settings
+            from app.services.llm_provider import build_llm_from_env, ChatMessage
+
+            with open(file_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode()
+
+            llm = build_llm_from_env()
+            resp = await llm.chat(
+                messages=[
+                    ChatMessage(
+                        role="user",
+                        content=[
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+                            },
+                            {
+                                "type": "text",
+                                "text": (
+                                    "Transcribe ALL handwritten text in this image exactly as written. "
+                                    "Preserve paragraph breaks. Output only the transcribed text."
+                                ),
+                            },
+                        ],
+                    )
+                ],
+                model=settings.GRADIENT_VISION_OCR_MODEL,
+                temperature=0.0,
+                max_tokens=4096,
+            )
+            logger.info("Vision model transcribed %d chars from %s", len(resp.text), filename)
+            return resp.text
+        except Exception as e:
+            logger.error("Vision model OCR failed: %s", e)
+            return ""
+
+
+# Global instance
 ocr_service = OCRService()
