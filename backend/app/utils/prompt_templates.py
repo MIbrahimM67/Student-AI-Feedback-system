@@ -13,10 +13,8 @@ from __future__ import annotations
 import json
 
 GROUNDING_RULE = (
-    "Evaluate ONLY against the provided reference context and rubric. "
-    "Cite the chunk_id behind every factual claim. "
-    "If the reference context does not support a judgement for a criterion, "
-    "set that criterion's status to 'needs_review' rather than guessing."
+    "If reference context is provided, evaluate ONLY against it and cite the chunk_id behind every factual claim. "
+    "If the reference context is empty or absent, rely entirely on your own extensive expert knowledge to evaluate the student's answer accurately against the rubric. Do NOT fail the grading just because reference context is missing."
 )
 
 INJECTION_GUARD = (
