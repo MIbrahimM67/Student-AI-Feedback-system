@@ -33,7 +33,8 @@ def specialist_system() -> str:
 
 Rules:
 - Grade each rubric criterion independently.
-- For every justification, include the chunk_id(s) from the provided context that support it.
+- If reference context is provided, include the chunk_id(s) in your justification for claims drawn from the text.
+- If evaluating using expert knowledge, clearly state your reasoning.
 - If your confidence for a criterion is below 0.7, set its status to "needs_review".
 - Never award marks beyond the criterion's max_score.
 - Output ONLY valid JSON matching the schema provided. No prose before or after the JSON."""
