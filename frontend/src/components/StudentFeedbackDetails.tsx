@@ -232,7 +232,7 @@ export const StudentFeedbackDetails: React.FC<StudentFeedbackDetailsProps> = ({ 
                     </h4>
                     <ul className="space-y-2">
                       {report.strengths.map((str, idx) => (
-                        <li key={idx} className="text-xs text-slate-300 leading-relaxed flex items-start gap-2 font-medium">
+                        <li key={idx} className="text-xs text-slate-400 leading-relaxed flex items-start gap-2 font-medium">
                           <span className="text-emerald-400">•</span>{str}
                         </li>
                       ))}
@@ -246,7 +246,7 @@ export const StudentFeedbackDetails: React.FC<StudentFeedbackDetailsProps> = ({ 
                     </h4>
                     <ul className="space-y-2">
                       {report.weaknesses.map((weak, idx) => (
-                        <li key={idx} className="text-xs text-slate-300 leading-relaxed flex items-start gap-2 font-medium">
+                        <li key={idx} className="text-xs text-slate-400 leading-relaxed flex items-start gap-2 font-medium">
                           <span className="text-rose-400">•</span>{weak}
                         </li>
                       ))}
@@ -260,7 +260,7 @@ export const StudentFeedbackDetails: React.FC<StudentFeedbackDetailsProps> = ({ 
                     </h4>
                     <ul className="space-y-2">
                       {report.suggestions.map((sug, idx) => (
-                        <li key={idx} className="text-xs text-slate-300 leading-relaxed flex items-start gap-2 font-medium">
+                        <li key={idx} className="text-xs text-slate-400 leading-relaxed flex items-start gap-2 font-medium">
                           <span className="text-amber-400">•</span>{sug}
                         </li>
                       ))}
