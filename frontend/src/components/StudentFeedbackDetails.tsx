@@ -158,7 +158,7 @@ export const StudentFeedbackDetails: React.FC<StudentFeedbackDetailsProps> = ({ 
         </div>
 
         {/* RIGHT PANE: Multi-Agent Interactive Audit Deck */}
-        <div className="lg:col-span-7 dev-card flex flex-col overflow-hidden">
+        <div className="lg:col-span-7 bg-[#0a0a0f] rounded-2xl border border-white/5 flex flex-col overflow-hidden shadow-2xl">
           <div className="py-3 px-6 border-b border-white/5 bg-[#070a13] flex items-center gap-4">
             <button
               onClick={() => setActiveTab("scorecard")}
@@ -166,15 +166,7 @@ export const StudentFeedbackDetails: React.FC<StudentFeedbackDetailsProps> = ({ 
                 activeTab === "scorecard" ? "border-indigo-500 text-white" : "border-transparent text-slate-400 hover:text-slate-200"
               }`}
             >
-              <BarChart2 className="w-3.5 h-3.5" /> AI Scorecard
-            </button>
-            <button
-              onClick={() => setActiveTab("audits")}
-              className={`pb-2.5 pt-1.5 border-b-2 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab === "audits" ? "border-indigo-500 text-white" : "border-transparent text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" /> Agent Critiques
+              <BarChart2 className="w-3.5 h-3.5" /> Full Feedback Report
             </button>
             <button
               onClick={() => setActiveTab("metadata")}
@@ -232,14 +224,9 @@ export const StudentFeedbackDetails: React.FC<StudentFeedbackDetailsProps> = ({ 
                     </div>
                   </div>
                 )}
-              </div>
-            )}
-
-            {/* AUDITS */}
-            {activeTab === "audits" && (
-              <div className="space-y-6 animate-fade-in-up text-left">
+                {/* STRENGTHS, WEAKNESSES, SUGGESTIONS (Merged from Audits Tab) */}
                 {report.strengths && report.strengths.length > 0 && (
-                  <div className="p-5 rounded-2xl bg-emerald-500/5 border border-emerald-500/10 space-y-3">
+                  <div className="p-5 rounded-2xl bg-emerald-500/5 border border-emerald-500/10 space-y-3 mt-8">
                     <h4 className="text-xs font-bold text-emerald-400 font-mono uppercase tracking-widest flex items-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Strengths Identified
                     </h4>
@@ -253,7 +240,7 @@ export const StudentFeedbackDetails: React.FC<StudentFeedbackDetailsProps> = ({ 
                   </div>
                 )}
                 {report.weaknesses && report.weaknesses.length > 0 && (
-                  <div className="p-5 rounded-2xl bg-rose-500/5 border border-rose-500/10 space-y-3">
+                  <div className="p-5 rounded-2xl bg-rose-500/5 border border-rose-500/10 space-y-3 mt-4">
                     <h4 className="text-xs font-bold text-rose-450 font-mono uppercase tracking-widest flex items-center gap-1.5">
                       <AlertTriangle className="w-4 h-4 text-rose-450" /> Critical Diagnostics
                     </h4>
@@ -267,7 +254,7 @@ export const StudentFeedbackDetails: React.FC<StudentFeedbackDetailsProps> = ({ 
                   </div>
                 )}
                 {report.suggestions && report.suggestions.length > 0 && (
-                  <div className="p-5 rounded-2xl bg-amber-500/5 border border-amber-500/10 space-y-3">
+                  <div className="p-5 rounded-2xl bg-amber-500/5 border border-amber-500/10 space-y-3 mt-4">
                     <h4 className="text-xs font-bold text-amber-400 font-mono uppercase tracking-widest flex items-center gap-1.5">
                       <Lightbulb className="w-4 h-4 text-amber-400" /> Actionable Recommendations
                     </h4>
