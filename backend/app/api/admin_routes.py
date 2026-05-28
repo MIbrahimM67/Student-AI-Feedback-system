@@ -1,216 +1,213 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
-from typing import Dict, Any, Optional, List
-from datetime import datetime
-from backend.app.firebase import db
-from backend.app.utils.security import get_current_user, require_admin
+"""
+GradeWise v3 — admin routes (Postgres-backed).
 
-router = APIRouter(prefix="/api/admin", tags=["Admin Dashboard"])
+GET  /api/admin/faculty-applications           — list pending
+POST /api/admin/faculty-applications/{id}/approve
+POST /api/admin/faculty-applications/{id}/reject
+POST /api/admin/users/{uid}/grant-pro
+POST /api/admin/users/{uid}/revoke-pro
+GET  /api/admin/warnings
+POST /api/admin/warnings/{id}/dismiss
+"""
+from __future__ import annotations
+
+import logging
+import uuid
+from datetime import datetime, timezone
+from typing import Annotated, Optional
+
+from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel
+
+from app.auth.firebase import verify_id_token
+from app.db.postgres import get_conn
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+
+# ---- Auth dependency --------------------------------------------------------
+
+async def _get_verified_uid(authorization: Annotated[str, Header()]) -> str:
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Missing Bearer token")
+    token = authorization.removeprefix("Bearer ")
+    try:
+        return verify_id_token(token)["uid"]
+    except Exception as e:
+        raise HTTPException(401, str(e)) from e
+
+
+async def _get_admin(uid: str = Depends(_get_verified_uid)) -> dict:
+    async with get_conn() as conn:
+        row = await conn.fetchrow(
+            "SELECT uid, org_id, role FROM users WHERE uid = $1", uid
+        )
+    if not row or row["role"] != "admin":
+        raise HTTPException(403, "Admin role required.")
+    return dict(row)
+
+
+# ---- Faculty applications ---------------------------------------------------
+
+@router.get("/faculty-applications")
+async def list_faculty_applications(admin: dict = Depends(_get_admin)):
+    async with get_conn() as conn:
+        rows = await conn.fetch(
+            "SELECT * FROM faculty_applications ORDER BY created_at DESC LIMIT 200"
+        )
+    return [dict(r) for r in rows]
+
 
 class RejectionPayload(BaseModel):
     reason: str
 
-@router.get("/faculty-applications")
-async def list_faculty_applications(user: Dict[str, Any] = Depends(require_admin)):
-    """
-    Returns lists of all submitted instructor verification papers.
-    """
-    try:
-        apps = db.collection("facultyApplications").stream()
-        results = [doc.to_dict() for doc in apps]
-        return results
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
 
-@router.post("/faculty-applications/{id}/approve")
-async def approve_faculty_application(id: str, user: Dict[str, Any] = Depends(require_admin)):
-    """
-    Approves a pending faculty applicant, upgrades their role, and writes audits.
-    """
-    try:
-        app_ref = db.collection("facultyApplications").document(id)
-        app_snap = app_ref.get()
-        
-        if not app_snap.exists:
-            raise HTTPException(status_code=404, detail="Application record not found.")
-            
-        app_data = app_snap.to_dict() or {}
-        applicant_uid = app_data.get("userId")
-        
-        # Update Application
-        app_ref.update({
-            "status": "approved",
-            "reviewedBy": user["uid"],
-            "reviewedAt": datetime.utcnow().isoformat()
-        })
-        
-        # Upgrade User settings in db
-        db.collection("users").document(applicant_uid).update({
-            "role": "instructor",
-            "facultyStatus": "approved",
-            "updatedAt": datetime.utcnow().isoformat()
-        })
-        
-        # Write Audit Log
-        _write_audit_log(user["uid"], "APPROVE_FACULTY", f"Approved instructor verification for UID: {applicant_uid}")
-        
-        return {"status": "approved", "applicationId": id, "userId": applicant_uid}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Approval action failed: {e}")
+@router.post("/faculty-applications/{app_id}/approve")
+async def approve_application(app_id: str, admin: dict = Depends(_get_admin)):
+    now = datetime.now(timezone.utc).isoformat()
 
-@router.post("/faculty-applications/{id}/reject")
-async def reject_faculty_application(id: str, payload: RejectionPayload, user: Dict[str, Any] = Depends(require_admin)):
-    """
-    Rejects a faculty verification application with clear feedback justification.
-    """
-    try:
-        app_ref = db.collection("facultyApplications").document(id)
-        app_snap = app_ref.get()
-        
-        if not app_snap.exists:
-            raise HTTPException(status_code=404, detail="Application record not found.")
-            
-        app_data = app_snap.to_dict() or {}
-        applicant_uid = app_data.get("userId")
-        
-        # Update Application status
-        app_ref.update({
-            "status": "rejected",
-            "rejectionReason": payload.reason,
-            "reviewedBy": user["uid"],
-            "reviewedAt": datetime.utcnow().isoformat()
-        })
-        
-        # Reset User facultyStatus
-        db.collection("users").document(applicant_uid).update({
-            "facultyStatus": "rejected",
-            "updatedAt": datetime.utcnow().isoformat()
-        })
-        
-        # Write Audit Log
-        _write_audit_log(user["uid"], "REJECT_FACULTY", f"Rejected instructor verification for UID: {applicant_uid}. Reason: {payload.reason}")
-        
-        return {"status": "rejected", "applicationId": id}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Rejection action failed: {e}")
+    async with get_conn() as conn:
+        app = await conn.fetchrow(
+            "SELECT * FROM faculty_applications WHERE id = $1", app_id
+        )
+        if not app:
+            raise HTTPException(404, "Application not found.")
 
-@router.post("/users/{id}/grant-pro")
-async def grant_pro_access(id: str, user: Dict[str, Any] = Depends(require_admin)):
-    """
-    Grants premium status, unlocking batch grading and similarities.
-    """
-    try:
-        user_ref = db.collection("users").document(id)
-        user_snap = user_ref.get()
-        
-        if not user_snap.exists:
-            raise HTTPException(status_code=404, detail="User record not found.")
-            
-        user_ref.update({
-            "proStatus": "active",
-            "updatedAt": datetime.utcnow().isoformat()
-        })
-        
-        _write_audit_log(user["uid"], "GRANT_PRO", f"Granted Pro access to UID: {id}")
-        return {"status": "pro_granted", "userId": id}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to grant Pro access: {e}")
+        await conn.execute(
+            """
+            UPDATE faculty_applications
+            SET status = 'approved', reviewed_by = $1, reviewed_at = $2
+            WHERE id = $3
+            """,
+            admin["uid"], now, app_id,
+        )
+        await conn.execute(
+            """
+            UPDATE users
+            SET role = 'instructor', faculty_status = 'approved', updated_at = $1
+            WHERE uid = $2
+            """,
+            now, app["user_id"],
+        )
+        await _write_audit(conn, admin["uid"], "APPROVE_FACULTY", app["user_id"])
 
-@router.post("/users/{id}/revoke-pro")
-async def revoke_pro_access(id: str, user: Dict[str, Any] = Depends(require_admin)):
-    """
-    Revokes premium access configurations.
-    """
-    try:
-        user_ref = db.collection("users").document(id)
-        user_snap = user_ref.get()
-        
-        if not user_snap.exists:
-            raise HTTPException(status_code=404, detail="User record not found.")
-            
-        user_ref.update({
-            "proStatus": "inactive",
-            "updatedAt": datetime.utcnow().isoformat()
-        })
-        
-        _write_audit_log(user["uid"], "REVOKE_PRO", f"Revoked Pro access from UID: {id}")
-        return {"status": "pro_revoked", "userId": id}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to revoke Pro access: {e}")
+    return {"status": "approved", "application_id": app_id}
+
+
+@router.post("/faculty-applications/{app_id}/reject")
+async def reject_application(
+    app_id: str,
+    payload: RejectionPayload,
+    admin: dict = Depends(_get_admin),
+):
+    now = datetime.now(timezone.utc).isoformat()
+
+    async with get_conn() as conn:
+        app = await conn.fetchrow(
+            "SELECT * FROM faculty_applications WHERE id = $1", app_id
+        )
+        if not app:
+            raise HTTPException(404, "Application not found.")
+
+        await conn.execute(
+            """
+            UPDATE faculty_applications
+            SET status = 'rejected', rejection_reason = $1,
+                reviewed_by = $2, reviewed_at = $3
+            WHERE id = $4
+            """,
+            payload.reason, admin["uid"], now, app_id,
+        )
+        await conn.execute(
+            "UPDATE users SET faculty_status = 'rejected', updated_at = $1 WHERE uid = $2",
+            now, app["user_id"],
+        )
+        await _write_audit(conn, admin["uid"], "REJECT_FACULTY", app["user_id"])
+
+    return {"status": "rejected", "application_id": app_id}
+
+
+# ---- Pro access -------------------------------------------------------------
+
+@router.post("/users/{target_uid}/grant-pro")
+async def grant_pro(target_uid: str, admin: dict = Depends(_get_admin)):
+    now = datetime.now(timezone.utc).isoformat()
+    async with get_conn() as conn:
+        result = await conn.execute(
+            "UPDATE users SET pro_status = 'active', updated_at = $1 WHERE uid = $2",
+            now, target_uid,
+        )
+        if result == "UPDATE 0":
+            raise HTTPException(404, "User not found.")
+        await _write_audit(conn, admin["uid"], "GRANT_PRO", target_uid)
+    return {"status": "pro_granted", "user_id": target_uid}
+
+
+@router.post("/users/{target_uid}/revoke-pro")
+async def revoke_pro(target_uid: str, admin: dict = Depends(_get_admin)):
+    now = datetime.now(timezone.utc).isoformat()
+    async with get_conn() as conn:
+        result = await conn.execute(
+            "UPDATE users SET pro_status = 'inactive', updated_at = $1 WHERE uid = $2",
+            now, target_uid,
+        )
+        if result == "UPDATE 0":
+            raise HTTPException(404, "User not found.")
+        await _write_audit(conn, admin["uid"], "REVOKE_PRO", target_uid)
+    return {"status": "pro_revoked", "user_id": target_uid}
+
+
+# ---- Warnings ---------------------------------------------------------------
 
 @router.get("/warnings")
-async def list_warnings(user: Dict[str, Any] = Depends(require_admin)):
-    """
-    Returns details of all active plagiarism or content moderation violations.
-    """
-    try:
-        warns = db.collection("warnings").stream()
-        results = [doc.to_dict() for doc in warns]
-        return results
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch warnings: {e}")
+async def list_warnings(admin: dict = Depends(_get_admin)):
+    async with get_conn() as conn:
+        rows = await conn.fetch(
+            "SELECT * FROM warnings WHERE status = 'active' ORDER BY created_at DESC"
+        )
+    return [dict(r) for r in rows]
 
-@router.post("/warnings/{id}/dismiss")
-async def dismiss_warning(id: str, user: Dict[str, Any] = Depends(require_admin)):
-    """
-    Dismisses an active compliance warning, decrementing user warning counts.
-    """
-    try:
-        warn_ref = db.collection("warnings").document(id)
-        warn_snap = warn_ref.get()
-        
-        if not warn_snap.exists:
-            raise HTTPException(status_code=404, detail="Warning record not found.")
-            
-        warn_data = warn_snap.to_dict() or {}
-        violator_uid = warn_data.get("userId")
-        
-        if warn_data.get("status") == "dismissed":
-            return {"status": "already_dismissed", "warningId": id}
-            
-        # Update warning status
-        warn_ref.update({
-            "status": "dismissed",
-            "dismissedBy": user["uid"]
-        })
-        
-        # Decrement user warning counts
-        user_ref = db.collection("users").document(violator_uid)
-        user_snap = user_ref.get()
-        if user_snap.exists:
-            usr_data = user_snap.to_dict() or {}
-            current_warns = max(0, usr_data.get("warningCount", 0) - 1)
-            
-            updates = {"warningCount": current_warns}
-            
-            # If warning falls below limit, unblock user
-            if current_warns < 3:
-                updates["blockedUntil"] = None
-                
-            user_ref.update(updates)
-            
-        _write_audit_log(user["uid"], "DISMISS_WARNING", f"Dismissed warning ID: {id} for user UID: {violator_uid}")
-        return {"status": "dismissed", "warningId": id, "decrementedWarningCount": current_warns}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to dismiss warning: {e}")
 
-# Helper to write Audit logs
-def _write_audit_log(admin_uid: str, action: str, details: str):
-    import uuid
-    log_id = str(uuid.uuid4())
-    log_data = {
-        "id": log_id,
-        "actorId": admin_uid,
-        "action": action,
-        "details": details,
-        "timestamp": datetime.utcnow().isoformat()
-    }
-    try:
-        db.collection("auditLogs").document(log_id).set(log_data)
-    except Exception:
-        pass
+@router.post("/warnings/{warning_id}/dismiss")
+async def dismiss_warning(warning_id: str, admin: dict = Depends(_get_admin)):
+    now = datetime.now(timezone.utc).isoformat()
+
+    async with get_conn() as conn:
+        warn = await conn.fetchrow(
+            "SELECT * FROM warnings WHERE id = $1", warning_id
+        )
+        if not warn:
+            raise HTTPException(404, "Warning not found.")
+        if warn["status"] == "dismissed":
+            return {"status": "already_dismissed"}
+
+        await conn.execute(
+            "UPDATE warnings SET status = 'dismissed', dismissed_by = $1 WHERE id = $2",
+            admin["uid"], warning_id,
+        )
+        # Decrement user warning count
+        await conn.execute(
+            """
+            UPDATE users
+            SET warning_count = GREATEST(0, warning_count - 1),
+                blocked_until = CASE WHEN warning_count - 1 < 3 THEN NULL ELSE blocked_until END
+            WHERE uid = $1
+            """,
+            warn["user_id"],
+        )
+        await _write_audit(conn, admin["uid"], "DISMISS_WARNING", warn["user_id"])
+
+    return {"status": "dismissed", "warning_id": warning_id}
+
+
+# ---- Audit helper -----------------------------------------------------------
+
+async def _write_audit(conn, actor_uid: str, action: str, target: str):
+    await conn.execute(
+        """
+        INSERT INTO audit_logs (org_id, actor_uid, action, target)
+        SELECT org_id, $1, $2, $3 FROM users WHERE uid = $1
+        """,
+        actor_uid, action, target,
+    )

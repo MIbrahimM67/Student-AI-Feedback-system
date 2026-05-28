@@ -1,264 +1,241 @@
+"""
+GradeWise v3 — student routes.
+
+POST /api/student/submissions          — submit for grading (enqueues Celery task)
+GET  /api/student/submissions          — list my submissions
+GET  /api/student/submissions/{id}     — get one submission
+GET  /api/student/submissions/{id}/feedback — get feedback report (published only)
+"""
+from __future__ import annotations
+
+import logging
 import os
 import tempfile
 import uuid
-import logging
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
-from fastapi.responses import FileResponse
-from typing import Optional, Dict, Any
-from backend.app.firebase import db, bucket
-from backend.app.utils.security import get_current_user, require_student
-from backend.app.services.ocr_service import ocr_service
-from backend.app.services.code_sandbox_service import code_sandbox_service
-from backend.app.services.warning_service import warning_service
-from backend.app.services.feedback_pipeline import feedback_pipeline
-from backend.app.services.report_service import report_service
+from datetime import datetime, timezone
+from typing import Annotated, Optional
 
-router = APIRouter(prefix="/api/student", tags=["Student Console"])
-logger = logging.getLogger("student_routes")
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile, status
 
-@router.post("/submissions")
+from app.auth.firebase import verify_id_token, get_storage_bucket
+from app.db.postgres import get_conn
+from app.workers.celery_app import celery_app
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+
+# ---- Auth dependency --------------------------------------------------------
+
+async def _get_verified_uid(authorization: Annotated[str, Header()]) -> str:
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Missing Bearer token")
+    token = authorization.removeprefix("Bearer ")
+    try:
+        claims = verify_id_token(token)
+        return claims["uid"]
+    except Exception as e:
+        raise HTTPException(401, f"Invalid token: {e}") from e
+
+
+async def _get_student_profile(uid: str = Depends(_get_verified_uid)) -> dict:
+    """Verify user is a student and not blocked."""
+    async with get_conn() as conn:
+        row = await conn.fetchrow(
+            "SELECT uid, org_id, role, blocked_until FROM users WHERE uid = $1", uid
+        )
+    if not row:
+        raise HTTPException(404, "User not found. Sign in again.")
+    if row["role"] not in ("student", "instructor", "admin"):
+        raise HTTPException(403, "Account role not set. Complete onboarding first.")
+    if row["blocked_until"] and row["blocked_until"] > datetime.now(timezone.utc):
+        raise HTTPException(403, f"Account suspended until {row['blocked_until'].isoformat()}.")
+    return dict(row)
+
+
+# ---- POST /submissions -------------------------------------------------------
+
+@router.post("/submissions", status_code=202)
 async def create_submission(
-    type: str = Form(...), # 'text' | 'handwritten' | 'coding' | 'custom'
-    prompt: str = Form(...),
-    rubric: Optional[str] = Form(""),
-    inputText: Optional[str] = Form(""),
+    assignment_id: Optional[str] = Form(None),
+    subject_id: Optional[str] = Form(None),
+    type: str = Form(...),          # text | handwritten | coding | custom
+    input_text: Optional[str] = Form(""),
     file: Optional[UploadFile] = File(None),
-    user: Dict[str, Any] = Depends(require_student)
+    user: dict = Depends(_get_student_profile),
 ):
     """
-    Submits a single assignment for instant AI evaluation.
-    Performs OCR (if scan), compiles sandbox outputs (if code), checks moderation policies,
-    runs the Specialist-Judge-Senior pipeline, renders ReportLab PDF, and returns grades.
+    Accept a student submission and enqueue it for grading.
+    Returns immediately with submission_id — grading runs in background.
+    Poll GET /submissions/{id} for status.
     """
+    from app.config import settings
+
     uid = user["uid"]
-    submission_id = f"sub_{str(uuid.uuid4())[:8]}"
-    
-    # 1. Enforce student single file size limit (1MB = 1048576 bytes)
-    file_url = ""
-    file_name = "pasted_text.txt"
-    extracted_text = inputText or ""
-    
-    if file:
-        file_name = file.filename
+    org_id = user["org_id"]
+    submission_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+
+    file_url = None
+    file_name = None
+
+    # ---- File upload (Firebase Storage) -------------------------------------
+    if file and file.filename:
         content = await file.read()
-        file_size = len(content)
-        
-        if file_size > 1048576:
+        file_size_mb = len(content) / (1024 * 1024)
+
+        if file_size_mb > settings.STUDENT_MAX_FILE_MB:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail="Student uploads are limited to a maximum file size of 1MB."
+                detail=f"File exceeds the {settings.STUDENT_MAX_FILE_MB}MB student limit.",
             )
-            
-        # Write file temporarily to execute processors
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_name)[1]) as temp_file:
-            temp_file.write(content)
-            temp_file_path = temp_file.name
+
+        file_name = file.filename
+        blob_name = f"submissions/{uid}/{submission_id}_{file_name}"
 
         try:
-            # Upload original file to Firebase Storage
-            blob_name = f"submissions/{uid}/{submission_id}_{file_name}"
+            bucket = get_storage_bucket()
+            with tempfile.NamedTemporaryFile(
+                delete=False, suffix=os.path.splitext(file_name)[1]
+            ) as tmp:
+                tmp.write(content)
+                tmp_path = tmp.name
+
             blob = bucket.blob(blob_name)
-            
-            # Reset pointer and upload
-            blob.upload_from_filename(temp_file_path)
-            file_url = blob.generate_signed_url()
-            
-            # 2. Extract text if PDF/image or run OCR if handwritten
-            if type.lower() == "handwritten":
-                extracted_text = await ocr_service.extract_text(temp_file_path, file_name)
-            elif type.lower() == "coding":
-                with open(temp_file_path, "r", encoding="utf-8", errors="ignore") as f:
-                    extracted_text = f.read()
-            else: # general document
-                if file_name.lower().endswith('.pdf'):
-                    # Call pyPDF fallback extraction
-                    extracted_text = await ocr_service.extract_text(temp_file_path, file_name)
-                else:
-                    with open(temp_file_path, "r", encoding="utf-8", errors="ignore") as f:
-                        extracted_text = f.read()
-                        
+            blob.upload_from_filename(tmp_path)
+            blob.make_public()
+            file_url = blob.public_url
+        except Exception as e:
+            logger.error("Storage upload failed: %s", e)
+            raise HTTPException(500, "File upload failed. Please try again.")
         finally:
-            if os.path.exists(temp_file_path):
-                os.remove(temp_file_path)
-                
-    if not extracted_text.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No readable text or code found. Please provide an input text or upload a valid file."
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
+    if not input_text and not file_url:
+        raise HTTPException(400, "Provide either input_text or a file.")
+
+    # ---- Write submission row to Postgres -----------------------------------
+    async with get_conn(org_id) as conn:
+        await conn.execute(
+            """
+            INSERT INTO submissions
+              (id, org_id, user_id, assignment_id, subject_id,
+               type, mode, input_text, file_url, file_name, status, created_at)
+            VALUES ($1,$2,$3,$4,$5,$6,'single',$7,$8,$9,'uploaded',$10)
+            """,
+            submission_id, org_id, uid,
+            assignment_id, subject_id,
+            type, input_text or None,
+            file_url, file_name, now,
         )
 
-    # Enforce student text limit (5000 chars)
-    if len(extracted_text) > 5000:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Assignment text length exceeds the free student tier limit of 5000 characters."
-        )
-
-    # 3. Policy Warning Scan
-    is_violated, violation_reason = await warning_service.scan_and_enforce(uid, submission_id, extracted_text)
-    if is_violated:
-        # Save submission with failed state due to violation
-        submission_data = {
-            "id": submission_id,
-            "userId": uid,
-            "type": type,
-            "mode": "single",
-            "inputText": extracted_text,
-            "fileUrl": file_url,
-            "fileName": file_name,
-            "prompt": prompt,
-            "rubric": rubric,
-            "status": "failed",
-            "violationMessage": violation_reason,
-            "createdAt": datetime.utcnow().isoformat()
-        }
-        db.collection("submissions").document(submission_id).set(submission_data)
-        
-        return {
-            "status": "flagged",
-            "detail": "Academic honesty warning triggered. Submission has been locked for review.",
-            "reason": violation_reason
-        }
-
-    # 4. Coding Sandbox compilation execution (if coding)
-    sandbox_logs = ""
-    if type.lower() == "coding":
-        # Extract programming language from file extension
-        ext = os.path.splitext(file_name)[1].lower()
-        lang = "python"
-        if ext in ['.cpp', '.cc', '.h']:
-            lang = "cpp"
-        elif ext == '.java':
-            lang = "java"
-            
-        exec_trace = await code_sandbox_service.execute_code(extracted_text, lang)
-        stdout = exec_trace.get("stdout", "")
-        stderr = exec_trace.get("stderr", "")
-        
-        # Format tracing output for the AI grader
-        sandbox_logs = f"\n--- Sandboxed Compilation & Run Tracing ---\nLanguage: {lang.upper()}\nExit Code: {exec_trace.get('exitCode')}\nDuration: {exec_trace.get('durationMs')}ms\nStandard Output:\n{stdout}\nStandard Error/Lints:\n{stderr}\n"
-        # Append trace to evaluation text
-        extracted_text += sandbox_logs
-
-    # 5. Run Specialist-Judge-Senior AI Agent Pipeline
-    final_report, spec_out, judge_out, senior_out = await feedback_pipeline.run_pipeline(
-        submission_text=extracted_text,
-        assignment_prompt=prompt,
-        rubric=rubric
+    # ---- Enqueue grading task -----------------------------------------------
+    celery_app.send_task(
+        "tasks.grade_submission",
+        args=[submission_id, org_id],
     )
-    
-    report_id = f"rep_{submission_id[:8]}"
-    
-    # 6. Generate PDF Report Sheet
-    pdf_url = ""
-    with tempfile.TemporaryDirectory() as report_dir:
-        pdf_filename = f"{submission_id}_feedback.pdf"
-        temp_pdf_path = os.path.join(report_dir, pdf_filename)
-        
-        generated_report_path = await report_service.generate_student_pdf(
-            report_data=final_report,
-            student_name=user.get("displayName", "Student"),
-            assignment_type=type,
-            output_path=temp_pdf_path
-        )
-        
-        # Upload report to Storage
-        report_blob_name = f"reports/{uid}/{pdf_filename}"
-        report_blob = bucket.blob(report_blob_name)
-        report_blob.upload_from_filename(generated_report_path)
-        pdf_url = report_blob.generate_signed_url()
 
-    # 7. Write documents into Firestore collections
-    submission_data = {
-        "id": submission_id,
-        "userId": uid,
-        "type": type,
-        "mode": "single",
-        "inputText": inputText or extracted_text,
-        "fileUrl": file_url,
-        "fileName": file_name,
-        "prompt": prompt,
-        "rubric": rubric,
-        "status": "completed",
-        "feedbackReportId": report_id,
-        "createdAt": datetime.utcnow().isoformat()
-    }
-    db.collection("submissions").document(submission_id).set(submission_data)
-    
-    feedback_report = {
-        "id": report_id,
-        "submissionId": submission_id,
-        "batchJobId": None,
-        "studentName": user.get("displayName", "Student"),
-        "overallScore": final_report.get("overallScore", 0),
-        "status": final_report.get("status", "pass"),
-        "strengths": final_report.get("strengths", []),
-        "weaknesses": final_report.get("weaknesses", []),
-        "suggestions": final_report.get("suggestions", []),
-        "rubricScores": final_report.get("rubricScores", []),
-        "specialistOutput": spec_out,
-        "judgeOutput": judge_out,
-        "seniorOutput": senior_out,
-        "pdfUrl": pdf_url,
-        "createdAt": datetime.utcnow().isoformat()
-    }
-    db.collection("feedbackReports").document(report_id).set(feedback_report)
-    
     return {
-        "submissionId": submission_id,
-        "reportId": report_id,
-        "evaluation": final_report,
-        "pdfUrl": pdf_url
+        "submission_id": submission_id,
+        "status": "uploaded",
+        "message": "Submission received. Grading has started — check back in ~30 seconds.",
     }
 
-@router.get("/submissions/{id}")
-async def get_submission(id: str, user: Dict[str, Any] = Depends(require_student)):
-    """
-    Retrieves core submission records.
-    """
-    sub_snap = db.collection("submissions").document(id).get()
-    if not sub_snap.exists:
-        raise HTTPException(status_code=404, detail="Submission record not found.")
-        
-    data = sub_snap.to_dict() or {}
-    if data.get("userId") != user["uid"]:
-        raise HTTPException(status_code=403, detail="Unprivileged access forbidden.")
-    return data
 
-@router.get("/submissions/{id}/feedback")
-async def get_feedback(id: str, user: Dict[str, Any] = Depends(require_student)):
-    """
-    Retrieves the parsed feedback report details.
-    """
-    submission = await get_submission(id, user)
-    report_id = submission.get("feedbackReportId")
-    
-    if not report_id:
-        raise HTTPException(status_code=400, detail="This submission has no associated evaluation completed.")
-        
-    rep_snap = db.collection("feedbackReports").document(report_id).get()
-    if not rep_snap.exists:
-        raise HTTPException(status_code=404, detail="Feedback report document not found.")
-        
-    return rep_snap.to_dict()
+# ---- GET /submissions -------------------------------------------------------
 
-@router.get("/submissions/{id}/download-pdf")
-async def download_pdf(id: str, user: Dict[str, Any] = Depends(require_student)):
+@router.get("/submissions")
+async def list_submissions(user: dict = Depends(_get_student_profile)):
+    """List the current student's submissions, newest first."""
+    uid = user["uid"]
+    org_id = user["org_id"]
+
+    async with get_conn(org_id) as conn:
+        rows = await conn.fetch(
+            """
+            SELECT s.id, s.type, s.mode, s.file_name, s.status, s.created_at,
+                   fr.ai_overall_score, fr.ai_max_score, fr.final_status,
+                   fr.published_at
+            FROM submissions s
+            LEFT JOIN feedback_reports fr ON fr.submission_id = s.id
+            WHERE s.user_id = $1
+            ORDER BY s.created_at DESC
+            LIMIT 50
+            """,
+            uid,
+        )
+
+    return {"submissions": [dict(r) for r in rows]}
+
+
+# ---- GET /submissions/{id} --------------------------------------------------
+
+@router.get("/submissions/{submission_id}")
+async def get_submission(
+    submission_id: str,
+    user: dict = Depends(_get_student_profile),
+):
+    uid = user["uid"]
+    org_id = user["org_id"]
+
+    async with get_conn(org_id) as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM submissions WHERE id = $1 AND user_id = $2",
+            submission_id, uid,
+        )
+
+    if not row:
+        raise HTTPException(404, "Submission not found.")
+
+    return dict(row)
+
+
+# ---- GET /submissions/{id}/feedback -----------------------------------------
+
+@router.get("/submissions/{submission_id}/feedback")
+async def get_feedback(
+    submission_id: str,
+    user: dict = Depends(_get_student_profile),
+):
     """
-    Returns the student report PDF URL link.
+    Returns the feedback report for a submission.
+    Students can only see the report once it is published (instructor approved).
     """
-    submission = await get_submission(id, user)
-    report_id = submission.get("feedbackReportId")
-    
-    if not report_id:
-        raise HTTPException(status_code=400, detail="Submission is not evaluated.")
-        
-    rep_snap = db.collection("feedbackReports").document(report_id).get()
-    if not rep_snap.exists:
-        raise HTTPException(status_code=404, detail="Report not compiled.")
-        
-    report_data = rep_snap.to_dict() or {}
-    pdf_url = report_data.get("pdfUrl")
-    
-    return {"pdfUrl": pdf_url}
+    uid = user["uid"]
+    org_id = user["org_id"]
+
+    async with get_conn(org_id) as conn:
+        # Verify the submission belongs to this student
+        sub = await conn.fetchrow(
+            "SELECT id, status FROM submissions WHERE id = $1 AND user_id = $2",
+            submission_id, uid,
+        )
+        if not sub:
+            raise HTTPException(404, "Submission not found.")
+
+        report = await conn.fetchrow(
+            """
+            SELECT id, ai_overall_score, ai_max_score, final_status,
+                   final_payload, pdf_url, published_at, created_at
+            FROM feedback_reports
+            WHERE submission_id = $1 AND published_at IS NOT NULL
+            """,
+            submission_id,
+        )
+
+    if not report:
+        # Return processing status if grading is still in progress
+        return {
+            "status": sub["status"],
+            "message": (
+                "Your feedback is being graded. Check back in ~30 seconds."
+                if sub["status"] in ("uploaded", "processing")
+                else "Feedback is awaiting instructor approval."
+            ),
+        }
+
+    return {
+        "report": dict(report),
+        "feedback": report["final_payload"],
+    }
