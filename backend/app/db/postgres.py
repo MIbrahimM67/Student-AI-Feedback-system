@@ -41,8 +41,11 @@ async def get_conn(org_id: str | None = None) -> AsyncGenerator[asyncpg.Connecti
     assert _pool is not None, "Database pool not initialised. Call init_pool() at startup."
     async with _pool.acquire() as conn:
         if org_id:
-            await conn.execute("SELECT set_config('app.current_org_id', $1, true)", org_id)
-        yield conn
+            async with conn.transaction():
+                await conn.execute("SELECT set_config('app.current_org_id', $1, true)", org_id)
+                yield conn
+        else:
+            yield conn
 
 
 def get_pool() -> asyncpg.Pool:
