@@ -232,7 +232,7 @@ export const StudentFeedbackDetails: React.FC<StudentFeedbackDetailsProps> = ({ 
                     </h4>
                     <ul className="space-y-2">
                       {report.strengths.map((str, idx) => (
-                        <li key={idx} className="text-xs text-slate-350 leading-relaxed flex items-start gap-2 font-medium">
+                        <li key={idx} className="text-xs text-slate-300 leading-relaxed flex items-start gap-2 font-medium">
                           <span className="text-emerald-400">•</span>{str}
                         </li>
                       ))}
@@ -241,13 +241,13 @@ export const StudentFeedbackDetails: React.FC<StudentFeedbackDetailsProps> = ({ 
                 )}
                 {report.weaknesses && report.weaknesses.length > 0 && (
                   <div className="p-5 rounded-2xl bg-rose-500/5 border border-rose-500/10 space-y-3 mt-4">
-                    <h4 className="text-xs font-bold text-rose-450 font-mono uppercase tracking-widest flex items-center gap-1.5">
-                      <AlertTriangle className="w-4 h-4 text-rose-450" /> Critical Diagnostics
+                    <h4 className="text-xs font-bold text-rose-400 font-mono uppercase tracking-widest flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 text-rose-400" /> Critical Diagnostics
                     </h4>
                     <ul className="space-y-2">
                       {report.weaknesses.map((weak, idx) => (
-                        <li key={idx} className="text-xs text-slate-350 leading-relaxed flex items-start gap-2 font-medium">
-                          <span className="text-rose-450">•</span>{weak}
+                        <li key={idx} className="text-xs text-slate-300 leading-relaxed flex items-start gap-2 font-medium">
+                          <span className="text-rose-400">•</span>{weak}
                         </li>
                       ))}
                     </ul>
@@ -260,7 +260,7 @@ export const StudentFeedbackDetails: React.FC<StudentFeedbackDetailsProps> = ({ 
                     </h4>
                     <ul className="space-y-2">
                       {report.suggestions.map((sug, idx) => (
-                        <li key={idx} className="text-xs text-slate-350 leading-relaxed flex items-start gap-2 font-medium">
+                        <li key={idx} className="text-xs text-slate-300 leading-relaxed flex items-start gap-2 font-medium">
                           <span className="text-amber-400">•</span>{sug}
                         </li>
                       ))}
