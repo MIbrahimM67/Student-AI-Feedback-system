@@ -65,9 +65,9 @@ async def sync_user(
     # Determine org_id (single-org for MVP — each user is their own org on first login)
     # In a multi-tenant build, look up the org by email domain or invite token.
     async with get_conn() as conn:
-        # Check if user exists (bypass RLS with superuser context here)
-        existing = await conn.fetchrow("SELECT org_id FROM users WHERE uid = $1", uid)
-        org_id = str(existing["org_id"]) if existing else DEV_ORG_ID
+        # Check if user exists (bypass RLS using the SECURITY DEFINER helper function)
+        existing = await conn.fetchrow("SELECT get_user_org_id($1) AS org_id", uid)
+        org_id = str(existing["org_id"]) if existing and existing["org_id"] else DEV_ORG_ID
 
     async with get_conn(org_id) as conn:
         await conn.execute(
