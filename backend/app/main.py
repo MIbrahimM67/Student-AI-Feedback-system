@@ -56,7 +56,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # Tighten to your Vercel domain in production
+    allow_origins=["https://student-ai-feedback-system.vercel.app", "http://localhost:3000", "http://127.0.0.1:3000", "https://student-ai-feedback-system-g71jryjvw-mibrahimm67s-projects.vercel.app"],
+    allow_origin_regex=r"https://student-ai-feedback-system.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
