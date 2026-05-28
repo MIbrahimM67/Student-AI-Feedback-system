@@ -84,7 +84,7 @@ async def create_submission(
     uid = user["uid"]
     org_id = user["org_id"]
     submission_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
 
     file_url = None
     file_name = None

@@ -42,7 +42,7 @@ async def get_conn(org_id: str | None = None) -> AsyncGenerator[asyncpg.Connecti
     async with _pool.acquire() as conn:
         if org_id:
             async with conn.transaction():
-                await conn.execute("SELECT set_config('app.current_org_id', $1, true)", org_id)
+                await conn.execute("SELECT set_config('app.current_org_id', $1, true)", str(org_id))
                 yield conn
         else:
             yield conn

@@ -68,7 +68,7 @@ async def create_subject(
     user: dict = Depends(_get_instructor),
 ):
     subject_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
 
     async with get_conn(user["org_id"]) as conn:
         await conn.execute(
@@ -119,7 +119,7 @@ async def upload_reference(
 
     org_id = user["org_id"]
     ref_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
 
     content = await file.read()
     file_size_mb = len(content) / (1024 * 1024)
@@ -192,7 +192,7 @@ async def upload_batch(
         raise HTTPException(400, f"Maximum {settings.INSTRUCTOR_BATCH_MAX_FILES} files per batch.")
 
     batch_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
 
     # Create batch row
     async with get_conn(org_id) as conn:
@@ -307,7 +307,7 @@ async def approve_report(
     Instructor approves (and optionally edits) the AI grade.
     Sets approved_at. Students can see the report only after published_at is set.
     """
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
     org_id = user["org_id"]
 
     async with get_conn(org_id) as conn:

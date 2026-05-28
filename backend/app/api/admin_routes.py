@@ -65,7 +65,7 @@ class RejectionPayload(BaseModel):
 
 @router.post("/faculty-applications/{app_id}/approve")
 async def approve_application(app_id: str, admin: dict = Depends(_get_admin)):
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
 
     async with get_conn() as conn:
         app = await conn.fetchrow(
@@ -101,7 +101,7 @@ async def reject_application(
     payload: RejectionPayload,
     admin: dict = Depends(_get_admin),
 ):
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
 
     async with get_conn() as conn:
         app = await conn.fetchrow(
@@ -132,7 +132,7 @@ async def reject_application(
 
 @router.post("/users/{target_uid}/grant-pro")
 async def grant_pro(target_uid: str, admin: dict = Depends(_get_admin)):
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
     async with get_conn() as conn:
         result = await conn.execute(
             "UPDATE users SET pro_status = 'active', updated_at = $1 WHERE uid = $2",
@@ -146,7 +146,7 @@ async def grant_pro(target_uid: str, admin: dict = Depends(_get_admin)):
 
 @router.post("/users/{target_uid}/revoke-pro")
 async def revoke_pro(target_uid: str, admin: dict = Depends(_get_admin)):
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
     async with get_conn() as conn:
         result = await conn.execute(
             "UPDATE users SET pro_status = 'inactive', updated_at = $1 WHERE uid = $2",
@@ -171,7 +171,7 @@ async def list_warnings(admin: dict = Depends(_get_admin)):
 
 @router.post("/warnings/{warning_id}/dismiss")
 async def dismiss_warning(warning_id: str, admin: dict = Depends(_get_admin)):
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
 
     async with get_conn() as conn:
         warn = await conn.fetchrow(
