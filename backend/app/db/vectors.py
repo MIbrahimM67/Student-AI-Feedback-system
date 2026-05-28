@@ -71,13 +71,12 @@ async def similarity_search(
         rows = await conn.fetch(
             """
             SELECT id, chunk_index, text, concept_ids,
-                   1 - (embedding <=> $3::vector) AS score
+                   1 - (embedding <=> $2::vector) AS score
             FROM reference_chunks
-            WHERE subject_id = $2
-            ORDER BY embedding <=> $3::vector
-            LIMIT $4
+            WHERE subject_id = $1
+            ORDER BY embedding <=> $2::vector
+            LIMIT $3
             """,
-            subject_id,
             subject_id,
             json.dumps(query_embedding),
             limit,
