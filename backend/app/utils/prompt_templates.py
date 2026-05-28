@@ -67,6 +67,10 @@ def specialist_user(
     if code_execution_result:
         code_section = f"\n\n**Code execution result:**\n```\n{code_execution_result}\n```"
 
+    reference_section = ""
+    if chunks_text.strip():
+        reference_section = f"**Reference context (cite chunk_ids in your justifications):**\n{chunks_text}\n"
+
     return f"""**Question:**
 {question_text}
 
@@ -79,9 +83,7 @@ def specialist_user(
 **Common misconceptions to watch for:**
 {misconceptions_text}
 
-**Reference context (cite chunk_ids in your justifications):**
-{chunks_text}
-
+{reference_section}
 **Student answer:**
 <student_submission>
 {student_answer}
