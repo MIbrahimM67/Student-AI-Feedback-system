@@ -305,13 +305,21 @@ async def run_pipeline(
         specialist_outputs[qid] = spec_out
 
         # Step 6: Judge
-        judge_out = await _run_judge(
-            llm=llm,
-            question=q,
-            specialist_output=spec_out,
-            retrieved_chunks=q_chunks,
-            student_answer=student_answer,
-        )
+        if not q_chunks:
+            logger.info("No chunks for Q%s, skipping Judge.", qid)
+            judge_out = {
+                "verified": True,
+                "corrections": [],
+                "overall_agreement": True,
+            }
+        else:
+            judge_out = await _run_judge(
+                llm=llm,
+                question=q,
+                specialist_output=spec_out,
+                retrieved_chunks=q_chunks,
+                student_answer=student_answer,
+            )
         judge_outputs[qid] = judge_out
 
         # Step 7: Reconcile

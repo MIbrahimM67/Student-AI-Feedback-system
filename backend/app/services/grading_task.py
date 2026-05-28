@@ -20,6 +20,7 @@ from app.services.feedback_pipeline import run_pipeline
 from app.services.llm_provider import build_llm_from_env
 from app.services.ocr_service import ocr_service
 from app.services.warning_service import warning_service
+from app.utils.prompt_templates import utility_title_generator_user
 
 import redis.asyncio as aioredis
 
@@ -116,6 +117,24 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
     if not extracted_text.strip():
         await _mark_failed(org_id, submission_id, batch_id)
         return
+
+    # ---- Generate Title (if text submission) --------------------------------
+    if not sub["file_url"] and sub["question_text"] and not sub["file_name"]:
+        try:
+            llm = build_llm_from_env()
+            from app.services.llm_provider import ChatMessage
+            resp = await llm.chat(
+                messages=[ChatMessage(role="user", content=utility_title_generator_user(sub["question_text"]))],
+                model=settings.GRADIENT_MODEL_UTILITY,
+                temperature=0.3,
+                max_tokens=10,
+            )
+            generated_title = resp.text.strip().strip('"').strip("'")
+            if generated_title:
+                async with get_conn(org_id) as conn:
+                    await conn.execute("UPDATE submissions SET file_name = $1 WHERE id = $2", generated_title, submission_id)
+        except Exception as e:
+            logger.warning("Failed to generate title for submission %s: %s", submission_id, e)
 
     # ---- Extract reference text ---------------------------------------------
     reference_text = None
