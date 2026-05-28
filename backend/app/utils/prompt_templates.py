@@ -202,3 +202,12 @@ Submission:
 <student_submission>
 {text[:3000]}
 </student_submission>"""
+
+def utility_title_generator_user(question_text: str) -> str:
+    return f"""Generate a very short, concise title (maximum 3-5 words) that summarizes the core topic of this question.
+Do not use quotes around the title. Do not add any extra text.
+
+Question:
+{question_text[:1000]}
+
+Title:"""
