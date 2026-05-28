@@ -60,7 +60,7 @@ async def sync_user(
     email = body.get("email", "")
     display_name = body.get("displayName", "")
     photo_url = body.get("photoURL", "")
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
 
     # Determine org_id (single-org for MVP — each user is their own org on first login)
     # In a multi-tenant build, look up the org by email domain or invite token.
@@ -100,7 +100,7 @@ async def select_role(
     if role not in ("student", "instructor"):
         raise HTTPException(400, "role must be 'student' or 'instructor'")
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
 
     async with get_conn() as conn:
         existing = await conn.fetchrow("SELECT org_id FROM users WHERE uid = $1", uid)
