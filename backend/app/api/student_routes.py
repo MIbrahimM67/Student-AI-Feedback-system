@@ -41,9 +41,16 @@ async def _get_verified_uid(authorization: Annotated[str, Header()]) -> str:
 async def _get_student_profile(uid: str = Depends(_get_verified_uid)) -> dict:
     """Verify user is a student and not blocked."""
     async with get_conn() as conn:
+        org_id = await conn.fetchval("SELECT get_user_org_id($1)", uid)
+
+    if not org_id:
+        raise HTTPException(404, "User not found. Sign in again.")
+
+    async with get_conn(str(org_id)) as conn:
         row = await conn.fetchrow(
             "SELECT uid, org_id, role, blocked_until FROM users WHERE uid = $1", uid
         )
+
     if not row:
         raise HTTPException(404, "User not found. Sign in again.")
     if row["role"] not in ("student", "instructor", "admin"):
