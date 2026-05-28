@@ -95,7 +95,7 @@ export const StudentFeedbackDetails: React.FC<StudentFeedbackDetailsProps> = ({ 
       <div className="flex items-center justify-between pb-4 border-b border-white/5">
         <button
           onClick={onBack}
-          className="inline-flex items-center gap-2 py-2 px-4 rounded-xl bg-slate-900 border border-white/10 hover:border-white/20 text-slate-350 hover:text-white text-xs font-bold active:scale-95 transition-all cursor-pointer"
+          className="inline-flex items-center gap-2 py-2 px-4 rounded-xl bg-slate-900 border border-white/10 hover:border-white/20 text-slate-300 hover:text-white text-xs font-bold active:scale-95 transition-all cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
           Workspace Dashboard
