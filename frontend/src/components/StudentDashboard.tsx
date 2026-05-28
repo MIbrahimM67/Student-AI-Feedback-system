@@ -7,7 +7,7 @@ import { StudentFeedbackDetails } from "./StudentFeedbackDetails";
 import {
   Upload, FileText, Sparkles, BookOpen, Clock, AlertTriangle,
   Code, ShieldCheck, History, RefreshCw, X, ChevronRight,
-  CheckCircle2, Loader2,
+  CheckCircle2, Loader2, Trash2,
 } from "lucide-react";
 
 interface SubmissionSummary {
@@ -66,6 +66,17 @@ export const StudentDashboard: React.FC = () => {
       console.error("Failed to load submission history:", err);
     } finally {
       setHistoryLoading(false);
+    }
+  };
+
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (!window.confirm("Are you sure you want to permanently delete this submission?")) return;
+    try {
+      await api.delete(`/api/student/submissions/${id}`);
+      fetchHistory();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to delete submission.");
     }
   };
 
@@ -382,6 +393,13 @@ export const StudentDashboard: React.FC = () => {
                   {sub.status === "published" && (
                     <ChevronRight className="w-3.5 h-3.5 text-[#8e8b80]" />
                   )}
+                  <button
+                    onClick={(e) => handleDelete(e, sub.id)}
+                    className="p-1.5 text-[#8e8b80] hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors ml-1"
+                    title="Delete Submission"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             ))}

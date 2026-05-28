@@ -194,7 +194,7 @@ async def list_submissions(user: dict = Depends(_get_student_profile)):
     async with get_conn(org_id) as conn:
         rows = await conn.fetch(
             """
-            SELECT s.id, s.type, s.mode, s.file_name, s.status, s.created_at,
+            SELECT s.id, s.type, s.mode, s.file_name, s.question_text, s.status, s.created_at,
                    fr.ai_overall_score, fr.ai_max_score, fr.final_status,
                    fr.published_at
             FROM submissions s
@@ -229,6 +229,31 @@ async def get_submission(
         raise HTTPException(404, "Submission not found.")
 
     return dict(row)
+
+
+# ---- DELETE /submissions/{id} -----------------------------------------------
+
+@router.delete("/submissions/{submission_id}")
+async def delete_submission(
+    submission_id: str,
+    user: dict = Depends(_get_student_profile),
+):
+    uid = user["uid"]
+    org_id = user["org_id"]
+
+    async with get_conn(org_id) as conn:
+        # Check ownership first
+        row = await conn.fetchrow(
+            "SELECT id FROM submissions WHERE id = $1 AND user_id = $2",
+            submission_id, uid,
+        )
+        if not row:
+            raise HTTPException(404, "Submission not found or unauthorized.")
+
+        # Delete it (assuming ON DELETE CASCADE for feedback_reports etc.)
+        await conn.execute("DELETE FROM submissions WHERE id = $1", submission_id)
+
+    return {"message": "Submission deleted successfully."}
 
 
 # ---- GET /submissions/{id}/feedback -----------------------------------------
