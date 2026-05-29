@@ -33,7 +33,7 @@ interface AuthContextType {
   error: string | null;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
-  selectRole: (role: "student" | "instructor") => Promise<void>;
+  selectRole: (role: "student" | "instructor", profileData?: { displayName?: string; institution?: string; department?: string }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -130,14 +130,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const selectRole = async (role: "student" | "instructor") => {
+  const selectRole = async (role: "student" | "instructor", profileData?: { displayName?: string; institution?: string; department?: string }) => {
     if (!firebaseUser) return;
     setLoading(true);
     try {
       const token = await getIdToken(firebaseUser);
+      const payload = {
+        role,
+        display_name: profileData?.displayName,
+        institution: profileData?.institution,
+        department: profileData?.department
+      };
+      
       const response = await axios.post(
         `${API_URL}/api/auth/select-role`,
-        { role },
+        payload,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const backendUser = response.data.user;

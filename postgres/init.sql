@@ -95,6 +95,16 @@ CREATE TABLE instructor_profiles (
 );
 CREATE INDEX ON instructor_profiles(org_id);
 
+CREATE TABLE student_profiles (
+  uid TEXT PRIMARY KEY REFERENCES users(uid) ON DELETE CASCADE,
+  org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  institution TEXT,
+  department TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX ON student_profiles(org_id);
+
 CREATE TABLE faculty_applications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,

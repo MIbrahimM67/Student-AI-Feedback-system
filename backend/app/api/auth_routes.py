@@ -81,7 +81,7 @@ async def sync_user(
             """
             INSERT INTO users (uid, org_id, email, display_name, photo_url, role,
                                faculty_status, pro_status, warning_count, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, 'student', 'none', 'inactive', 0, $6, $6)
+            VALUES ($1, $2::uuid, $3, $4, $5, 'student', 'none', 'inactive', 0, $6, $6)
             ON CONFLICT (uid) DO UPDATE
               SET display_name = EXCLUDED.display_name,
                   photo_url    = EXCLUDED.photo_url,
@@ -100,8 +100,13 @@ async def sync_user(
     return {"user": response_user}
 
 
+from typing import Optional
+
 class SelectRoleRequest(BaseModel):
     role: str = ""
+    display_name: Optional[str] = None
+    institution: Optional[str] = None
+    department: Optional[str] = None
 
 @router.post("/select-role")
 async def select_role(
@@ -109,7 +114,7 @@ async def select_role(
     uid: str = Depends(_get_verified_uid),
 ):
     """
-    First-time role selection. Writes the role to Postgres — not localStorage.
+    First-time role selection / profile onboarding.
     Only allowed to set 'student' or 'instructor' (admin is granted by admin only).
     """
     role = body.role
@@ -125,10 +130,44 @@ async def select_role(
         org_id = str(existing["org_id"])
 
     async with get_conn(org_id) as conn:
-        await conn.execute(
-            "UPDATE users SET role = $1, updated_at = $2 WHERE uid = $3",
-            role, now, uid,
-        )
+        # Update users table
+        if body.display_name:
+            await conn.execute(
+                "UPDATE users SET role = $1, display_name = $2, updated_at = $3 WHERE uid = $4",
+                role, body.display_name, now, uid,
+            )
+        else:
+            await conn.execute(
+                "UPDATE users SET role = $1, updated_at = $2 WHERE uid = $3",
+                role, now, uid,
+            )
+            
+        # Create profile record based on role
+        if role == "instructor":
+            await conn.execute(
+                """
+                INSERT INTO instructor_profiles (uid, org_id, institution, department, created_at, updated_at)
+                VALUES ($1, $2::uuid, $3, $4, $5, $5)
+                ON CONFLICT (uid) DO UPDATE
+                  SET institution = EXCLUDED.institution,
+                      department = EXCLUDED.department,
+                      updated_at = EXCLUDED.updated_at
+                """,
+                uid, org_id, body.institution, body.department, now
+            )
+        elif role == "student":
+            await conn.execute(
+                """
+                INSERT INTO student_profiles (uid, org_id, institution, department, created_at, updated_at)
+                VALUES ($1, $2::uuid, $3, $4, $5, $5)
+                ON CONFLICT (uid) DO UPDATE
+                  SET institution = EXCLUDED.institution,
+                      department = EXCLUDED.department,
+                      updated_at = EXCLUDED.updated_at
+                """,
+                uid, org_id, body.institution, body.department, now
+            )
+            
         row = await conn.fetchrow("SELECT * FROM users WHERE uid = $1", uid)
 
     return {"user": dict(row)}
