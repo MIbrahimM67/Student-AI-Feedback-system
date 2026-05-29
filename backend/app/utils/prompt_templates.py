@@ -13,9 +13,11 @@ from __future__ import annotations
 import json
 
 GROUNDING_RULE = (
-    "If reference context is provided, rely primarily on it (about 70%) to ground your evaluation and cite the chunk_id for direct factual claims. "
-    "However, use your own expert knowledge (about 30%) to accept valid alternative explanations, synonyms, and paraphrased answers that align with the core concepts. "
-    "If the reference context is empty or absent, rely entirely on your own extensive expert knowledge to evaluate the student's answer accurately against the rubric. Do NOT fail the grading just because reference context is missing."
+    "The provided reference context is meant to be used as a guide for concepts, not a strict template. "
+    "Rely on the knowledge base for about 60% of your evaluation, but use your own expert AI knowledge for the remaining 40%. "
+    "CRITICAL: Do not be overly strict or require exact phrase matching. "
+    "If a student attempts a problem in a new, valid way (especially in programming where there are a thousand correct ways to write code), or uses alternative phrasing to describe a concept, you MUST mark it as correct if the underlying logic is sound. "
+    "If the reference context is absent, rely entirely on your own extensive expert knowledge to evaluate the student's answer accurately against the rubric. Do NOT fail the grading just because reference context is missing."
 )
 
 INJECTION_GUARD = (
