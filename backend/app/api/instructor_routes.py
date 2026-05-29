@@ -60,13 +60,17 @@ async def _get_instructor(uid: str = Depends(_get_verified_uid)) -> dict:
 
 @router.post("/subjects", status_code=201)
 async def create_subject(
-    title: str = Form(...),
-    code: Optional[str] = Form(None),
-    description: Optional[str] = Form(None),
-    level: Optional[str] = Form(None),
-    language: str = Form("en"),
+    body: dict,
     user: dict = Depends(_get_instructor),
 ):
+    title = body.get("title")
+    if not title:
+        raise HTTPException(422, "Title is required")
+    
+    code = body.get("code")
+    description = body.get("description")
+    level = body.get("level")
+    language = body.get("language", "en")
     subject_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
 
