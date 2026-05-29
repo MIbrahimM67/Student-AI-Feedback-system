@@ -124,10 +124,11 @@ async def select_role(
     now = datetime.now(timezone.utc)
 
     async with get_conn() as conn:
-        existing = await conn.fetchrow("SELECT org_id FROM users WHERE uid = $1", uid)
-        if not existing:
+        org_id_val = await conn.fetchval("SELECT get_user_org_id($1)", uid)
+        if not org_id_val:
             raise HTTPException(404, "User not found. Call /sync-user first.")
-        org_id = str(existing["org_id"])
+        org_id = str(org_id_val)
+
 
     async with get_conn(org_id) as conn:
         # Update users table
