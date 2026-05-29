@@ -7,8 +7,21 @@ import { StudentFeedbackDetails } from "./StudentFeedbackDetails";
 import {
   Upload, FileText, Sparkles, BookOpen, Clock, AlertTriangle,
   Code, ShieldCheck, History, RefreshCw, X, ChevronRight,
-  CheckCircle2, Loader2, Trash2,
+  CheckCircle2, Loader2, Trash2, GraduationCap, Landmark, Send,
+  Building2, BadgeCheck, XCircle, HourglassIcon,
 } from "lucide-react";
+
+interface FacultyApplication {
+  id: string;
+  full_name: string;
+  university: string;
+  department: string;
+  designation: string;
+  official_email: string;
+  status: "pending" | "approved" | "rejected";
+  rejection_reason?: string;
+  created_at: string;
+}
 
 interface SubmissionSummary {
   id: string;
@@ -55,6 +68,14 @@ export const StudentDashboard: React.FC = () => {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // Faculty upgrade application state
+  const [myApplication, setMyApplication] = useState<FacultyApplication | null | undefined>(undefined);
+  const [applyFormOpen, setApplyFormOpen] = useState(false);
+  const [applyForm, setApplyForm] = useState({ full_name: user?.displayName || "", university: "", department: "", designation: "", official_email: user?.email || "" });
+  const [applyLoading, setApplyLoading] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [applySuccess, setApplySuccess] = useState(false);
+
   const fileRef = useRef<HTMLInputElement>(null);
   const refFileRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
@@ -81,9 +102,35 @@ export const StudentDashboard: React.FC = () => {
     }
   };
 
+  const fetchApplication = async () => {
+    try {
+      const res = await api.get("/api/student/my-application");
+      setMyApplication(res.data.application ?? null);
+    } catch {
+      setMyApplication(null);
+    }
+  };
+
   useEffect(() => {
     fetchHistory();
+    fetchApplication();
   }, [user]);
+
+  const handleApplySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setApplyLoading(true);
+    setApplyError(null);
+    try {
+      await api.post("/api/student/apply-for-instructor", applyForm);
+      setApplySuccess(true);
+      setApplyFormOpen(false);
+      fetchApplication();
+    } catch (err: any) {
+      setApplyError(err.response?.data?.detail || "Failed to submit application. Please try again.");
+    } finally {
+      setApplyLoading(false);
+    }
+  };
 
   // Poll for status updates while any submission is still processing
   useEffect(() => {
@@ -424,6 +471,145 @@ export const StudentDashboard: React.FC = () => {
             ))}
           </div>
         )}
+      </div>
+
+      {/* ---- Apply for Instructor Panel ---- */}
+      <div className="bg-white rounded-2xl border border-[#eae7e1] overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#eae7e1]">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+              <Landmark className="w-4 h-4 text-amber-700" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-[#1c1c18]">Upgrade to Instructor</p>
+              <p className="text-[10px] text-[#8e8b80]">Apply to gain access to instructor features</p>
+            </div>
+          </div>
+
+          {/* Status Badge */}
+          {myApplication?.status === "pending" && (
+            <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+              <HourglassIcon className="w-3 h-3" /> Under Review
+            </span>
+          )}
+          {myApplication?.status === "approved" && (
+            <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-green-50 text-green-700 border border-green-200">
+              <BadgeCheck className="w-3 h-3" /> Approved
+            </span>
+          )}
+          {myApplication?.status === "rejected" && (
+            <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-red-50 text-red-700 border border-red-200">
+              <XCircle className="w-3 h-3" /> Rejected
+            </span>
+          )}
+        </div>
+
+        <div className="p-5">
+          {myApplication === undefined && (
+            <p className="text-xs text-[#8e8b80] text-center py-2">Loading...</p>
+          )}
+
+          {myApplication === null && !applyFormOpen && (
+            <div className="flex flex-col items-center gap-3 py-3 text-center">
+              <p className="text-xs text-[#5e5c54] max-w-xs">
+                Are you a faculty member or lecturer? Submit an upgrade request. An admin will review your application.
+              </p>
+              <button
+                onClick={() => setApplyFormOpen(true)}
+                className="flex items-center gap-2 bg-amber-600 text-white py-2.5 px-5 rounded-xl font-bold text-xs hover:bg-amber-700 transition-colors"
+              >
+                <GraduationCap className="w-4 h-4" />
+                Apply for Instructor Access
+              </button>
+            </div>
+          )}
+
+          {myApplication === null && applyFormOpen && (
+            <form onSubmit={handleApplySubmit} className="space-y-3">
+              {applyError && (
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />{applyError}
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-[#1c1c18] uppercase tracking-wider">Full Name</label>
+                  <input required type="text" value={applyForm.full_name} onChange={e => setApplyForm({...applyForm, full_name: e.target.value})}
+                    className="w-full bg-[#fbfaf7] border border-[#dfdbd3] rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="Dr. John Doe" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-[#1c1c18] uppercase tracking-wider">Designation / Title</label>
+                  <input required type="text" value={applyForm.designation} onChange={e => setApplyForm({...applyForm, designation: e.target.value})}
+                    className="w-full bg-[#fbfaf7] border border-[#dfdbd3] rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="e.g. Lecturer, Professor" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-[#1c1c18] uppercase tracking-wider">University</label>
+                  <input required type="text" value={applyForm.university} onChange={e => setApplyForm({...applyForm, university: e.target.value})}
+                    className="w-full bg-[#fbfaf7] border border-[#dfdbd3] rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="e.g. MIT" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-[#1c1c18] uppercase tracking-wider">Department</label>
+                  <input required type="text" value={applyForm.department} onChange={e => setApplyForm({...applyForm, department: e.target.value})}
+                    className="w-full bg-[#fbfaf7] border border-[#dfdbd3] rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="e.g. Computer Science" />
+                </div>
+                <div className="space-y-1 col-span-2">
+                  <label className="text-[10px] font-bold text-[#1c1c18] uppercase tracking-wider">Official Institution Email</label>
+                  <input required type="email" value={applyForm.official_email} onChange={e => setApplyForm({...applyForm, official_email: e.target.value})}
+                    className="w-full bg-[#fbfaf7] border border-[#dfdbd3] rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="john@university.edu" />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => setApplyFormOpen(false)} disabled={applyLoading}
+                  className="flex-1 py-2.5 rounded-xl border border-[#dfdbd3] bg-[#fbfaf7] text-xs font-bold text-[#1c1c18] hover:bg-[#f4f2eb] transition-colors">
+                  Cancel
+                </button>
+                <button type="submit" disabled={applyLoading}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 transition-colors disabled:opacity-50">
+                  {applyLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  {applyLoading ? "Submitting..." : "Submit Application"}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {myApplication?.status === "pending" && (
+            <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
+              <HourglassIcon className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-bold text-amber-800">Application Under Review</p>
+                <p className="text-[10px] text-amber-700 mt-0.5">Your application was submitted on {new Date(myApplication.created_at).toLocaleDateString()}. An admin will review it shortly.</p>
+              </div>
+            </div>
+          )}
+
+          {myApplication?.status === "approved" && (
+            <div className="flex items-start gap-3 p-3 rounded-xl bg-green-50 border border-green-200">
+              <BadgeCheck className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-bold text-green-800">Application Approved!</p>
+                <p className="text-[10px] text-green-700 mt-0.5">Your account has been upgraded. Please sign out and sign back in to access Instructor features.</p>
+              </div>
+            </div>
+          )}
+
+          {myApplication?.status === "rejected" && (
+            <div className="space-y-3">
+              <div className="flex items-start gap-3 p-3 rounded-xl bg-red-50 border border-red-200">
+                <XCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold text-red-800">Application Rejected</p>
+                  {myApplication.rejection_reason && (
+                    <p className="text-[10px] text-red-700 mt-0.5">Reason: {myApplication.rejection_reason}</p>
+                  )}
+                </div>
+              </div>
+              <button onClick={() => { setMyApplication(null); setApplyForm({...applyForm}); }}
+                className="w-full text-xs font-bold text-amber-700 hover:text-amber-800 underline">
+                Re-apply with updated information
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

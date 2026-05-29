@@ -327,3 +327,82 @@ async def get_feedback(
             "publishedAt": report["published_at"].isoformat() if report["published_at"] else None,
         }
     }
+
+
+# ---- Faculty upgrade application ------------------------------------------------
+
+from pydantic import BaseModel
+
+class FacultyApplicationBody(BaseModel):
+    full_name: str
+    university: str
+    department: str
+    designation: str
+    official_email: str
+
+@router.post("/apply-for-instructor")
+async def apply_for_instructor(
+    body: FacultyApplicationBody,
+    user: dict = Depends(_get_student_profile),
+):
+    """
+    Lets a student submit a faculty upgrade application.
+    Creates a faculty_applications row and sets the user's faculty_status = 'pending'.
+    """
+    uid = user["uid"]
+    org_id = str(user["org_id"])
+    now = datetime.now(timezone.utc)
+
+    async with get_conn(org_id) as conn:
+        # Prevent duplicate applications
+        existing = await conn.fetchrow(
+            "SELECT status FROM faculty_applications WHERE user_id = $1 AND status = 'pending'",
+            uid
+        )
+        if existing:
+            raise HTTPException(400, "You already have a pending application. Please wait for review.")
+
+        await conn.execute(
+            """
+            INSERT INTO faculty_applications
+              (org_id, user_id, full_name, university, department, designation, official_email, status)
+            VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, 'pending')
+            """,
+            org_id, uid,
+            body.full_name, body.university, body.department,
+            body.designation, body.official_email,
+        )
+        await conn.execute(
+            "UPDATE users SET faculty_status = 'pending', updated_at = $1 WHERE uid = $2",
+            now, uid,
+        )
+
+    return {"status": "submitted", "message": "Application submitted and under admin review."}
+
+
+@router.get("/my-application")
+async def get_my_application(user: dict = Depends(_get_student_profile)):
+    """
+    Returns the most recent faculty application for the authenticated user.
+    """
+    uid = user["uid"]
+    org_id = str(user["org_id"])
+
+    async with get_conn(org_id) as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, full_name, university, department, designation,
+                   official_email, status, rejection_reason, created_at
+            FROM faculty_applications
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            uid,
+        )
+
+    if not row:
+        return {"application": None}
+
+    return {"application": dict(row)}
+
