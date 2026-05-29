@@ -75,21 +75,20 @@ async def create_subject(
     description = body.description
     level = body.level
     language = body.language
-    subject_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
 
     async with get_conn(user["org_id"]) as conn:
-        await conn.execute(
+        row = await conn.fetchrow(
             """
             INSERT INTO subjects
-              (id, org_id, instructor_id, code, title, description,
+              (org_id, instructor_id, code, title, description,
                level, language, kb_status, created_at, updated_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'empty',$9,$9)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,'empty',$8,$8)
+            RETURNING *
             """,
-            subject_id, user["org_id"], user["uid"],
+            user["org_id"], user["uid"],
             code, title, description, level, language, now,
         )
-        row = await conn.fetchrow("SELECT * FROM subjects WHERE id = $1", subject_id)
 
     return {"subject": dict(row)}
 
@@ -219,46 +218,47 @@ async def create_assignment(
     rubric = body.rubric
     plagiarism = body.plagiarism_enabled
     
-    assignment_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
 
     async with get_conn(org_id) as conn:
         # Create assignment
-        await conn.execute(
+        assignment_row = await conn.fetchrow(
             """
-            INSERT INTO assignments (id, org_id, subject_id, title, plagiarism_enabled, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO assignments (org_id, subject_id, title, plagiarism_enabled, created_at)
+            VALUES ($1, $2::uuid, $3, $4, $5)
+            RETURNING id
             """,
-            assignment_id, org_id, subject_id, title, plagiarism, now,
+            org_id, subject_id, title, plagiarism, now,
         )
+        assignment_id = assignment_row["id"]
         
         # Save prompt as a single question
         if prompt:
             await conn.execute(
                 """
-                INSERT INTO questions (id, org_id, assignment_id, text, max_marks, display_order)
-                VALUES ($1, $2, $3, $4, 100, 0)
+                INSERT INTO questions (org_id, assignment_id, text, max_marks, display_order)
+                VALUES ($1, $2, $3, 100, 0)
                 """,
-                str(uuid.uuid4()), org_id, assignment_id, prompt
+                org_id, assignment_id, prompt
             )
             
         # Save rubric as a single criterion
         if rubric:
             await conn.execute(
                 """
-                INSERT INTO rubric_criteria (id, org_id, assignment_id, name, max_score, description)
-                VALUES ($1, $2, $3, 'General Rubric', 100, $4)
+                INSERT INTO rubric_criteria (org_id, assignment_id, name, max_score, description)
+                VALUES ($1, $2, 'General Rubric', 100, $3)
                 """,
-                str(uuid.uuid4()), org_id, assignment_id, rubric
+                org_id, assignment_id, rubric
             )
             
         # Update assignment count
         await conn.execute(
-            "UPDATE subjects SET assignment_count = assignment_count + 1, updated_at = $1 WHERE id = $2",
+            "UPDATE subjects SET assignment_count = assignment_count + 1, updated_at = $1 WHERE id = $2::uuid",
             now, subject_id,
         )
 
-    return {"id": assignment_id, "message": "Assignment created successfully."}
+    return {"id": str(assignment_id), "message": "Assignment created successfully."}
 
 
 @router.get("/subjects/{subject_id}/assignments")
