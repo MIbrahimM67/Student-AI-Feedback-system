@@ -23,7 +23,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app.db.postgres import init_pool, close_pool, get_pool
+from app.db.postgres import init_pool, close_pool, get_conn
 from app.services.llm_provider import build_llm_from_env
 from app.config import settings
 
@@ -40,11 +40,9 @@ async def lifespan(app: FastAPI):
 
     # --- HOTFIX: Update DB Constraint to allow empty string role ---
     try:
-        pool = get_pool()
-        if pool:
-            async with pool.acquire() as conn:
-                await conn.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;")
-                await conn.execute("ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('student', 'instructor', 'admin', ''));")
+        async with get_conn() as conn:
+            await conn.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;")
+            await conn.execute("ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('student', 'instructor', 'admin', ''));")
     except Exception as e:
         import traceback
         traceback.print_exc()
