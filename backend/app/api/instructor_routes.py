@@ -58,19 +58,23 @@ async def _get_instructor(uid: str = Depends(_get_verified_uid)) -> dict:
 
 # ---- Subjects ---------------------------------------------------------------
 
+class CreateSubjectRequest(BaseModel):
+    title: str
+    code: Optional[str] = None
+    description: Optional[str] = None
+    level: Optional[str] = None
+    language: str = "en"
+
 @router.post("/subjects", status_code=201)
 async def create_subject(
-    body: dict,
+    body: CreateSubjectRequest,
     user: dict = Depends(_get_instructor),
 ):
-    title = body.get("title")
-    if not title:
-        raise HTTPException(422, "Title is required")
-    
-    code = body.get("code")
-    description = body.get("description")
-    level = body.get("level")
-    language = body.get("language", "en")
+    title = body.title
+    code = body.code
+    description = body.description
+    level = body.level
+    language = body.language
     subject_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
 
@@ -194,20 +198,26 @@ async def upload_reference(
 
 # ---- Assignments -------------------------------------------------------------
 
+class CreateAssignmentRequest(BaseModel):
+    title: str
+    prompt: Optional[str] = ""
+    rubric: Optional[str] = ""
+    plagiarism_enabled: Optional[bool] = False
+
 @router.post("/subjects/{subject_id}/assignments", status_code=201)
 async def create_assignment(
     subject_id: str,
-    body: dict,
+    body: CreateAssignmentRequest,
     user: dict = Depends(_get_instructor),
 ):
     """
     Creates a new assignment under a subject, taking title, prompt, and rubric.
     """
     org_id = user["org_id"]
-    title = body.get("title", "Untitled Assignment")
-    prompt = body.get("prompt", "")
-    rubric = body.get("rubric", "")
-    plagiarism = body.get("plagiarism_enabled", False)
+    title = body.title
+    prompt = body.prompt
+    rubric = body.rubric
+    plagiarism = body.plagiarism_enabled
     
     assignment_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
