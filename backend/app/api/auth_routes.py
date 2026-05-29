@@ -74,7 +74,7 @@ async def sync_user(
             """
             INSERT INTO users (uid, org_id, email, display_name, photo_url, role,
                                faculty_status, pro_status, warning_count, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, 'student', 'none', 'inactive', 0, $6, $6)
+            VALUES ($1, $2, $3, $4, $5, '', 'none', 'inactive', 0, $6, $6)
             ON CONFLICT (uid) DO UPDATE
               SET display_name = EXCLUDED.display_name,
                   photo_url    = EXCLUDED.photo_url,
