@@ -19,6 +19,7 @@ interface Subject {
   assignment_count: number;
   reference_count: number;
   kb_status: string;
+  expires_at: string;
 }
 
 interface Assignment {
@@ -349,19 +350,52 @@ const SubjectsView: React.FC<{ subjects: Subject[], onSelect: (s: Subject) => vo
       </div>
 
       {creating && (
-        <form onSubmit={handleCreate} className="glass-panel p-6 rounded-2xl border border-slate-200 flex items-end gap-4 bg-slate-50">
-          <div className="flex-1 space-y-1.5">
-            <label className="text-[10px] font-extrabold text-slate-500 uppercase">Subject Code</label>
-            <input type="text" placeholder="CS-101" value={code} onChange={e=>setCode(e.target.value)} className="w-full py-2.5 px-3 rounded-xl bg-white border border-slate-200 text-xs font-semibold focus:outline-none" />
+        <div className="glass-panel p-8 rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-200/50 mb-8 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-2xl -z-10" />
+          <div className="mb-6">
+            <h4 className="text-xl font-black text-slate-800">Launch a New Classroom</h4>
+            <p className="text-xs text-slate-500 mt-1">Define the subject space where assignments and knowledge bases will live.</p>
           </div>
-          <div className="flex-[3] space-y-1.5">
-            <label className="text-[10px] font-extrabold text-slate-500 uppercase">Subject Title</label>
-            <input type="text" placeholder="Introduction to Computer Science" value={title} onChange={e=>setTitle(e.target.value)} className="w-full py-2.5 px-3 rounded-xl bg-white border border-slate-200 text-xs font-semibold focus:outline-none" />
-          </div>
-          <button type="submit" className="bg-emerald-600 text-white px-6 py-2.5 rounded-xl text-xs font-bold hover:bg-emerald-700 h-[38px]">
-            Save Subject
-          </button>
-        </form>
+          <form onSubmit={handleCreate} className="space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+              <div className="space-y-1.5 md:col-span-1">
+                <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Subject Code</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. CS-101" 
+                  value={code} 
+                  onChange={e=>setCode(e.target.value)} 
+                  className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:font-medium placeholder:text-slate-400" 
+                />
+              </div>
+              <div className="space-y-1.5 md:col-span-3">
+                <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Subject Title</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. Data Structures and Algorithms" 
+                  value={title} 
+                  onChange={e=>setTitle(e.target.value)} 
+                  className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:font-medium placeholder:text-slate-400" 
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button 
+                type="button" 
+                onClick={() => setCreating(false)} 
+                className="px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-500 text-xs font-bold hover:bg-slate-50 transition-all"
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                className="px-6 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 shadow-md shadow-indigo-600/20 active:scale-95 transition-all"
+              >
+                Create Subject
+              </button>
+            </div>
+          </form>
+        </div>
       )}
 
       {subjects.length === 0 && !creating && (
@@ -373,25 +407,64 @@ const SubjectsView: React.FC<{ subjects: Subject[], onSelect: (s: Subject) => vo
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {subjects.map(sub => (
-          <div 
-            key={sub.id} 
-            onClick={() => onSelect(sub)}
-            className="glass-panel p-6 rounded-3xl border border-slate-200 hover:border-indigo-300 hover:shadow-lg cursor-pointer transition-all bg-white group"
-          >
-            <div className="flex justify-between items-start mb-4">
-              <span className="bg-slate-100 text-slate-600 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
-                {sub.code}
-              </span>
-              <Settings className="w-4 h-4 text-slate-300 group-hover:text-indigo-400 transition-colors" />
+        {subjects.map(sub => {
+          const expiresAt = new Date(sub.expires_at);
+          const now = new Date();
+          const daysLeft = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          const isExpired = daysLeft <= 0;
+          const isExpiringSoon = daysLeft <= 14 && daysLeft > 0;
+          
+          return (
+            <div 
+              key={sub.id} 
+              className={`glass-panel p-6 rounded-3xl border transition-all bg-white group flex flex-col ${
+                isExpired ? "border-rose-300 bg-rose-50/30" : "border-slate-200 hover:border-indigo-300 hover:shadow-lg"
+              }`}
+            >
+              <div 
+                className="flex-1 cursor-pointer"
+                onClick={() => !isExpired && onSelect(sub)}
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <span className="bg-slate-100 text-slate-600 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
+                    {sub.code}
+                  </span>
+                  <Settings className="w-4 h-4 text-slate-300 group-hover:text-indigo-400 transition-colors" />
+                </div>
+                <h4 className="text-lg font-black text-slate-800 mb-6">{sub.title}</h4>
+                <div className="flex gap-4 text-xs font-bold text-slate-500 mb-6">
+                  <div className="flex items-center gap-1.5"><Layers className="w-4 h-4 text-indigo-400" /> {sub.assignment_count} Assignments</div>
+                  <div className="flex items-center gap-1.5"><BookOpen className="w-4 h-4 text-emerald-400" /> {sub.reference_count} References</div>
+                </div>
+              </div>
+              
+              <div className="mt-auto border-t border-slate-100 pt-4 flex items-center justify-between">
+                {isExpired ? (
+                  <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wider">Archived (Pending Deletion)</span>
+                ) : isExpiringSoon ? (
+                  <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Expires in {daysLeft} Days</span>
+                ) : (
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Classroom</span>
+                )}
+                
+                {(isExpired || isExpiringSoon) && (
+                  <button 
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      try {
+                        await api.post(`/api/instructor/subjects/${sub.id}/renew`);
+                        onRefresh();
+                      } catch (err) { console.error(err); }
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white transition-colors text-[10px] font-bold uppercase tracking-wider border border-indigo-200"
+                  >
+                    Renew
+                  </button>
+                )}
+              </div>
             </div>
-            <h4 className="text-lg font-black text-slate-800 mb-6">{sub.title}</h4>
-            <div className="flex gap-4 text-xs font-bold text-slate-500">
-              <div className="flex items-center gap-1.5"><Layers className="w-4 h-4 text-indigo-400" /> {sub.assignment_count} Assignments</div>
-              <div className="flex items-center gap-1.5"><BookOpen className="w-4 h-4 text-emerald-400" /> {sub.reference_count} References</div>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -469,21 +542,60 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
           </div>
 
           {creating && (
-            <form onSubmit={handleCreateAssignment} className="glass-panel p-6 rounded-3xl border border-slate-200 space-y-4 bg-slate-50">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-extrabold text-slate-500 uppercase">Assignment Title</label>
-                <input type="text" placeholder="Midterm Exam 1" value={title} onChange={e=>setTitle(e.target.value)} className="w-full py-2.5 px-3 rounded-xl bg-white border border-slate-200 text-xs font-semibold focus:outline-none" />
+            <div className="glass-panel p-8 rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-200/50 mb-8 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl -z-10" />
+              <div className="mb-6">
+                <h4 className="text-xl font-black text-slate-800">Draft New Assignment</h4>
+                <p className="text-xs text-slate-500 mt-1">Specify the prompt and rubric criteria for AI evaluation.</p>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-extrabold text-slate-500 uppercase">Assignment Prompt (Question)</label>
-                <textarea rows={3} placeholder="e.g. Write an essay on..." value={prompt} onChange={e=>setPrompt(e.target.value)} className="w-full py-2.5 px-3 rounded-xl bg-white border border-slate-200 text-xs font-semibold focus:outline-none" />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-extrabold text-slate-500 uppercase">Rubric / Grading Criteria</label>
-                <textarea rows={2} placeholder="e.g. 50% syntax, 50% logic" value={rubric} onChange={e=>setRubric(e.target.value)} className="w-full py-2.5 px-3 rounded-xl bg-white border border-slate-200 text-xs font-semibold focus:outline-none" />
-              </div>
-              <button type="submit" className="bg-emerald-600 text-white px-6 py-2.5 rounded-xl text-xs font-bold hover:bg-emerald-700">Save Assignment</button>
-            </form>
+              <form onSubmit={handleCreateAssignment} className="space-y-5">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Assignment Title</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. Midterm Examination Part 1" 
+                    value={title} 
+                    onChange={e=>setTitle(e.target.value)} 
+                    className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:font-medium placeholder:text-slate-400" 
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Assignment Prompt (Question)</label>
+                  <textarea 
+                    rows={3} 
+                    placeholder="e.g. Write a comprehensive essay explaining the effects of..." 
+                    value={prompt} 
+                    onChange={e=>setPrompt(e.target.value)} 
+                    className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:font-medium placeholder:text-slate-400" 
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Rubric / Grading Criteria</label>
+                  <textarea 
+                    rows={2} 
+                    placeholder="e.g. 50% technical accuracy, 30% clarity, 20% grammar." 
+                    value={rubric} 
+                    onChange={e=>setRubric(e.target.value)} 
+                    className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:font-medium placeholder:text-slate-400" 
+                  />
+                </div>
+                <div className="flex justify-end gap-3 pt-2">
+                  <button 
+                    type="button" 
+                    onClick={() => setCreating(false)} 
+                    className="px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-500 text-xs font-bold hover:bg-slate-50 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="px-6 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 shadow-md shadow-emerald-600/20 active:scale-95 transition-all"
+                  >
+                    Save Assignment
+                  </button>
+                </div>
+              </form>
+            </div>
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

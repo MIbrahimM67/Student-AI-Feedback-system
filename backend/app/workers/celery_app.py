@@ -34,6 +34,15 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1, # one task at a time per worker (grading is heavy)
 )
 
+from celery.schedules import crontab
+
+celery_app.conf.beat_schedule = {
+    "purge-expired-subjects-daily": {
+        "task": "tasks.purge_expired_subjects",
+        "schedule": crontab(hour=0, minute=0),  # Run daily at midnight UTC
+    },
+}
+
 
 def _run_async(coro):
     """Run an async coroutine from a sync Celery task.
@@ -114,4 +123,23 @@ def run_batch_grading(self, batch_id: str, org_id: str):
         for sid in submission_ids
     )
     job.apply_async()
+
+
+@celery_app.task(name="tasks.purge_expired_subjects", bind=True)
+def purge_expired_subjects(self):
+    """
+    Background job: run daily via Celery Beat.
+    Deletes any subjects where now() > expires_at + 14 days grace period.
+    """
+    async def _purge():
+        from app.db.postgres import get_conn
+        async with get_conn() as conn:
+            # Delete subjects where expires_at was more than 14 days ago.
+            # CASCADE will automatically delete assignments, submissions, chunks, etc.
+            result = await conn.execute(
+                "DELETE FROM subjects WHERE now() > expires_at + interval '14 days';"
+            )
+            logger.info("Purged expired subjects: %s", result)
+    
+    _run_async(_purge())
     logger.info("Dispatched %d grading tasks for batch=%s", len(submission_ids), batch_id)

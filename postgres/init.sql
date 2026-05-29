@@ -128,6 +128,7 @@ CREATE TABLE subjects (
   kb_status TEXT NOT NULL CHECK (kb_status IN ('empty','indexing','ready')) DEFAULT 'empty',
   reference_count INT NOT NULL DEFAULT 0,
   assignment_count INT NOT NULL DEFAULT 0,
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT now() + interval '1 month',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

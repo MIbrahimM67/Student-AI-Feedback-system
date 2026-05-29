@@ -92,7 +92,7 @@ async def list_subjects(user: dict = Depends(_get_instructor)):
         rows = await conn.fetch(
             """
             SELECT id, code, title, description, level, language,
-                   kb_status, reference_count, assignment_count, created_at
+                   kb_status, reference_count, assignment_count, expires_at, created_at
             FROM subjects
             WHERE instructor_id = $1
             ORDER BY created_at DESC
@@ -100,6 +100,22 @@ async def list_subjects(user: dict = Depends(_get_instructor)):
             user["uid"],
         )
     return {"subjects": [dict(r) for r in rows]}
+
+@router.post("/subjects/{subject_id}/renew")
+async def renew_subject(subject_id: str, user: dict = Depends(_get_instructor)):
+    async with get_conn(user["org_id"]) as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE subjects
+            SET expires_at = now() + interval '1 month'
+            WHERE id = $1 AND instructor_id = $2
+            RETURNING expires_at
+            """,
+            subject_id, user["uid"]
+        )
+        if not row:
+            raise HTTPException(404, "Subject not found or you do not have access.")
+    return {"message": "Subject renewed successfully", "expires_at": row["expires_at"]}
 
 
 # ---- Reference material upload → indexing -----------------------------------

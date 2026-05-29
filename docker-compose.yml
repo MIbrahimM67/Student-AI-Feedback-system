@@ -88,6 +88,20 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  beat:
+    build: ./backend
+    command: celery -A app.workers.celery_app beat --loglevel=info
+    volumes:
+      - ./backend:/app
+    environment:
+      DATABASE_URL: postgresql+asyncpg://app_user:${APP_USER_PASSWORD}@postgres:5432/feedback
+      REDIS_URL: redis://redis:6379/0
+      # Provide API keys so beat can configure settings if needed, though mostly it just pushes tasks to Redis
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
