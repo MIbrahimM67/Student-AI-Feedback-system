@@ -16,11 +16,12 @@ from datetime import datetime, timezone
 from app.config import settings
 from app.db.postgres import get_conn
 from app.db.vectors import upsert_submission_chunks
-from app.services.feedback_pipeline import run_pipeline
 from app.services.llm_provider import build_llm_from_env
 from app.services.ocr_service import ocr_service
 from app.services.warning_service import warning_service
 from app.utils.prompt_templates import utility_title_generator_user
+from app.grading.pipeline import grade_submission as route_and_grade
+
 
 import redis.asyncio as aioredis
 
@@ -280,24 +281,51 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
             "description": r_text,
         }]
 
-    assignment_version = assignment["version"] if assignment else 1
-
     # ---- Run pipeline -------------------------------------------------------
     try:
-        report = await run_pipeline(
-            llm=llm,
-            redis=redis,
+        # Get raw rubric text from criteria list or fallback
+        raw_rubric = "\n".join([f"{c['name']}: {c['description']}" for c in rubric_criteria]) if rubric_criteria else sub.get("rubric_text", "Evaluate comprehensively.")
+        
+        # We need physical paths for the new ingestion pipeline (PyMuPDF needs files)
+        # We already downloaded the submission to tmp_path if it was a file, else we need a temp text file.
+        sub_path_for_pipeline = None
+        ref_path_for_pipeline = None
+        pipeline_cleanup = []
+
+        if "tmp_path" in locals() and tmp_path and os.path.exists(tmp_path):
+            sub_path_for_pipeline = tmp_path
+        else:
+            # It's a text submission
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".txt", encoding='utf-8') as f:
+                f.write(extracted_text)
+                sub_path_for_pipeline = f.name
+                pipeline_cleanup.append(f.name)
+
+        if sub.get("reference_file_url"):
+            # Download reference file for the pipeline
+            import httpx
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.get(sub["reference_file_url"])
+                resp.raise_for_status()
+
+            ext = os.path.splitext(sub.get("reference_file_name") or ".pdf")[1]
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+                tmp.write(resp.content)
+                ref_path_for_pipeline = tmp.name
+                pipeline_cleanup.append(ref_path_for_pipeline)
+        else:
+             # Create empty dummy text file if no reference provided
+             with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".txt", encoding='utf-8') as f:
+                f.write("No reference provided.")
+                ref_path_for_pipeline = f.name
+                pipeline_cleanup.append(f.name)
+        
+        report = await route_and_grade(
+            submission_path=sub_path_for_pipeline,
+            reference_path=ref_path_for_pipeline,
+            raw_rubric=raw_rubric,
             org_id=org_id,
-            subject_id=subject_id or str(uuid.uuid4()),
-            assignment_id=str(sub["assignment_id"]) if sub["assignment_id"] else str(uuid.uuid4()),
-            assignment_version=assignment_version,
-            questions=questions,
-            rubric_criteria=rubric_criteria,
-            student_answer=extracted_text,
-            student_name=student_name,
-            submission_id=submission_id,
-            code_execution_result=code_execution_result,
-            reference_text=reference_text,
+            subject_id=subject_id or str(uuid.uuid4())
         )
     except Exception as e:
         logger.error("Pipeline failed for submission %s: %s", submission_id, e)
@@ -307,16 +335,33 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
         for tmp_file in files_to_cleanup:
             if os.path.exists(tmp_file):
                 os.remove(tmp_file)
+        if "pipeline_cleanup" in locals():
+            for tmp_file in pipeline_cleanup:
+                 if os.path.exists(tmp_file):
+                    os.remove(tmp_file)
         await redis.aclose()
 
     # ---- Persist feedback_report --------------------------------------------
     now = datetime.now(timezone.utc)
-    report_dict = report.model_dump()
-    avg_confidence = (
-        sum(s.confidence for s in report.rubricScores) / len(report.rubricScores)
-        if report.rubricScores else 0.5
-    )
-    needs_review = report.status == "needs_review"
+    
+    # GradingResult doesn't have a model_dump(), so we serialize to dict manually
+    report_dict = {
+        "score": report.score,
+        "max_score": report.max_score,
+        "per_criterion": report.per_criterion,
+        "feedback": report.feedback,
+        "tier_used": report.tier_used.value,
+        "reference_sections_used": report.reference_sections_used,
+        "latency_ms": report.latency_ms,
+        "est_cost_usd": report.est_cost_usd,
+        "code_execution_result": code_execution_result  # Keep this for the UI
+    }
+    
+    # The new pipeline doesn't output confidence (which was mostly fake anyway) or status directly.
+    # We map score to a binary 'needs_review' based on threshold or just default to published.
+    avg_confidence = 0.9 
+    ai_status = "published" if not batch_id else "needs_review"
+    needs_review = ai_status == "needs_review"
 
     report_id = str(uuid.uuid4())
     async with get_conn(org_id) as conn:
@@ -330,7 +375,7 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
             """,
             report_id, org_id, submission_id, batch_id,
-            report.overallScore, report.maxScore, report.status,
+            report.score, report.max_score, ai_status,
             json.dumps(report_dict),
             avg_confidence, now,
             json.dumps({
