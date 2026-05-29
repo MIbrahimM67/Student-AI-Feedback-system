@@ -64,6 +64,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.responses import JSONResponse
+from fastapi import Request
+import traceback
+import logging
+
+logger = logging.getLogger(__name__)
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    error_details = traceback.format_exc()
+    logger.error(f"Unhandled Exception: {error_details}")
+    return JSONResponse(
+        status_code=500,
+        content={"message": str(exc), "details": error_details}
+    )
+
 
 # ---- Dependency helpers (import these in route files) -----------------------
 
