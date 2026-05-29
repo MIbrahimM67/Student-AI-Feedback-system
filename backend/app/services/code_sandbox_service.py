@@ -87,7 +87,7 @@ class CodeSandboxService:
             # Define image and commands based on language
             if lang == "python":
                 image = "python:3.10-slim"
-                cmd = f"sh -c 'if [ -f /sandbox/solution.py ]; then python /sandbox/solution.py{stdin_cmd}; else find /sandbox -name \"*.py\" | head -n 1 | xargs python{stdin_cmd}; fi'"
+                cmd = f"sh -c 'if [ -f /sandbox/solution.py ]; then python /sandbox/solution.py{stdin_cmd}; elif [ -f /sandbox/main.py ]; then python /sandbox/main.py{stdin_cmd}; elif [ -f /sandbox/app.py ]; then python /sandbox/app.py{stdin_cmd}; else find /sandbox -name \"*.py\" | head -n 1 | xargs -I % python %{stdin_cmd}; fi'"
             elif lang == "cpp":
                 image = "gcc:latest"
                 cmd = f"sh -c 'find /sandbox -name \"*.cpp\" -o -name \"*.c\" | xargs g++ -o /sandbox/run && /sandbox/run{stdin_cmd}'"
