@@ -172,6 +172,163 @@ async def upload_reference(
     }
 
 
+# ---- Assignments -------------------------------------------------------------
+
+@router.post("/subjects/{subject_id}/assignments", status_code=201)
+async def create_assignment(
+    subject_id: str,
+    body: dict,
+    user: dict = Depends(_get_instructor),
+):
+    """
+    Creates a new assignment under a subject, taking title, prompt, and rubric.
+    """
+    org_id = user["org_id"]
+    title = body.get("title", "Untitled Assignment")
+    prompt = body.get("prompt", "")
+    rubric = body.get("rubric", "")
+    plagiarism = body.get("plagiarism_enabled", False)
+    
+    assignment_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+
+    async with get_conn(org_id) as conn:
+        # Create assignment
+        await conn.execute(
+            """
+            INSERT INTO assignments (id, org_id, subject_id, title, plagiarism_enabled, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            """,
+            assignment_id, org_id, subject_id, title, plagiarism, now,
+        )
+        
+        # Save prompt as a single question
+        if prompt:
+            await conn.execute(
+                """
+                INSERT INTO questions (id, org_id, assignment_id, text, max_marks, display_order)
+                VALUES ($1, $2, $3, $4, 100, 0)
+                """,
+                str(uuid.uuid4()), org_id, assignment_id, prompt
+            )
+            
+        # Save rubric as a single criterion
+        if rubric:
+            await conn.execute(
+                """
+                INSERT INTO rubric_criteria (id, org_id, assignment_id, name, max_score, description)
+                VALUES ($1, $2, $3, 'General Rubric', 100, $4)
+                """,
+                str(uuid.uuid4()), org_id, assignment_id, rubric
+            )
+            
+        # Update assignment count
+        await conn.execute(
+            "UPDATE subjects SET assignment_count = assignment_count + 1, updated_at = $1 WHERE id = $2",
+            now, subject_id,
+        )
+
+    return {"id": assignment_id, "message": "Assignment created successfully."}
+
+
+@router.get("/subjects/{subject_id}/assignments")
+async def get_assignments(
+    subject_id: str,
+    user: dict = Depends(_get_instructor),
+):
+    """
+    List assignments for a given subject.
+    """
+    org_id = user["org_id"]
+    async with get_conn(org_id) as conn:
+        rows = await conn.fetch(
+            "SELECT * FROM assignments WHERE subject_id = $1 ORDER BY created_at DESC",
+            subject_id
+        )
+        
+        # We also need to fetch the prompt (question text) and rubric for each
+        assignments = []
+        for r in rows:
+            assn = dict(r)
+            
+            q_row = await conn.fetchrow(
+                "SELECT text FROM questions WHERE assignment_id = $1 ORDER BY display_order LIMIT 1",
+                assn["id"]
+            )
+            assn["prompt"] = q_row["text"] if q_row else ""
+            
+            r_row = await conn.fetchrow(
+                "SELECT description FROM rubric_criteria WHERE assignment_id = $1 LIMIT 1",
+                assn["id"]
+            )
+            assn["rubric"] = r_row["description"] if r_row else ""
+            
+            assignments.append(assn)
+            
+    return {"assignments": assignments}
+
+# ---- Single upload ----------------------------------------------------------
+
+@router.post("/single-upload", status_code=202)
+async def single_upload(
+    assignment_id: str = Form(...),
+    subject_id: str = Form(...),
+    student_name: str = Form(...),
+    plagiarism_enabled: bool = Form(False),
+    type: str = Form("text"),
+    stdin_text: Optional[str] = Form(None),
+    file: UploadFile = File(...),
+    user: dict = Depends(_get_instructor),
+):
+    """
+    Directly uploads and queues a single student submission for grading.
+    """
+    org_id = user["org_id"]
+    uid = user["uid"]
+    
+    sub_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    
+    content = await file.read()
+    if len(content) > settings.STUDENT_FILE_MAX_MB * 1024 * 1024:
+        raise HTTPException(413, f"File exceeds {settings.STUDENT_FILE_MAX_MB}MB limit.")
+        
+    bucket = get_storage_bucket()
+    blob_name = f"submissions/{org_id}/{assignment_id}/{sub_id}_{file.filename}"
+    
+    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+        
+    try:
+        blob = bucket.blob(blob_name)
+        blob.upload_from_filename(tmp_path)
+        blob.make_public()
+        file_url = blob.public_url
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+            
+    async with get_conn(org_id) as conn:
+        await conn.execute(
+            """
+            INSERT INTO submissions 
+              (id, org_id, assignment_id, type, stdin_text, file_url, status, student_name, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, 'uploaded', $7, $8)
+            """,
+            sub_id, org_id, assignment_id, type, stdin_text, file_url, student_name, now,
+        )
+        
+    # Queue single processing directly
+    from app.workers.celery_app import celery_app
+    celery_app.send_task("tasks.grade_submission", args=[sub_id, org_id])
+    
+    return {
+        "submission_id": sub_id,
+        "status": "pending",
+        "message": f"Submission for {student_name} uploaded. Grading started."
+    }
+
 # ---- Batch upload -----------------------------------------------------------
 
 @router.post("/batch", status_code=202)
