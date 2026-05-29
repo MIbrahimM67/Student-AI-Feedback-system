@@ -47,9 +47,16 @@ async def _get_user_row(uid: str, org_id: str) -> dict | None:
     return dict(row) if row else None
 
 
+from pydantic import BaseModel
+
+class SyncUserRequest(BaseModel):
+    email: str = ""
+    displayName: str = ""
+    photoURL: str = ""
+
 @router.post("/sync-user")
 async def sync_user(
-    body: dict,
+    body: SyncUserRequest,
     uid: str = Depends(_get_verified_uid),
 ):
     """
@@ -57,9 +64,9 @@ async def sync_user(
     Creates the user if new (role = '', triggers onboarding).
     Returns the full user profile so the frontend knows the role immediately.
     """
-    email = body.get("email", "")
-    display_name = body.get("displayName", "")
-    photo_url = body.get("photoURL", "")
+    email = body.email
+    display_name = body.displayName
+    photo_url = body.photoURL
     now = datetime.now(timezone.utc)
 
     # Determine org_id (single-org for MVP — each user is their own org on first login)
@@ -93,16 +100,19 @@ async def sync_user(
     return {"user": response_user}
 
 
+class SelectRoleRequest(BaseModel):
+    role: str = ""
+
 @router.post("/select-role")
 async def select_role(
-    body: dict,
+    body: SelectRoleRequest,
     uid: str = Depends(_get_verified_uid),
 ):
     """
     First-time role selection. Writes the role to Postgres — not localStorage.
     Only allowed to set 'student' or 'instructor' (admin is granted by admin only).
     """
-    role = body.get("role", "")
+    role = body.role
     if role not in ("student", "instructor"):
         raise HTTPException(400, "role must be 'student' or 'instructor'")
 
