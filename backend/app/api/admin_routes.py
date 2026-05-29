@@ -40,6 +40,10 @@ async def _get_verified_uid(authorization: Annotated[str, Header()]) -> str:
 
 async def _get_admin(uid: str = Depends(_get_verified_uid)) -> dict:
     async with get_conn() as conn:
+        org_id = await conn.fetchval("SELECT get_user_org_id($1)", uid)
+    if not org_id:
+        raise HTTPException(403, "Admin role required.")
+    async with get_conn(str(org_id)) as conn:
         row = await conn.fetchrow(
             "SELECT uid, org_id, role FROM users WHERE uid = $1", uid
         )
@@ -52,7 +56,7 @@ async def _get_admin(uid: str = Depends(_get_verified_uid)) -> dict:
 
 @router.get("/faculty-applications")
 async def list_faculty_applications(admin: dict = Depends(_get_admin)):
-    async with get_conn() as conn:
+    async with get_conn(str(admin["org_id"])) as conn:
         rows = await conn.fetch(
             "SELECT * FROM faculty_applications ORDER BY created_at DESC LIMIT 200"
         )
@@ -66,8 +70,9 @@ class RejectionPayload(BaseModel):
 @router.post("/faculty-applications/{app_id}/approve")
 async def approve_application(app_id: str, admin: dict = Depends(_get_admin)):
     now = datetime.now(timezone.utc)
+    org_id = str(admin["org_id"])
 
-    async with get_conn() as conn:
+    async with get_conn(org_id) as conn:
         app = await conn.fetchrow(
             "SELECT * FROM faculty_applications WHERE id = $1", app_id
         )
@@ -102,8 +107,9 @@ async def reject_application(
     admin: dict = Depends(_get_admin),
 ):
     now = datetime.now(timezone.utc)
+    org_id = str(admin["org_id"])
 
-    async with get_conn() as conn:
+    async with get_conn(org_id) as conn:
         app = await conn.fetchrow(
             "SELECT * FROM faculty_applications WHERE id = $1", app_id
         )
@@ -162,7 +168,7 @@ async def revoke_pro(target_uid: str, admin: dict = Depends(_get_admin)):
 
 @router.get("/warnings")
 async def list_warnings(admin: dict = Depends(_get_admin)):
-    async with get_conn() as conn:
+    async with get_conn(str(admin["org_id"])) as conn:
         rows = await conn.fetch(
             "SELECT * FROM warnings WHERE status = 'active' ORDER BY created_at DESC"
         )
@@ -172,8 +178,9 @@ async def list_warnings(admin: dict = Depends(_get_admin)):
 @router.post("/warnings/{warning_id}/dismiss")
 async def dismiss_warning(warning_id: str, admin: dict = Depends(_get_admin)):
     now = datetime.now(timezone.utc)
+    org_id = str(admin["org_id"])
 
-    async with get_conn() as conn:
+    async with get_conn(org_id) as conn:
         warn = await conn.fetchrow(
             "SELECT * FROM warnings WHERE id = $1", warning_id
         )

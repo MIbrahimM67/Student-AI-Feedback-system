@@ -486,6 +486,44 @@ async def upload_batch(
     }
 
 
+# ---- Batch name confirmation + processing trigger ---------------------------
+
+class ConfirmNamesPayload(BaseModel):
+    names: dict  # { submission_id: corrected_student_name }
+
+@router.post("/batch/{batch_id}/confirm-names")
+async def confirm_batch_names(
+    batch_id: str,
+    payload: ConfirmNamesPayload,
+    user: dict = Depends(_get_instructor),
+):
+    """Update student names in submissions after the instructor reviews them."""
+    org_id = str(user["org_id"])
+    now = datetime.now(timezone.utc)
+    async with get_conn(org_id) as conn:
+        for sub_id, name in payload.names.items():
+            await conn.execute(
+                "UPDATE submissions SET student_name = $1 WHERE id = $2 AND batch_id = $3",
+                name, sub_id, batch_id,
+            )
+    return {"status": "names_updated", "count": len(payload.names)}
+
+
+@router.post("/batch/{batch_id}/process")
+async def process_batch(batch_id: str, user: dict = Depends(_get_instructor)):
+    """Trigger grading for an already-uploaded batch (called after name confirmation)."""
+    org_id = str(user["org_id"])
+    async with get_conn(org_id) as conn:
+        row = await conn.fetchrow(
+            "SELECT id FROM batches WHERE id = $1 AND instructor_id = $2",
+            batch_id, user["uid"],
+        )
+    if not row:
+        raise HTTPException(404, "Batch not found.")
+    celery_app.send_task("tasks.run_batch_grading", args=[batch_id, org_id])
+    return {"status": "processing_started", "batch_id": batch_id}
+
+
 # ---- Batch status & reports -------------------------------------------------
 
 @router.get("/batch/{batch_id}")
