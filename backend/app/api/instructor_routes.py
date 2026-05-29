@@ -45,7 +45,13 @@ async def _get_verified_uid(authorization: Annotated[str, Header()]) -> str:
 
 
 async def _get_instructor(uid: str = Depends(_get_verified_uid)) -> dict:
+    # First, get the org_id bypassing RLS (SECURITY DEFINER function)
     async with get_conn() as conn:
+        org_id = await conn.fetchval("SELECT get_user_org_id($1)", uid)
+    if not org_id:
+        raise HTTPException(404, "User not found.")
+    # Now query with RLS context
+    async with get_conn(str(org_id)) as conn:
         row = await conn.fetchrow(
             "SELECT uid, org_id, role, faculty_status FROM users WHERE uid = $1", uid
         )
@@ -577,3 +583,69 @@ async def approve_report(
         )
 
     return {"status": "approved", "report_id": report_id, "was_edited": was_edited}
+
+
+# ---- Faculty Verification Application (from InstructorDashboard) ------------
+
+@router.post("/faculty-application")
+async def submit_faculty_application(
+    fullName: str = Form(...),
+    university: str = Form(...),
+    department: str = Form(""),
+    designation: str = Form(""),
+    officialEmail: str = Form(...),
+    proofFile: Optional[UploadFile] = File(None),
+    uid: str = Depends(_get_verified_uid),
+):
+    """
+    Instructor submits a faculty verification application.
+    Uploads proof file to Firebase Storage and inserts a faculty_applications row.
+    """
+    now = datetime.now(timezone.utc)
+
+    # Get org_id bypassing RLS
+    async with get_conn() as conn:
+        org_id_val = await conn.fetchval("SELECT get_user_org_id($1)", uid)
+    if not org_id_val:
+        raise HTTPException(404, "User not found.")
+    org_id = str(org_id_val)
+
+    # Upload proof file to Firebase Storage if provided
+    proof_url = None
+    if proofFile and proofFile.filename:
+        try:
+            bucket = get_storage_bucket()
+            content = await proofFile.read()
+            blob_path = f"faculty_proofs/{uid}/{uuid.uuid4()}_{proofFile.filename}"
+            blob = bucket.blob(blob_path)
+            blob.upload_from_string(content, content_type=proofFile.content_type or "application/octet-stream")
+            blob.make_public()
+            proof_url = blob.public_url
+        except Exception as e:
+            logger.warning(f"Proof file upload failed: {e}")
+
+    async with get_conn(org_id) as conn:
+        # Prevent duplicate pending applications
+        existing = await conn.fetchrow(
+            "SELECT id FROM faculty_applications WHERE user_id = $1 AND status = 'pending'",
+            uid
+        )
+        if existing:
+            raise HTTPException(400, "You already have a pending application under review.")
+
+        await conn.execute(
+            """
+            INSERT INTO faculty_applications
+              (org_id, user_id, full_name, university, department, designation,
+               official_email, proof_file_url, status)
+            VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, 'pending')
+            """,
+            org_id, uid, fullName, university, department,
+            designation, officialEmail, proof_url,
+        )
+        await conn.execute(
+            "UPDATE users SET faculty_status = 'pending', updated_at = $1 WHERE uid = $2",
+            now, uid,
+        )
+
+    return {"status": "submitted", "message": "Application submitted. An admin will review it shortly."}
