@@ -180,6 +180,7 @@ async def upload_batch(
     subject_id: str = Form(...),
     plagiarism_enabled: bool = Form(False),
     type: str = Form("text"),
+    stdin_text: Optional[str] = Form(None),
     files: List[UploadFile] = File(...),
     user: dict = Depends(_get_instructor),
 ):
@@ -236,14 +237,13 @@ async def upload_batch(
 
         async with get_conn(org_id) as conn:
             await conn.execute(
-                """
                 INSERT INTO submissions
                   (id, org_id, assignment_id, subject_id, batch_id,
-                   type, mode, file_url, file_name, status, created_at)
-                VALUES ($1,$2,$3,$4,$5,$6,'batch',$7,$8,'uploaded',$9)
+                   type, mode, stdin_text, file_url, file_name, status, created_at)
+                VALUES ($1,$2,$3,$4,$5,$6,'batch',$7,$8,$9,'uploaded',$10)
                 """,
                 sub_id, org_id, assignment_id, subject_id, batch_id,
-                type, file_url, file.filename, now,
+                type, stdin_text, file_url, file.filename, now,
             )
         submission_ids.append(sub_id)
 

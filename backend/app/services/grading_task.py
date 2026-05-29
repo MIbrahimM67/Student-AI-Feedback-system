@@ -174,14 +174,56 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
     if sub["type"] == "coding":
         try:
             from app.services.code_sandbox_service import code_sandbox_service
+            from app.utils.prompt_templates import utility_test_case_generator_user
+            from app.services.llm_provider import ChatMessage
+            
             ext = os.path.splitext(sub["file_name"] or ".py")[1].lower()
             lang = "python" if ext == ".py" else ("cpp" if ext in (".cpp", ".cc") else "java")
-            result = await code_sandbox_service.execute_code(extracted_text, lang, stdin_text=sub.get("stdin_text"))
-            code_execution_result = (
-                f"Exit code: {result.get('exitCode')}\n"
-                f"Stdout:\n{result.get('stdout', '')}\n"
-                f"Stderr:\n{result.get('stderr', '')}"
+            
+            # 1. Generate autonomous test cases via LLM
+            llm = build_llm_from_env()
+            is_batch = sub["mode"] == "batch"
+            test_gen_prompt = utility_test_case_generator_user(extracted_text, sub.get("stdin_text", ""), is_batch)
+            
+            resp = await llm.chat(
+                messages=[ChatMessage(role="user", content=test_gen_prompt)],
+                model=settings.GRADIENT_MODEL_UTILITY,
+                temperature=0.4,
+                max_tokens=800,
             )
+            
+            # Safely parse JSON from LLM response
+            json_str = resp.text.strip()
+            if json_str.startswith("```json"):
+                json_str = json_str[7:-3]
+            elif json_str.startswith("```"):
+                json_str = json_str[3:-3]
+                
+            test_cases = [{"name": "Default Test", "input": sub.get("stdin_text", "")}]
+            try:
+                parsed = json.loads(json_str)
+                if "test_cases" in parsed and isinstance(parsed["test_cases"], list) and len(parsed["test_cases"]) > 0:
+                    test_cases = parsed["test_cases"]
+            except Exception as e:
+                logger.warning("Failed to parse test cases from LLM: %s", e)
+            
+            # 2. Execute test cases sequentially
+            execution_results = []
+            for tc in test_cases:
+                tc_name = tc.get("name", "Test Case")
+                tc_input = tc.get("input", "")
+                result = await code_sandbox_service.execute_code(extracted_text, lang, stdin_text=tc_input)
+                
+                # Apply user requested formatting: Passed/Failed with capped output
+                if result.get("exitCode") == 0:
+                    out_str = f"=== Test Case: {tc_name} ===\nStatus: PASSED\nOutput:\n{result.get('stdout', '').strip()[:500]}"
+                else:
+                    out_str = f"=== Test Case: {tc_name} ===\nStatus: FAILED\nErrors/Reasons:\n{result.get('stderr', '').strip()[:500]}"
+                
+                execution_results.append(out_str)
+                
+            code_execution_result = "\n\n".join(execution_results)
+            
         except Exception as e:
             logger.warning("Code sandbox failed: %s", e)
 

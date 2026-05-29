@@ -215,3 +215,26 @@ Question:
 {question_text[:1000]}
 
 Title:"""
+
+def utility_test_case_generator_user(code_text: str, hint: str, is_batch: bool) -> str:
+    count_instruction = "Generate exactly 3 test cases (1 standard, 2 edge/failure cases)." if is_batch else "Generate exactly 1 standard test case."
+    hint_instruction = f"The user provided this hint for the input: '{hint}'" if hint and hint.strip() else "The user did not provide a hint, so analyze the code to determine what input it expects."
+    
+    return f"""You are an autonomous test engineer. Look at the code below and generate standard input (stdin) test cases for it.
+{hint_instruction}
+{count_instruction}
+
+Code:
+```
+{code_text[:2000]}
+```
+
+Return ONLY a JSON object in this exact format:
+{{
+  "test_cases": [
+    {{
+      "name": "Brief description of test case",
+      "input": "The exact raw text to pipe into stdin (use \\n for newlines)"
+    }}
+  ]
+}}"""

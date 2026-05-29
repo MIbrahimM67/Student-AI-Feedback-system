@@ -32,6 +32,7 @@ export const InstructorDashboard: React.FC = () => {
   const [plagEnabled, setPlagEnabled] = useState<boolean>(true);
   const [batchType, setBatchType] = useState<string>("text");
   const [batchFiles, setBatchFiles] = useState<File[]>([]);
+  const [stdinText, setStdinText] = useState<string>("");
   
   // Staged student names grid states
   const [batchId, setBatchId] = useState<string | null>(null);
@@ -125,6 +126,7 @@ export const InstructorDashboard: React.FC = () => {
       formData.append("rubric", rubric);
       formData.append("plagiarismEnabled", String(plagEnabled));
       formData.append("type", batchType);
+      if (stdinText.trim()) formData.append("stdin_text", stdinText);
       
       batchFiles.forEach(file => {
         formData.append("files", file);
@@ -610,6 +612,22 @@ export const InstructorDashboard: React.FC = () => {
                       className="w-full py-3 px-4 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 focus:outline-none focus:border-indigo-500 text-xs font-medium placeholder-slate-400"
                     />
                   </div>
+
+                  {/* Form Field: STDIN (Coding Only) */}
+                  {batchType === "coding" && (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-extrabold text-slate-500 uppercase flex items-center gap-1.5">
+                        Input Hints / Data Type <span className="text-slate-400 font-medium normal-case">- Optional</span>
+                      </label>
+                      <textarea
+                        value={stdinText}
+                        onChange={(e) => setStdinText(e.target.value)}
+                        rows={2}
+                        className="w-full py-3 px-4 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 focus:outline-none focus:border-indigo-500 text-xs font-medium placeholder-slate-400"
+                        placeholder="e.g. 'numeric array', 'strings', or leave blank to let AI decide..."
+                      />
+                    </div>
+                  )}
 
                   {/* Multi File drag & drop box */}
                   <div className="space-y-1.5">

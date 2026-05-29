@@ -250,14 +250,14 @@ export const StudentDashboard: React.FC = () => {
           {type === "coding" && (
             <div>
               <label className="text-[10px] font-bold text-[#5e5c54] uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
-                Standard Input (stdin) <span className="text-gray-400 font-normal normal-case">- Optional</span>
+                Input Hints / Data Type <span className="text-gray-400 font-normal normal-case">- Optional</span>
               </label>
               <textarea
                 value={stdinText}
                 onChange={(e) => setStdinText(e.target.value)}
                 rows={3}
-                className="w-full text-xs font-mono border border-[#dfdbd3] rounded-xl px-3 py-2.5 bg-[#f4f2eb] text-[#1c1c18] placeholder-[#8e8b80] focus:outline-none focus:border-[#1c1c18] resize-none transition-colors"
-                placeholder="Enter input text exactly as the program expects it..."
+                className="w-full text-xs border border-[#dfdbd3] rounded-xl px-3 py-2.5 bg-[#f4f2eb] text-[#1c1c18] placeholder-[#8e8b80] focus:outline-none focus:border-[#1c1c18] resize-none transition-colors"
+                placeholder="e.g. 'numeric array', 'strings', or leave blank to let AI decide..."
               />
             </div>
           )}
