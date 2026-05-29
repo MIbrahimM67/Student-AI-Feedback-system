@@ -94,6 +94,9 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
 
     # ---- Extract text -------------------------------------------------------
     extracted_text = sub["input_text"] or ""
+    detected_lang = None
+    tmp_zip_path = None
+    files_to_cleanup = []
 
     if sub["file_url"] and not extracted_text.strip():
         try:
@@ -102,13 +105,38 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
                 resp = await client.get(sub["file_url"])
                 resp.raise_for_status()
 
-            ext = os.path.splitext(sub["file_name"] or ".pdf")[1]
+            ext = os.path.splitext(sub["file_name"] or ".pdf")[1].lower()
             with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
                 tmp.write(resp.content)
                 tmp_path = tmp.name
+            files_to_cleanup.append(tmp_path)
 
-            extracted_text = await ocr_service.extract_text(tmp_path, sub["file_name"] or "file")
-            os.remove(tmp_path)
+            if ext == ".zip":
+                tmp_zip_path = tmp_path
+                import zipfile
+                extracted_text = ""
+                lang_counts = {"cpp": 0, "python": 0, "java": 0, "web": 0}
+                with zipfile.ZipFile(tmp_path, 'r') as zip_ref:
+                    for zip_info in zip_ref.infolist():
+                        if zip_info.is_dir(): continue
+                        file_ext = os.path.splitext(zip_info.filename)[1].lower()
+                        
+                        if file_ext in [".cpp", ".cc", ".h", ".c"]: lang_counts["cpp"] += 1
+                        elif file_ext == ".py": lang_counts["python"] += 1
+                        elif file_ext == ".java": lang_counts["java"] += 1
+                        elif file_ext in [".html", ".js", ".css"]: lang_counts["web"] += 1
+
+                        if file_ext in [".py", ".cpp", ".cc", ".h", ".c", ".java", ".js", ".html", ".css", ".txt"]:
+                            with zip_ref.open(zip_info) as f:
+                                try:
+                                    content = f.read().decode('utf-8')
+                                    extracted_text += f"\n=== {zip_info.filename} ===\n{content}\n"
+                                except UnicodeDecodeError:
+                                    pass
+                if sum(lang_counts.values()) > 0:
+                    detected_lang = max(lang_counts, key=lang_counts.get)
+            else:
+                extracted_text = await ocr_service.extract_text(tmp_path, sub["file_name"] or "file")
         except Exception as e:
             logger.error("Text extraction failed for submission %s: %s", submission_id, e)
             await _mark_failed(org_id, submission_id, batch_id)
@@ -177,11 +205,17 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
             from app.utils.prompt_templates import utility_test_case_generator_user
             from app.services.llm_provider import ChatMessage
             
-            ext = os.path.splitext(sub["file_name"] or ".py")[1].lower()
-            lang = "python" if ext == ".py" else ("cpp" if ext in (".cpp", ".cc") else "java")
+            if detected_lang:
+                lang = detected_lang
+            else:
+                ext = os.path.splitext(sub["file_name"] or ".py")[1].lower()
+                lang = "python" if ext == ".py" else ("cpp" if ext in (".cpp", ".cc") else "java")
             
-            # 1. Generate autonomous test cases via LLM
-            llm = build_llm_from_env()
+            if lang == "web":
+                code_execution_result = "Status: SKIPPED\nWeb assignment detected (HTML/CSS/JS). Relying on AI static analysis instead of terminal sandbox."
+            else:
+                # 1. Generate autonomous test cases via LLM
+                llm = build_llm_from_env()
             is_batch = sub["mode"] == "batch"
             test_gen_prompt = utility_test_case_generator_user(extracted_text, sub.get("stdin_text", ""), is_batch)
             
@@ -208,21 +242,22 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
                 logger.warning("Failed to parse test cases from LLM: %s", e)
             
             # 2. Execute test cases sequentially
-            execution_results = []
-            for tc in test_cases:
-                tc_name = tc.get("name", "Test Case")
-                tc_input = tc.get("input", "")
-                result = await code_sandbox_service.execute_code(extracted_text, lang, stdin_text=tc_input)
-                
-                # Apply user requested formatting: Passed/Failed with capped output
-                if result.get("exitCode") == 0:
-                    out_str = f"=== Test Case: {tc_name} ===\nStatus: PASSED\nOutput:\n{result.get('stdout', '').strip()[:500]}"
-                else:
-                    out_str = f"=== Test Case: {tc_name} ===\nStatus: FAILED\nErrors/Reasons:\n{result.get('stderr', '').strip()[:500]}"
-                
-                execution_results.append(out_str)
-                
-            code_execution_result = "\n\n".join(execution_results)
+            if code_execution_result is None:  # Ensure we didn't skip it (like web)
+                execution_results = []
+                for tc in test_cases:
+                    tc_name = tc.get("name", "Test Case")
+                    tc_input = tc.get("input", "")
+                    result = await code_sandbox_service.execute_code(extracted_text, lang, stdin_text=tc_input, zip_path=tmp_zip_path)
+                    
+                    # Apply user requested formatting: Passed/Failed with capped output
+                    if result.get("exitCode") == 0:
+                        out_str = f"=== Test Case: {tc_name} ===\nStatus: PASSED\nOutput:\n{result.get('stdout', '').strip()[:500]}"
+                    else:
+                        out_str = f"=== Test Case: {tc_name} ===\nStatus: FAILED\nErrors/Reasons:\n{result.get('stderr', '').strip()[:500]}"
+                    
+                    execution_results.append(out_str)
+                    
+                code_execution_result = "\n\n".join(execution_results)
             
         except Exception as e:
             logger.warning("Code sandbox failed: %s", e)
@@ -269,6 +304,9 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
         await _mark_failed(org_id, submission_id, batch_id)
         return
     finally:
+        for tmp_file in files_to_cleanup:
+            if os.path.exists(tmp_file):
+                os.remove(tmp_file)
         await redis.aclose()
 
     # ---- Persist feedback_report --------------------------------------------

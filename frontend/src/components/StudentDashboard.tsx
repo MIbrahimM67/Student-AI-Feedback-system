@@ -294,7 +294,7 @@ export const StudentDashboard: React.FC = () => {
                 ref={fileRef}
                 type="file"
                 className="hidden"
-                accept=".pdf,.docx,.doc,.txt,.py,.java,.cpp,.png,.jpg,.jpeg"
+                accept=".pdf,.docx,.doc,.txt,.py,.java,.cpp,.png,.jpg,.jpeg,.zip"
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
               />
             </div>

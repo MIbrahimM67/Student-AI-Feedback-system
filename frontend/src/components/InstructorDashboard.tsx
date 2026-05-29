@@ -31,7 +31,7 @@ export const InstructorDashboard: React.FC = () => {
   const [rubric, setRubric] = useState<string>("");
   const [plagEnabled, setPlagEnabled] = useState<boolean>(true);
   const [batchType, setBatchType] = useState<string>("text");
-  const [batchFiles, setBatchFiles] = useState<File[]>([]);
+  const [batchFile, setBatchFile] = useState<File | null>(null);
   const [stdinText, setStdinText] = useState<string>("");
   
   // Staged student names grid states
@@ -96,13 +96,13 @@ export const InstructorDashboard: React.FC = () => {
 
   // Stage batch file uploads
   const handleBatchFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const selectedFiles = Array.from(e.target.files);
-      if (selectedFiles.length + batchFiles.length > 30) {
-        setError("Instructor batch uploads are strictly capped at 30 files.");
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      if (!file.name.endsWith(".zip")) {
+        setError("Batch submissions must be a single .zip file containing student folders.");
         return;
       }
-      setBatchFiles(prev => [...prev, ...selectedFiles]);
+      setBatchFile(file);
       setError(null);
     }
   };
@@ -113,8 +113,8 @@ export const InstructorDashboard: React.FC = () => {
       setError("Please specify the shared assignment prompt.");
       return;
     }
-    if (batchFiles.length === 0) {
-      setError("Please upload at least one student submission file.");
+    if (!batchFile) {
+      setError("Please upload a master .zip file containing student submission folders.");
       return;
     }
 
@@ -127,10 +127,7 @@ export const InstructorDashboard: React.FC = () => {
       formData.append("plagiarismEnabled", String(plagEnabled));
       formData.append("type", batchType);
       if (stdinText.trim()) formData.append("stdin_text", stdinText);
-      
-      batchFiles.forEach(file => {
-        formData.append("files", file);
-      });
+      formData.append("file", batchFile);
 
       const response = await api.post("/api/instructor/batch", formData, {
         headers: { "Content-Type": "multipart/form-data" }
@@ -637,7 +634,8 @@ export const InstructorDashboard: React.FC = () => {
                       <input
                         type="file"
                         id="batch-files"
-                        multiple={true}
+                        accept=".zip"
+                        multiple={false}
                         onChange={handleBatchFileChange}
                         className="hidden"
                       />
@@ -648,35 +646,33 @@ export const InstructorDashboard: React.FC = () => {
                         </div>
                         <div className="text-xs">
                           <label htmlFor="batch-files" className="font-extrabold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer">
-                            Click to upload multiple files
+                            Click to upload master .zip file
                           </label>
                           <span className="text-slate-500 font-medium"> or drag and drop</span>
                         </div>
-                        <p className="text-[10px] text-slate-400">Supports PDF, DOCX, CPP, JAVA, PY, PNG, JPG (Staged limit: 30 files)</p>
+                        <p className="text-[10px] text-slate-400">Must be a single .zip file containing student folders.</p>
                       </div>
                     </div>
 
-                    {/* Staged files counter badge grid */}
-                    {batchFiles.length > 0 && (
+                    {/* Staged file counter badge grid */}
+                    {batchFile && (
                       <div className="mt-4 space-y-3">
                         <div className="flex items-center justify-between text-xs font-extrabold text-slate-500">
-                          <span>Staged Files ({batchFiles.length} of 30)</span>
+                          <span>Staged Master Zip</span>
                           <button
                             type="button"
-                            onClick={() => setBatchFiles([])}
+                            onClick={() => setBatchFile(null)}
                             className="text-rose-500 hover:underline"
                           >
-                            Clear All
+                            Remove
                           </button>
                         </div>
                         
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 overflow-y-auto max-h-[150px] pr-1.5">
-                          {batchFiles.map((file, i) => (
-                            <div key={i} className="flex items-center gap-1.5 p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-850 text-[10px] font-bold text-slate-600 dark:text-slate-350 truncate">
-                              <Plus className="w-3.5 h-3.5 text-indigo-500 rotate-45" />
-                              <span className="truncate max-w-[120px]">{file.name}</span>
-                            </div>
-                          ))}
+                        <div className="grid grid-cols-1 gap-2 overflow-y-auto max-h-[150px] pr-1.5">
+                          <div className="flex items-center gap-1.5 p-3 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-850 text-[11px] font-bold text-slate-600 dark:text-slate-350 truncate">
+                            <Plus className="w-3.5 h-3.5 text-indigo-500 rotate-45 shrink-0" />
+                            <span className="truncate">{batchFile.name}</span>
+                          </div>
                         </div>
                       </div>
                     )}

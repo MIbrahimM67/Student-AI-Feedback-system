@@ -181,7 +181,7 @@ async def upload_batch(
     plagiarism_enabled: bool = Form(False),
     type: str = Form("text"),
     stdin_text: Optional[str] = Form(None),
-    files: List[UploadFile] = File(...),
+    file: UploadFile = File(...),
     user: dict = Depends(_get_instructor),
 ):
     from app.config import settings
@@ -189,8 +189,8 @@ async def upload_batch(
     org_id = user["org_id"]
     uid = user["uid"]
 
-    if len(files) > settings.INSTRUCTOR_BATCH_MAX_FILES:
-        raise HTTPException(400, f"Maximum {settings.INSTRUCTOR_BATCH_MAX_FILES} files per batch.")
+    if not file.filename.lower().endswith(".zip"):
+        raise HTTPException(400, "Batch upload must be a single .zip file.")
 
     batch_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
@@ -202,58 +202,89 @@ async def upload_batch(
             INSERT INTO batches
               (id, org_id, instructor_id, subject_id, assignment_id,
                plagiarism_enabled, status, total_files, processed_files, created_at)
-            VALUES ($1,$2,$3,$4,$5,$6,'uploaded',$7,0,$8)
+            VALUES ($1,$2,$3,$4,$5,$6,'uploaded',0,0,$7)
             """,
             batch_id, org_id, uid, subject_id, assignment_id,
-            plagiarism_enabled, len(files), now,
+            plagiarism_enabled, now,
         )
 
     total_size = 0
     submission_ids = []
-
     bucket = get_storage_bucket()
-    for file in files:
-        content = await file.read()
-        total_size += len(content)
-        if total_size > settings.INSTRUCTOR_BATCH_MAX_MB * 1024 * 1024:
-            raise HTTPException(413, f"Batch exceeds {settings.INSTRUCTOR_BATCH_MAX_MB}MB limit.")
 
-        sub_id = str(uuid.uuid4())
+    content = await file.read()
+    if len(content) > settings.INSTRUCTOR_BATCH_MAX_MB * 1024 * 1024:
+        raise HTTPException(413, f"Batch exceeds {settings.INSTRUCTOR_BATCH_MAX_MB}MB limit.")
 
-        blob_name = f"batches/{org_id}/{batch_id}/{sub_id}_{file.filename}"
-        with tempfile.NamedTemporaryFile(
-            delete=False, suffix=os.path.splitext(file.filename)[1]
-        ) as tmp:
-            tmp.write(content)
-            tmp_path = tmp.name
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
+        tmp.write(content)
+        tmp_zip_path = tmp.name
 
-        try:
-            blob = bucket.blob(blob_name)
-            blob.upload_from_filename(tmp_path)
-            blob.make_public()
-            file_url = blob.public_url
-        finally:
-            os.remove(tmp_path)
+    try:
+        import zipfile
+        import shutil
+        with tempfile.TemporaryDirectory() as extract_dir:
+            with zipfile.ZipFile(tmp_zip_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_dir)
 
-        async with get_conn(org_id) as conn:
-            await conn.execute(
-                INSERT INTO submissions
-                  (id, org_id, assignment_id, subject_id, batch_id,
-                   type, mode, stdin_text, file_url, file_name, status, created_at)
-                VALUES ($1,$2,$3,$4,$5,$6,'batch',$7,$8,$9,'uploaded',$10)
-                """,
-                sub_id, org_id, assignment_id, subject_id, batch_id,
-                type, stdin_text, file_url, file.filename, now,
-            )
-        submission_ids.append(sub_id)
+            # Detect root dir if the zip wraps everything in one master folder
+            root_contents = os.listdir(extract_dir)
+            if len(root_contents) == 1 and os.path.isdir(os.path.join(extract_dir, root_contents[0])):
+                base_dir = os.path.join(extract_dir, root_contents[0])
+            else:
+                base_dir = extract_dir
+
+            student_folders = [d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))]
+            
+            # If no folders found, maybe they zipped files directly instead of folders
+            if not student_folders:
+                raise HTTPException(400, "No student folders found inside the ZIP.")
+
+            if len(student_folders) > settings.INSTRUCTOR_BATCH_MAX_FILES:
+                 raise HTTPException(400, f"Maximum {settings.INSTRUCTOR_BATCH_MAX_FILES} student folders per batch.")
+
+            # Update batch row with actual student count
+            async with get_conn(org_id) as conn:
+                await conn.execute("UPDATE batches SET total_files = $1 WHERE id = $2", len(student_folders), batch_id)
+
+            for student_name in student_folders:
+                student_path = os.path.join(base_dir, student_name)
+                student_zip_base = os.path.join(extract_dir, f"st_{student_name}")
+                shutil.make_archive(student_zip_base, 'zip', student_path)
+                student_zip_path = f"{student_zip_base}.zip"
+
+                sub_id = str(uuid.uuid4())
+                blob_name = f"batches/{org_id}/{batch_id}/{sub_id}_{student_name}.zip"
+
+                blob = bucket.blob(blob_name)
+                blob.upload_from_filename(student_zip_path)
+                blob.make_public()
+                file_url = blob.public_url
+
+                async with get_conn(org_id) as conn:
+                    await conn.execute(
+                        """
+                        INSERT INTO submissions
+                          (id, org_id, assignment_id, subject_id, batch_id,
+                           type, mode, stdin_text, file_url, file_name, student_name, status, created_at)
+                        VALUES ($1,$2,$3,$4,$5,$6,'batch',$7,$8,$9,$10,'uploaded',$11)
+                        """,
+                        sub_id, org_id, assignment_id, subject_id, batch_id,
+                        type, stdin_text, file_url, f"{student_name}.zip", student_name, now,
+                    )
+                submission_ids.append(sub_id)
+
+    finally:
+        if os.path.exists(tmp_zip_path):
+            os.remove(tmp_zip_path)
 
     # Queue batch grading
     celery_app.send_task("tasks.run_batch_grading", args=[batch_id, org_id])
 
     return {
         "batch_id": batch_id,
-        "total_files": len(files),
-        "message": "Batch uploaded. Grading has started.",
+        "total_files": len(submission_ids),
+        "message": f"Batch uploaded successfully. Queued {len(submission_ids)} students for grading.",
     }
 
 
