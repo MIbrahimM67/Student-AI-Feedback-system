@@ -77,20 +77,25 @@ async def create_subject(
     language = body.language
     now = datetime.now(timezone.utc)
 
-    async with get_conn(user["org_id"]) as conn:
-        row = await conn.fetchrow(
-            """
-            INSERT INTO subjects
-              (org_id, instructor_id, code, title, description,
-               level, language, kb_status, created_at, updated_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,'empty',$8,$8)
-            RETURNING *
-            """,
-            user["org_id"], user["uid"],
-            code, title, description, level, language, now,
-        )
-
-    return {"subject": dict(row)}
+    try:
+        async with get_conn(user["org_id"]) as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO subjects
+                  (org_id, instructor_id, code, title, description,
+                   level, language, kb_status, created_at, updated_at)
+                VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,'empty',$8,$8)
+                RETURNING *
+                """,
+                user["org_id"], user["uid"],
+                code, title, description, level, language, now,
+            )
+        return {"subject": dict(row)}
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"Failed to create subject: {error_details}")
+        raise HTTPException(400, f"Error: {str(e)} | Details: {error_details}")
 
 
 @router.get("/subjects")
