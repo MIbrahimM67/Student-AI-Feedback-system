@@ -95,6 +95,18 @@ async def approve_application(app_id: str, admin: dict = Depends(_get_admin)):
             """,
             now, app["user_id"],
         )
+        await conn.execute(
+            """
+            INSERT INTO instructor_profiles (uid, org_id, institution, department, designation, created_at, updated_at)
+            VALUES ($1, $2::uuid, $3, $4, $5, $6, $6)
+            ON CONFLICT (uid) DO UPDATE
+              SET institution = EXCLUDED.institution,
+                  department = EXCLUDED.department,
+                  designation = EXCLUDED.designation,
+                  updated_at = EXCLUDED.updated_at
+            """,
+            app["user_id"], org_id, app["university"], app["department"], app["designation"], now
+        )
         await _write_audit(conn, admin["uid"], "APPROVE_FACULTY", app["user_id"])
 
     return {"status": "approved", "application_id": app_id}

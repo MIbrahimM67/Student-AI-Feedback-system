@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Header
+import asyncpg
 
 from app.auth.firebase import verify_id_token
 from app.db.postgres import get_conn
@@ -77,18 +78,34 @@ async def sync_user(
         org_id = str(existing["org_id"]) if existing and existing["org_id"] else DEV_ORG_ID
 
     async with get_conn(org_id) as conn:
-        await conn.execute(
-            """
-            INSERT INTO users (uid, org_id, email, display_name, photo_url, role,
-                               faculty_status, pro_status, warning_count, created_at, updated_at)
-            VALUES ($1, $2::uuid, $3, $4, $5, 'student', 'none', 'inactive', 0, $6, $6)
-            ON CONFLICT (uid) DO UPDATE
-              SET display_name = EXCLUDED.display_name,
-                  photo_url    = EXCLUDED.photo_url,
-                  updated_at   = EXCLUDED.updated_at
-            """,
-            uid, org_id, email, display_name, photo_url, now,
-        )
+        try:
+            await conn.execute(
+                """
+                INSERT INTO users (uid, org_id, email, display_name, photo_url, role,
+                                   faculty_status, pro_status, warning_count, created_at, updated_at)
+                VALUES ($1, $2::uuid, $3, $4, $5, 'student', 'none', 'inactive', 0, $6, $6)
+                ON CONFLICT (uid) DO UPDATE
+                  SET display_name = EXCLUDED.display_name,
+                      photo_url    = EXCLUDED.photo_url,
+                      updated_at   = EXCLUDED.updated_at
+                """,
+                uid, org_id, email, display_name, photo_url, now,
+            )
+        except asyncpg.exceptions.UniqueViolationError:
+            # The user recreated their Firebase account (new UID) but with the same email.
+            # Since email is UNIQUE, the insert fails. We delete the old orphaned row
+            # (which cascades) and retry the insert.
+            logger.warning("Email %s already exists with a different UID. Deleting orphaned row.", email)
+            await conn.execute("DELETE FROM users WHERE email = $1", email)
+            await conn.execute(
+                """
+                INSERT INTO users (uid, org_id, email, display_name, photo_url, role,
+                                   faculty_status, pro_status, warning_count, created_at, updated_at)
+                VALUES ($1, $2::uuid, $3, $4, $5, 'student', 'none', 'inactive', 0, $6, $6)
+                """,
+                uid, org_id, email, display_name, photo_url, now,
+            )
+            
         row = await conn.fetchrow("SELECT * FROM users WHERE uid = $1", uid)
 
     response_user = dict(row)
