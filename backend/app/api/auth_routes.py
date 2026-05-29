@@ -92,7 +92,7 @@ async def sync_user(
         row = await conn.fetchrow("SELECT * FROM users WHERE uid = $1", uid)
 
     response_user = dict(row)
-    if existing is None:
+    if not existing or existing["org_id"] is None:
         # For completely new users, trick the frontend into showing the Role Selection screen
         # even though they are safely defaulted to 'student' in the database.
         response_user["role"] = ""
