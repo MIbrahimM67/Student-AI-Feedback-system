@@ -6,8 +6,9 @@ import api from "@/lib/api";
 import { 
   FileSpreadsheet, FileArchive, Upload, Table as TableIcon, 
   Sparkles, CheckCircle2, ShieldAlert, BadgeCheck, Users, 
-  Loader2, Play, Plus, RefreshCw, ClipboardList
+  Loader2, Play, Plus, RefreshCw, ClipboardList, HelpCircle
 } from "lucide-react";
+import { BatchUploadTutorialModal } from "./BatchUploadTutorialModal";
 
 interface StagedStudent {
   submissionId: string;
@@ -51,6 +52,7 @@ export const InstructorDashboard: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isTutorialOpen, setIsTutorialOpen] = useState<boolean>(false);
 
   // Polling intervals reference
   const [pollIntervalId, setPollIntervalId] = useState<NodeJS.Timeout | null>(null);
@@ -59,10 +61,24 @@ export const InstructorDashboard: React.FC = () => {
   const isPending = user?.facultyStatus === "pending";
 
   useEffect(() => {
+    if (isVerified) {
+      const hasSeen = localStorage.getItem("hasSeenBatchTutorial");
+      if (!hasSeen) {
+        setIsTutorialOpen(true);
+      }
+    }
+    
     return () => {
-      if (pollIntervalId) clearInterval(pollIntervalId);
+      if (pollIntervalId) {
+        clearInterval(pollIntervalId);
+      }
     };
-  }, [pollIntervalId]);
+  }, [isVerified, pollIntervalId]);
+
+  const handleCloseTutorial = () => {
+    localStorage.setItem("hasSeenBatchTutorial", "true");
+    setIsTutorialOpen(false);
+  };
 
   // Submit faculty upgrade application
   const handleApplyVerification = async (e: React.FormEvent) => {
@@ -187,7 +203,7 @@ export const InstructorDashboard: React.FC = () => {
 
       // Clear reviews
       setStagedStudents([]);
-      setBatchFiles([]);
+      setBatchFile(null);
 
       // Start Polling real-time background indicators
       startPollingProgress(batchId);
@@ -542,10 +558,20 @@ export const InstructorDashboard: React.FC = () => {
           {/* Core Batch Upload Form */}
           {stagedStudents.length === 0 && (
             <div className="max-w-3xl mx-auto glass-panel dark:bg-slate-900/60 p-8 rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-lg space-y-6">
-              <h3 className="text-lg font-black text-slate-850 dark:text-slate-100 flex items-center gap-2">
-                <ClipboardList className="w-5 h-5 text-emerald-500" />
-                Upload New Classroom Batch
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-black text-slate-850 dark:text-slate-100 flex items-center gap-2">
+                  <ClipboardList className="w-5 h-5 text-emerald-500" />
+                  Upload New Classroom Batch
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setIsTutorialOpen(true)}
+                  className="text-xs font-bold text-slate-400 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 py-1.5 px-3 rounded-full"
+                  title="How to format Batch Uploads"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" /> Tutorial
+                </button>
+              </div>
 
               {loading ? (
                 <div className="py-16 text-center space-y-6">
@@ -692,6 +718,10 @@ export const InstructorDashboard: React.FC = () => {
         </div>
       )}
 
+      <BatchUploadTutorialModal 
+        isOpen={isTutorialOpen} 
+        onClose={handleCloseTutorial} 
+      />
     </div>
   );
 };
