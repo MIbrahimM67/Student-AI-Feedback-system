@@ -34,6 +34,7 @@ interface AuthContextType {
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   selectRole: (role: "student" | "instructor", profileData?: { displayName?: string; institution?: string; department?: string }) => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -170,8 +171,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const refreshProfile = async () => {
+    if (firebaseUser) {
+      await syncBackendProfile(firebaseUser);
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, firebaseUser, loading, error, loginWithGoogle, logout, selectRole }}>
+    <AuthContext.Provider value={{ user, firebaseUser, loading, error, loginWithGoogle, logout, selectRole, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

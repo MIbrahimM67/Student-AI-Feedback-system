@@ -45,7 +45,7 @@ const ROLE_META: Record<string, { label: string; icon: React.ReactNode; color: s
 };
 
 export const ProfileModal: React.FC<Props> = ({ open, onClose }) => {
-  const { user, firebaseUser } = useAuth();
+  const { user, firebaseUser, refreshProfile } = useAuth();
 
   const [profile, setProfile] = useState<FullProfile | null>(null);
   const [loading, setLoading] = useState(false);
@@ -103,8 +103,9 @@ export const ProfileModal: React.FC<Props> = ({ open, onClose }) => {
         payload.grading_style  = gradingStyle || undefined;
       }
       await api.patch("/api/auth/profile", payload);
+      await refreshProfile(); // Refresh global context so display name updates immediately everywhere
       setSuccess(true);
-      // Refresh name in sidebar without full page reload
+      // Refresh local modal state
       if (profile) {
         setProfile({ ...profile, display_name: displayName, institution, department, designation, teaching_level: teachingLevel, grading_style: gradingStyle });
       }
