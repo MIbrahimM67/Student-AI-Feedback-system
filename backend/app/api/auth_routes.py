@@ -204,3 +204,134 @@ async def get_me(uid: str = Depends(_get_verified_uid)):
         row = await conn.fetchrow("SELECT * FROM users WHERE uid = $1", uid)
 
     return {"user": dict(row)}
+
+
+# ---- Profile GET / PATCH (available to all roles) ---------------------------
+
+class ProfileUpdateRequest(BaseModel):
+    display_name: Optional[str] = None
+    # Shared
+    institution: Optional[str] = None
+    department: Optional[str] = None
+    # Instructor-only
+    designation: Optional[str] = None
+    teaching_level: Optional[str] = None
+    grading_style: Optional[str] = None
+
+
+@router.get("/profile")
+async def get_profile(uid: str = Depends(_get_verified_uid)):
+    """Return user row merged with role-specific profile fields."""
+    async with get_conn() as conn:
+        org_id_val = await conn.fetchval("SELECT get_user_org_id($1)", uid)
+    if not org_id_val:
+        raise HTTPException(404, "User not found.")
+    org_id = str(org_id_val)
+
+    async with get_conn(org_id) as conn:
+        user_row = await conn.fetchrow("SELECT * FROM users WHERE uid = $1", uid)
+        if not user_row:
+            raise HTTPException(404, "User not found.")
+
+        role = user_row["role"]
+        profile_data: dict = {}
+
+        if role == "instructor" or role == "admin":
+            p = await conn.fetchrow(
+                "SELECT institution, department, designation, teaching_level, grading_style "
+                "FROM instructor_profiles WHERE uid = $1", uid
+            )
+            if p:
+                profile_data = dict(p)
+        elif role == "student":
+            p = await conn.fetchrow(
+                "SELECT institution, department FROM student_profiles WHERE uid = $1", uid
+            )
+            if p:
+                profile_data = dict(p)
+
+    result = dict(user_row)
+    result.update(profile_data)
+    return {"profile": result}
+
+
+@router.patch("/profile")
+async def update_profile(
+    body: ProfileUpdateRequest,
+    uid: str = Depends(_get_verified_uid),
+):
+    """Update display_name and/or role-specific profile fields."""
+    async with get_conn() as conn:
+        org_id_val = await conn.fetchval("SELECT get_user_org_id($1)", uid)
+    if not org_id_val:
+        raise HTTPException(404, "User not found.")
+    org_id = str(org_id_val)
+
+    now = datetime.now(timezone.utc)
+
+    async with get_conn(org_id) as conn:
+        user_row = await conn.fetchrow("SELECT role FROM users WHERE uid = $1", uid)
+        if not user_row:
+            raise HTTPException(404, "User not found.")
+        role = user_row["role"]
+
+        # Always update display_name if provided
+        if body.display_name is not None:
+            await conn.execute(
+                "UPDATE users SET display_name = $1, updated_at = $2 WHERE uid = $3",
+                body.display_name.strip() or None, now, uid,
+            )
+
+        if role in ("instructor", "admin"):
+            await conn.execute(
+                """
+                INSERT INTO instructor_profiles
+                  (uid, org_id, institution, department, designation, teaching_level, grading_style, created_at, updated_at)
+                VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, $8)
+                ON CONFLICT (uid) DO UPDATE
+                  SET institution    = COALESCE(EXCLUDED.institution,    instructor_profiles.institution),
+                      department     = COALESCE(EXCLUDED.department,     instructor_profiles.department),
+                      designation    = COALESCE(EXCLUDED.designation,    instructor_profiles.designation),
+                      teaching_level = COALESCE(EXCLUDED.teaching_level, instructor_profiles.teaching_level),
+                      grading_style  = COALESCE(EXCLUDED.grading_style,  instructor_profiles.grading_style),
+                      updated_at     = EXCLUDED.updated_at
+                """,
+                uid, org_id,
+                body.institution, body.department,
+                body.designation, body.teaching_level,
+                body.grading_style if body.grading_style in ("strict", "lenient", "balanced", None) else None,
+                now,
+            )
+        elif role == "student":
+            await conn.execute(
+                """
+                INSERT INTO student_profiles (uid, org_id, institution, department, created_at, updated_at)
+                VALUES ($1, $2::uuid, $3, $4, $5, $5)
+                ON CONFLICT (uid) DO UPDATE
+                  SET institution = COALESCE(EXCLUDED.institution, student_profiles.institution),
+                      department  = COALESCE(EXCLUDED.department,  student_profiles.department),
+                      updated_at  = EXCLUDED.updated_at
+                """,
+                uid, org_id, body.institution, body.department, now,
+            )
+
+        # Re-fetch merged profile to return
+        user_row = await conn.fetchrow("SELECT * FROM users WHERE uid = $1", uid)
+        result = dict(user_row)
+
+        if role in ("instructor", "admin"):
+            p = await conn.fetchrow(
+                "SELECT institution, department, designation, teaching_level, grading_style "
+                "FROM instructor_profiles WHERE uid = $1", uid
+            )
+            if p:
+                result.update(dict(p))
+        elif role == "student":
+            p = await conn.fetchrow(
+                "SELECT institution, department FROM student_profiles WHERE uid = $1", uid
+            )
+            if p:
+                result.update(dict(p))
+
+    return {"profile": result, "message": "Profile updated successfully."}
+

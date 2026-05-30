@@ -9,11 +9,15 @@ import { InstructorDashboard } from "@/components/InstructorDashboard";
 import { AdminDashboard } from "@/components/AdminDashboard";
 import { 
   Sparkles, LogOut, Shield, GraduationCap, 
-  Landmark, ChevronRight, Terminal
+  Landmark, ChevronRight, Terminal, UserCog
 } from "lucide-react";
+import { ProfileModal } from "@/components/ProfileModal";
+
 
 export default function Home() {
   const { user, loading, logout } = useAuth();
+  const [profileOpen, setProfileOpen] = React.useState(false);
+
 
   // Full Screen Monospace IDE Loading Screen
   if (loading) {
@@ -128,7 +132,11 @@ export default function Home() {
 
         {/* User Capsule Footer */}
         <div className="p-4 border-t border-[#eae7e1] bg-[#f5f3ef] space-y-4">
-          <div className="flex items-center gap-2.5 p-1.5 rounded-xl bg-white border border-[#dfdbd3] shadow-sm">
+          <button
+            onClick={() => setProfileOpen(true)}
+            className="w-full flex items-center gap-2.5 p-1.5 rounded-xl bg-white border border-[#dfdbd3] shadow-sm hover:border-[#1c1c18] hover:shadow-md transition-all group cursor-pointer text-left"
+            title="Edit profile"
+          >
             {user.photoURL ? (
               <img src={user.photoURL} alt={user.displayName} className="w-7 h-7 rounded-lg object-cover" />
             ) : (
@@ -140,7 +148,8 @@ export default function Home() {
               <span className="text-[10px] font-bold text-[#1c1c18] truncate">{user.displayName}</span>
               <span className="text-[8px] text-[#8e8b80] font-mono truncate">{user.email}</span>
             </div>
-          </div>
+            <UserCog className="w-3.5 h-3.5 text-[#8e8b80] group-hover:text-[#1c1c18] shrink-0 transition-colors" />
+          </button>
 
           <button
             onClick={logout}
@@ -186,5 +195,8 @@ export default function Home() {
       </div>
 
     </div>
+
+    {/* Profile edit modal — accessible from sidebar user card */}
+    <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
   );
 }
