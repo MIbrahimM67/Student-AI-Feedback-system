@@ -180,6 +180,16 @@ class ResilientLLM:
                 except httpx.HTTPStatusError as e:
                     last_exc = e
                     retryable = e.response.status_code in _RETRYABLE_STATUS
+                    
+                    # Fast-fail hard DO Inference 429s (usually token limits)
+                    if e.response.status_code == 429:
+                        try:
+                            err_data = e.response.json()
+                            if err_data.get("error", {}).get("type") == "rate_limit_exceeded_error":
+                                retryable = False
+                        except Exception:
+                            pass
+                            
                     if not retryable:
                         logger.error(
                             "LLM %s non-retryable: provider=%s status=%s body=%s",
