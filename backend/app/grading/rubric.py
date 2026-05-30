@@ -51,7 +51,14 @@ async def decompose(rubric_text: str) -> list[Criterion]:
             temperature=0.0
         )
 
-        data: dict[str, Any] = json.loads(resp.text)
+        raw = resp.text.strip()
+        # Strip markdown code fences that some models wrap JSON in
+        if raw.startswith("```"):
+            raw = raw.split("```", 2)[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.rsplit("```", 1)[0].strip()
+        data: dict[str, Any] = json.loads(raw)
         criteria_list = data.get("criteria", [])
         
         result: list[Criterion] = []

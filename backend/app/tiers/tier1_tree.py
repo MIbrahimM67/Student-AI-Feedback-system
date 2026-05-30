@@ -115,7 +115,13 @@ async def navigate(index: list[TreeIndexItem], criterion: Criterion) -> list[int
             temperature=0.0
         )
         
-        data = json.loads(resp.text)
+        raw = resp.text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```", 2)[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.rsplit("```", 1)[0].strip()
+        data = json.loads(raw)
         selected_idx = data.get("selected_index")
         
         if selected_idx is not None and 0 <= selected_idx < len(index):
