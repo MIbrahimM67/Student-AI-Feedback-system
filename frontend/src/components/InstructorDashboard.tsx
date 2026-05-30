@@ -24,6 +24,15 @@ interface Subject {
   expires_at: string;
 }
 
+interface Reference {
+  id: string;
+  title: string;
+  type: string;
+  index_status: string;
+  chunk_count: number;
+  created_at: string;
+}
+
 interface Assignment {
   id: string;
   title: string;
@@ -484,14 +493,31 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
   const [prompt, setPrompt] = useState("");
   const [rubric, setRubric] = useState("");
 
-  // Refs state (stubbed for UI, handles API separately)
+  // Refs state
   const [refFile, setRefFile] = useState<File|null>(null);
   const [refTitle, setRefTitle] = useState("");
   const [refStatus, setRefStatus] = useState<string|null>(null);
+  const [references, setReferences] = useState<Reference[]>([]);
+  const [loadingRefs, setLoadingRefs] = useState(false);
 
   useEffect(() => {
     fetchAssignments();
   }, [subject.id]);
+
+  useEffect(() => {
+    if (tab === "references") {
+      fetchReferences();
+    }
+  }, [tab, subject.id]);
+
+  const fetchReferences = async () => {
+    setLoadingRefs(true);
+    try {
+      const res = await api.get(`/api/instructor/subjects/${subject.id}/references`);
+      setReferences(res.data.references || []);
+    } catch (err) { console.error("Failed to fetch references", err); }
+    finally { setLoadingRefs(false); }
+  };
 
   const fetchAssignments = async () => {
     try {
@@ -638,7 +664,19 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
         <div className="glass-panel p-8 rounded-3xl border border-slate-200 bg-slate-50 space-y-6">
           <div className="space-y-2">
             <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><BookOpen className="w-5 h-5 text-emerald-500"/> Subject Knowledge Base</h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
+            <div className="flex items-center gap-3 mt-1">
+              <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-md border ${
+                subject.kb_status === "ready" ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
+                subject.kb_status === "indexing" ? "bg-amber-50 text-amber-600 border-amber-200" :
+                "bg-slate-100 text-slate-500 border-slate-200"
+              }`}>
+                {subject.kb_status === "ready" ? "Knowledge Graph: Ready" : subject.kb_status === "indexing" ? "Knowledge Graph: Indexing" : "Knowledge Graph: Empty"}
+              </span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                {subject.reference_count} References
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed pt-2">
               Upload textbook chapters, marking schemes, or past papers here. The AI will ingest these files, build a semantic knowledge graph for this subject, and automatically use them to evaluate student submissions.
             </p>
           </div>
@@ -655,6 +693,58 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
              <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-xs font-bold transition-all">Upload & Index</button>
              {refStatus && <div className="text-xs font-bold text-indigo-600 bg-indigo-50 p-3 rounded-xl border border-indigo-100">{refStatus}</div>}
           </form>
+
+          <div className="pt-6 border-t border-slate-200">
+            <h4 className="text-sm font-black text-slate-800 mb-4">Indexed Materials</h4>
+            {loadingRefs ? (
+              <div className="flex items-center justify-center p-8 text-slate-400">
+                <Loader2 className="w-6 h-6 animate-spin" />
+              </div>
+            ) : references.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200">
+                      <th className="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Material Title</th>
+                      <th className="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Type</th>
+                      <th className="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Status</th>
+                      <th className="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-wider text-right">Chunks</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {references.map(ref => (
+                      <tr key={ref.id} className="border-b border-slate-100 last:border-0 hover:bg-white transition-colors">
+                        <td className="py-3 px-4">
+                          <div className="text-xs font-bold text-slate-700">{ref.title}</div>
+                          <div className="text-[10px] text-slate-400 font-medium">{new Date(ref.created_at).toLocaleString()}</div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase">{ref.type.replace('_', ' ')}</span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className={`px-2 py-1 text-[10px] font-bold rounded-md uppercase tracking-wider ${
+                            ref.index_status === 'embedded' ? 'bg-emerald-50 text-emerald-600' :
+                            ref.index_status === 'failed' ? 'bg-rose-50 text-rose-600' :
+                            'bg-amber-50 text-amber-600'
+                          }`}>
+                            {ref.index_status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-right text-xs font-bold text-slate-500">
+                          {ref.chunk_count > 0 ? ref.chunk_count : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-xs font-medium text-slate-500 bg-white rounded-2xl border border-dashed border-slate-200">
+                No reference materials added yet.
+              </div>
+            )}
+          </div>
+
         </div>
       )}
     </div>
