@@ -68,6 +68,7 @@ services:
     volumes:
       - ./backend:/app
       - api_uploads:/app/uploads
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       DATABASE_URL: postgresql+asyncpg://app_user:${APP_USER_PASSWORD}@postgres:5432/feedback
       REDIS_URL: redis://redis:6379/0
