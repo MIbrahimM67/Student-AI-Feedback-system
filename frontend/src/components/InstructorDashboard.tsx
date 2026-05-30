@@ -1021,33 +1021,44 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                      {batchReports.map((report) => (
-                       <tr key={report.id} className="hover:bg-slate-50 transition-colors">
+                       <tr key={report.submission_id} className="hover:bg-slate-50 transition-colors">
                           <td className="p-4">
                             <div className="font-bold text-slate-700 text-sm">{report.student_name}</div>
                             <div className="text-[10px] text-slate-400 font-mono mt-0.5">{report.file_name}</div>
                           </td>
                           <td className="p-4">
-                             <div className="text-xl font-black text-slate-800">{report.final_status ? report.final_status === 'pass' ? report.final_overall_score || report.ai_overall_score : report.ai_overall_score : report.ai_overall_score}<span className="text-xs text-slate-400 font-medium">/{report.ai_max_score}</span></div>
+                             {report.submission_status === 'failed' ? (
+                               <div className="text-xs font-bold text-rose-500">Processing Failed</div>
+                             ) : (
+                               <div className="text-xl font-black text-slate-800">{report.final_status ? report.final_status === 'pass' ? report.final_overall_score || report.ai_overall_score : report.ai_overall_score : report.ai_overall_score}<span className="text-xs text-slate-400 font-medium">/{report.ai_max_score}</span></div>
+                             )}
                           </td>
                           <td className="p-4">
-                             <div className="flex items-center gap-1.5">
-                               <div className="w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                                 <div className={`h-full ${report.ai_overall_confidence > 0.8 ? 'bg-emerald-500' : report.ai_overall_confidence > 0.6 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{width: `${report.ai_overall_confidence * 100}%`}}/>
+                             {report.submission_status === 'failed' ? (
+                               <span className="text-xs text-slate-400">—</span>
+                             ) : (
+                               <div className="flex items-center gap-1.5">
+                                 <div className="w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                   <div className={`h-full ${report.ai_overall_confidence > 0.8 ? 'bg-emerald-500' : report.ai_overall_confidence > 0.6 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{width: `${(report.ai_overall_confidence || 0) * 100}%`}}/>
+                                 </div>
+                                 <span className="text-[10px] font-bold text-slate-500">{Math.round((report.ai_overall_confidence || 0) * 100)}%</span>
                                </div>
-                               <span className="text-[10px] font-bold text-slate-500">{Math.round(report.ai_overall_confidence * 100)}%</span>
-                             </div>
+                             )}
                           </td>
                           <td className="p-4">
                              <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-md border ${
+                               report.submission_status === 'failed' ? "bg-rose-50 text-rose-600 border-rose-200" :
                                report.published_at ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
                                "bg-amber-50 text-amber-600 border-amber-200"
                              }`}>
-                               {report.published_at ? "Approved" : "Needs Review"}
+                               {report.submission_status === 'failed' ? "Failed" : report.published_at ? "Approved" : "Needs Review"}
                              </span>
                           </td>
                           <td className="p-4 text-right">
-                             {!report.published_at ? (
-                               <button onClick={() => handleApproveReport(report.id, report.ai_overall_score)} className="bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors">
+                             {report.submission_status === 'failed' ? (
+                               <span className="text-xs font-bold text-rose-400">Error</span>
+                             ) : !report.published_at ? (
+                               <button onClick={() => handleApproveReport(report.report_id, report.ai_overall_score)} className="bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors">
                                  Approve
                                </button>
                              ) : (

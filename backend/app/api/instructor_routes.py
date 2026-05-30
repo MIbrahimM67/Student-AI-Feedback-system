@@ -573,14 +573,14 @@ async def list_batch_reports(batch_id: str, user: dict = Depends(_get_instructor
     async with get_conn(user["org_id"]) as conn:
         rows = await conn.fetch(
             """
-            SELECT fr.id, fr.submission_id, s.file_name, s.student_name,
-                   fr.ai_overall_score, fr.ai_max_score, fr.ai_status,
+            SELECT s.id as submission_id, s.file_name, s.student_name, s.status as submission_status,
+                   fr.id as report_id, fr.ai_overall_score, fr.ai_max_score, fr.ai_status,
                    fr.ai_overall_confidence, fr.final_status,
                    fr.approved_at, fr.published_at, fr.was_edited
-            FROM feedback_reports fr
-            JOIN submissions s ON s.id = fr.submission_id
-            WHERE fr.batch_id = $1
-            ORDER BY fr.ai_overall_confidence ASC
+            FROM submissions s
+            LEFT JOIN feedback_reports fr ON s.id = fr.submission_id
+            WHERE s.batch_id = $1
+            ORDER BY s.student_name ASC
             """,
             batch_id,
         )
