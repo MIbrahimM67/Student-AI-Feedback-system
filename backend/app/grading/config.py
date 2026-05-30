@@ -19,11 +19,12 @@ RENDER_DPI: int = 150
 TOKENS_PER_PAGE_IMAGE: int = 800
 
 # Maximum tokens to load into context before falling back to Tier 1 or 2.
-# DECISION: We have lowered this to 5,000 tokens to aggressively protect against 
-# DigitalOcean API rate limits (429 Too Many Requests). Any payload exceeding this
-# budget will automatically route to Tier 2 (RAG Vector Search) to reduce the 
-# context size before sending to the LLM.
-CONTEXT_BUDGET_TOKENS: int = 5_000
+# DECISION: 200,000 tokens is conservative (well below Gemini 2.5 Flash's 1M
+# context limit) to leave room for the submission, rubric, system prompt, and
+# feedback generation output. Raise if reference materials are consistently large.
+# Note: DO Inference API rate limits (429) are mitigated by the global rate limiter,
+# not by chunking the context window.
+CONTEXT_BUDGET_TOKENS: int = 200_000
 
 # ---- Grading model -----------------------------------------------------------
 

@@ -68,6 +68,8 @@ class LLMProvider(ABC):
 
 
 # ---- DigitalOcean Gradient implementation -----------------------------------
+from app.services.rate_limiter import acquire_slot, update_from_headers
+import random
 
 class GradientProvider(LLMProvider):
     name = "gradient"
@@ -98,7 +100,9 @@ class GradientProvider(LLMProvider):
             body["response_format"] = {"type": "json_object"}
 
         t0 = time.perf_counter()
+        acquire_slot()
         r = await self._client.post("/chat/completions", json=body)
+        update_from_headers(r.headers)
         r.raise_for_status()
         data = r.json()
         usage = data.get("usage", {})
@@ -111,10 +115,12 @@ class GradientProvider(LLMProvider):
         )
 
     async def embed(self, texts: Sequence[str], *, model: str) -> list[list[float]]:
+        acquire_slot()
         r = await self._client.post(
             "/embeddings",
             json={"model": model, "input": list(texts)},
         )
+        update_from_headers(r.headers)
         r.raise_for_status()
         data = r.json()
         return [item["embedding"] for item in data["data"]]
@@ -122,6 +128,7 @@ class GradientProvider(LLMProvider):
     async def rerank(
         self, query: str, documents: Sequence[str], *, model: str, top_k: int = 6
     ) -> list[tuple[int, float]]:
+        acquire_slot()
         r = await self._client.post(
             "/rerank",
             json={
@@ -131,6 +138,7 @@ class GradientProvider(LLMProvider):
                 "top_n": top_k,
             },
         )
+        update_from_headers(r.headers)
         r.raise_for_status()
         data = r.json()
         results = data.get("results", [])
@@ -185,7 +193,12 @@ class ResilientLLM:
                     break
 
                 if attempt < self.max_retries:
-                    backoff = self.base_backoff_s * (2 ** attempt)
+                    if isinstance(last_exc, httpx.HTTPStatusError) and last_exc.response.status_code == 429 and "retry-after" in last_exc.response.headers:
+                        base = float(last_exc.response.headers["retry-after"])
+                    else:
+                        base = min(self.base_backoff_s * (2 ** attempt), 64)
+                        
+                    backoff = base + random.uniform(0, 0.5)
                     logger.warning(
                         "LLM %s retry: provider=%s attempt=%d backoff=%.2fs err=%s",
                         op_name, provider.name, attempt + 1, backoff, last_exc,
