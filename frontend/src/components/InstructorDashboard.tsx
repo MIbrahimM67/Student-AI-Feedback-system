@@ -960,7 +960,32 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
          <div className="glass-panel p-8 rounded-3xl border border-slate-200 shadow-lg space-y-6 bg-white">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><ClipboardList className="w-5 h-5 text-indigo-500"/> Batch Reports Review</h3>
-              <button onClick={() => setReviewingReports(false)} className="text-xs font-bold text-slate-400 hover:text-slate-600">Close Review</button>
+              <div className="flex items-center gap-3">
+                 <button onClick={() => {
+                   auth.currentUser?.getIdToken().then(token => {
+                     fetch(`${API_URL}/api/instructor/batch/${batchId}/export/excel`, { headers: { Authorization: `Bearer ${token}` } })
+                       .then(res => res.blob()).then(blob => {
+                         const url = window.URL.createObjectURL(blob);
+                         const a = document.createElement('a'); a.href = url; a.download = `Batch_Grades_${batchId}.xlsx`; a.click();
+                       });
+                   });
+                 }} className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors">
+                   <FileSpreadsheet className="w-4 h-4"/> Export Excel
+                 </button>
+                 <button onClick={() => {
+                   auth.currentUser?.getIdToken().then(token => {
+                     fetch(`${API_URL}/api/instructor/batch/${batchId}/export/zip`, { headers: { Authorization: `Bearer ${token}` } })
+                       .then(res => res.blob()).then(blob => {
+                         const url = window.URL.createObjectURL(blob);
+                         const a = document.createElement('a'); a.href = url; a.download = `Batch_Reports_${batchId}.zip`; a.click();
+                       });
+                   });
+                 }} className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors">
+                   <FileArchive className="w-4 h-4"/> Export Summaries
+                 </button>
+                 <div className="w-px h-5 bg-slate-200 mx-1"></div>
+                 <button onClick={() => setReviewingReports(false)} className="text-xs font-bold text-slate-400 hover:text-slate-600">Close Review</button>
+              </div>
             </div>
             <div className="overflow-x-auto border border-slate-200 rounded-2xl">
                <table className="w-full text-left text-xs">

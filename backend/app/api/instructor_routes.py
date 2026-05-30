@@ -637,6 +637,97 @@ async def approve_report(
     return {"status": "approved", "report_id": report_id, "was_edited": was_edited}
 
 
+# ---- Export Batch Reports ---------------------------------------------------
+
+@router.get("/batch/{batch_id}/export/excel")
+async def export_batch_excel(batch_id: str, user: dict = Depends(_get_instructor)):
+    import io
+    import openpyxl
+    from fastapi.responses import StreamingResponse
+
+    async with get_conn(user["org_id"]) as conn:
+        batch = await conn.fetchrow("SELECT * FROM batches WHERE id = $1 AND instructor_id = $2", batch_id, user["uid"])
+        if not batch:
+            raise HTTPException(404, "Batch not found.")
+            
+        reports = await conn.fetch("""
+            SELECT s.student_name, s.file_name, fr.final_overall_score, fr.final_max_score, fr.final_status
+            FROM feedback_reports fr
+            JOIN submissions s ON s.id = fr.submission_id
+            WHERE fr.batch_id = $1 AND fr.published_at IS NOT NULL
+        """, batch_id)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Batch Grades"
+    ws.append(["Student Name", "File Name", "Final Score", "Max Score", "Status", "Percentage"])
+    
+    for r in reports:
+        pct = (r["final_overall_score"] / r["final_max_score"]) if r["final_max_score"] else 0
+        ws.append([
+            r["student_name"], 
+            r["file_name"], 
+            r["final_overall_score"], 
+            r["final_max_score"], 
+            r["final_status"],
+            f"{pct*100:.1f}%"
+        ])
+
+    stream = io.BytesIO()
+    wb.save(stream)
+    stream.seek(0)
+    
+    return StreamingResponse(
+        stream, 
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=Batch_Grades_{batch_id}.xlsx"}
+    )
+
+
+@router.get("/batch/{batch_id}/export/zip")
+async def export_batch_zip(batch_id: str, user: dict = Depends(_get_instructor)):
+    import io
+    import zipfile
+    from fastapi.responses import StreamingResponse
+    import json
+
+    async with get_conn(user["org_id"]) as conn:
+        batch = await conn.fetchrow("SELECT * FROM batches WHERE id = $1 AND instructor_id = $2", batch_id, user["uid"])
+        if not batch:
+            raise HTTPException(404, "Batch not found.")
+            
+        reports = await conn.fetch("""
+            SELECT s.student_name, fr.final_overall_score, fr.final_payload
+            FROM feedback_reports fr
+            JOIN submissions s ON s.id = fr.submission_id
+            WHERE fr.batch_id = $1 AND fr.published_at IS NOT NULL
+        """, batch_id)
+
+    zip_stream = io.BytesIO()
+    with zipfile.ZipFile(zip_stream, "w", zipfile.ZIP_DEFLATED) as zf:
+        for r in reports:
+            # For MVP, we generate text-based summaries instead of heavy PDF rendering
+            student_name = r["student_name"].replace(" ", "_")
+            content = f"Feedback Report for {r['student_name']}\n"
+            content += f"Final Score: {r['final_overall_score']}\n\n"
+            
+            payload = r["final_payload"] or {}
+            rubrics = payload.get("rubricScores", [])
+            for rub in rubrics:
+                content += f"Criterion: {rub.get('criterionId', 'Unknown')}\n"
+                content += f"Score: {rub.get('score', 0)}/{rub.get('maxScore', 0)}\n"
+                content += f"Feedback: {rub.get('feedback', '')}\n\n"
+                
+            zf.writestr(f"{student_name}_feedback.txt", content)
+
+    zip_stream.seek(0)
+    return StreamingResponse(
+        zip_stream,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=Batch_Reports_{batch_id}.zip"}
+    )
+
+
 # ---- Faculty Verification Application (from InstructorDashboard) ------------
 
 @router.post("/faculty-application")
