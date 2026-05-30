@@ -894,6 +894,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
   const fetchBatchReports = async (id: string) => {
     try {
       setReviewingReports(true);
+      setBatchId(id);
       const res = await api.get(`/api/instructor/batch/${id}/reports`);
       setBatchReports(res.data.reports || []);
     } catch (err: any) {
@@ -1146,7 +1147,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                                 </td>
                               </tr>
                             )}
-                          </>
+                          </React.Fragment>
                         );
                      })}
                   </tbody>

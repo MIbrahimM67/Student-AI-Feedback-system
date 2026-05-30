@@ -806,7 +806,16 @@ async def export_batch_zip(batch_id: str, user: dict = Depends(_get_instructor))
         for r in reports:
             # For MVP, we generate text-based summaries instead of heavy PDF rendering
             student_name = r["student_name"].replace(" ", "_")
-            payload = dict(r["payload"]) if r["payload"] else {}
+            raw_payload = r["payload"]
+            
+            payload = {}
+            if isinstance(raw_payload, str):
+                try:
+                    payload = json.loads(raw_payload)
+                except Exception:
+                    pass
+            elif raw_payload:
+                payload = dict(raw_payload)
         
             # Build text summary
             summary = f"Student: {r['student_name']}\nFile: {r['file_name']}\n"
