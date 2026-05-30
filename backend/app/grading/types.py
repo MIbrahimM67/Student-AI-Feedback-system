@@ -14,6 +14,7 @@ class Tier(str, Enum):
     CONTEXT = "tier0_context"
     TREE = "tier1_tree"
     VECTOR = "tier2_vector"
+    MAP_REDUCE = "tier3_map_reduce"
 
 
 @dataclass

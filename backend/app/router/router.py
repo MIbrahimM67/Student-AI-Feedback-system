@@ -14,18 +14,23 @@ from app.grading import config
 logger = logging.getLogger(__name__)
 
 
-def route(payload: DocumentPayload) -> Tier:
+def route(sub_payload: DocumentPayload, ref_payload: DocumentPayload) -> Tier:
     """
     Route the document payload to the cheapest capable grading tier.
     """
-    logger.info("Routing payload: est_tokens=%d, has_structure=%s",
-                payload.est_tokens, payload.has_structure)
+    combined_tokens = sub_payload.est_tokens + ref_payload.est_tokens
+    logger.info("Routing payload: combined_tokens=%d, ref_has_structure=%s",
+                combined_tokens, ref_payload.has_structure)
 
-    if payload.est_tokens <= config.CONTEXT_BUDGET_TOKENS:
+    if combined_tokens <= config.CONTEXT_BUDGET_TOKENS:
         logger.info("Decision: Tier 0 (Context Stuffing)")
         return Tier.CONTEXT
+        
+    if sub_payload.est_tokens > config.CONTEXT_BUDGET_TOKENS:
+        logger.info("Decision: Tier 3 (Map-Reduce Grading)")
+        return Tier.MAP_REDUCE
     
-    if payload.has_structure:
+    if ref_payload.has_structure:
         logger.info("Decision: Tier 1 (Tree Navigation)")
         return Tier.TREE
     

@@ -16,6 +16,7 @@ from app.grading.types import Tier, GradingResult
 from app.tiers.tier0_context import grade_tier0
 from app.tiers.tier1_tree import grade_tier1
 from app.tiers.tier2_vector import grade_tier2
+from app.tiers.tier3_map_reduce import grade_tier3
 
 logger = logging.getLogger(__name__)
 
@@ -52,15 +53,7 @@ async def grade_submission(
     # is primarily driven by whether the reference fits or has structure.
     # We pass the combined est_tokens to the router for Tier 0 checks, but 
     # check has_structure on the reference.
-    
-    combined_tokens = sub_payload.est_tokens + ref_payload.est_tokens
-    
-    # We temporarily mock the reference payload to carry the combined token count
-    # just for the router decision.
-    router_payload = ref_payload
-    router_payload.est_tokens = combined_tokens
-    
-    tier = route(router_payload)
+    tier = route(sub_payload, ref_payload)
 
     # 4. Dispatch
     try:
@@ -76,6 +69,8 @@ async def grade_submission(
                 org_id=org_id,
                 subject_id=subject_id
             )
+        elif tier == Tier.MAP_REDUCE:
+            result = await grade_tier3(sub_payload, ref_payload, criteria)
         else:
             raise ValueError(f"Unknown tier selected: {tier}")
             
