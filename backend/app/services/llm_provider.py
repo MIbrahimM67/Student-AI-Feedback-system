@@ -193,8 +193,24 @@ class ResilientLLM:
                     break
 
                 if attempt < self.max_retries:
-                    if isinstance(last_exc, httpx.HTTPStatusError) and last_exc.response.status_code == 429 and "retry-after" in last_exc.response.headers:
-                        base = float(last_exc.response.headers["retry-after"])
+                    if isinstance(last_exc, httpx.HTTPStatusError) and last_exc.response.status_code == 429:
+                        # PROFESSOR REQUESTED DIAGNOSTIC LOGGING
+                        logger.error(
+                            "=== 429 DIAGNOSTICS (Attempt %d) ===\n"
+                            "Status Code: %s\n"
+                            "Headers: %s\n"
+                            "Body: %s\n"
+                            "=====================================",
+                            attempt + 1,
+                            last_exc.response.status_code,
+                            dict(last_exc.response.headers),
+                            last_exc.response.text
+                        )
+                        
+                        if "retry-after" in last_exc.response.headers:
+                            base = float(last_exc.response.headers["retry-after"])
+                        else:
+                            base = min(self.base_backoff_s * (2 ** attempt), 64)
                     else:
                         base = min(self.base_backoff_s * (2 ** attempt), 64)
                         
