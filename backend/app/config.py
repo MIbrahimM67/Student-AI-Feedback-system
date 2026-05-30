@@ -20,7 +20,7 @@ class Settings(BaseSettings):
 
     # DigitalOcean Gradient (serverless inference)
     GRADIENT_API_KEY: str
-    GRADIENT_BASE_URL: str = "https://inference.do-ai.run/v1"
+    GRADIENT_BASE_URL: str = "https://api.digitalocean.com/v1/inference"
 
     # Models
     GRADIENT_MODEL_SPECIALIST: str = "meta-llama-3.3-70b-instruct"
