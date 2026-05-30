@@ -45,9 +45,17 @@ def _init_firebase():
             cred = credentials.Certificate({
                 "type": "service_account",
                 "project_id": project_id,
-                "client_email": client_email,
+                "private_key_id": os.environ.get("FIREBASE_PRIVATE_KEY_ID", "key"),
                 "private_key": private_key,
+                "client_email": client_email,
+                "client_id": os.environ.get("FIREBASE_CLIENT_ID", ""),
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                 "token_uri": "https://oauth2.googleapis.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                "client_x509_cert_url": (
+                    f"https://www.googleapis.com/robot/v1/metadata/x509/"
+                    + client_email.replace("@", "%40")
+                ),
             })
             firebase_admin.initialize_app(cred, {
                 "storageBucket": storage_bucket
@@ -57,7 +65,8 @@ def _init_firebase():
         _storage_bucket = storage.bucket()
         logger.info("Firebase Admin SDK initialised (Auth + Storage).")
     except Exception as e:
-        logger.error("Failed to initialise Firebase Admin SDK: %s", e)
+        logger.error("Failed to initialise Firebase Admin SDK: %s", e, exc_info=True)
+
 
 
 def verify_id_token(token: str) -> dict[str, Any]:

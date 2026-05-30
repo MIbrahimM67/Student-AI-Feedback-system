@@ -1,0 +1,31 @@
+QUESTION:
+Write a C++ program that takes two numbers as input from the user and displays their sum.
+
+RUBRIC (Total: 10 marks):
+
+1. Correct includes and namespace (1 mark)
+   - Must include <iostream>
+   - Should use std namespace or prefix with std::
+
+2. Correct variable declaration (2 marks)
+   - Variables must be declared with proper data types
+   - Using int is acceptable; float/double earns full marks for precision handling
+
+3. User input handling (2 marks)
+   - Both numbers must be taken from user input (cin)
+   - Must NOT hardcode any values
+
+4. Correct addition logic (3 marks)
+   - Must use the + operator
+   - Result must be stored or displayed correctly
+   - Using multiplication or subtraction instead = 0 marks for this criterion
+
+5. Output / Display (1 mark)
+   - Result must be displayed using cout
+   - Output message should make sense (e.g. "Sum = X")
+
+6. Code quality and style (1 mark)
+   - Meaningful variable names
+   - Comments explaining the code
+   - Proper indentation
+   - Extra credit: input validation, use of functions

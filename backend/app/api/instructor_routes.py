@@ -162,6 +162,7 @@ async def upload_reference(
 
     # Upload to Firebase Storage
     blob_name = f"references/{org_id}/{subject_id}/{ref_id}_{file.filename}"
+    tmp_path = None
     try:
         bucket = get_storage_bucket()
         with tempfile.NamedTemporaryFile(
@@ -174,9 +175,16 @@ async def upload_reference(
         blob.upload_from_filename(tmp_path)
         blob.make_public()
         file_url = blob.public_url
+    except RuntimeError as e:
+        logger.error("Firebase Storage not initialised: %s", e)
+        raise HTTPException(503, f"File storage is not configured: {e}")
+    except Exception as e:
+        logger.error("Firebase Storage upload failed: %s", e, exc_info=True)
+        raise HTTPException(500, f"File upload failed: {e}")
     finally:
-        if os.path.exists(tmp_path):
+        if tmp_path and os.path.exists(tmp_path):
             os.remove(tmp_path)
+
 
     async with get_conn(org_id) as conn:
         await conn.execute(
