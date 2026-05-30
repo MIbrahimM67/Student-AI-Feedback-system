@@ -14,7 +14,56 @@ from app.services.llm_provider import build_llm_from_env, ChatMessage
 from app.grading.types import Criterion
 from app.grading import config
 
+import ast
+import re
+
 logger = logging.getLogger(__name__)
+
+
+def _extract_json(text: str) -> dict:
+    """
+    Robustly extract a JSON object from LLM output that may include:
+    - Markdown code fences (```json ... ```)
+    - Single-quoted Python dicts
+    - Extra text before/after the JSON object
+    """
+    text = text.strip()
+
+    # 1. Strip markdown code fences
+    if "```" in text:
+        # Extract content between first ``` and last ```
+        parts = text.split("```")
+        for part in parts[1::2]:  # odd-indexed parts are inside fences
+            candidate = part.strip()
+            if candidate.startswith("json"):
+                candidate = candidate[4:].strip()
+            if candidate.startswith("{"):
+                text = candidate
+                break
+
+    # 2. Try standard json.loads
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # 3. Try to find the first {...} block via regex and parse it
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        candidate = match.group(0)
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+        # 4. Last resort — ast.literal_eval handles single-quoted Python dicts
+        try:
+            result = ast.literal_eval(candidate)
+            if isinstance(result, dict):
+                return result
+        except Exception:
+            pass
+
+    raise ValueError(f"Could not extract JSON from LLM response: {text[:200]}")
 
 
 async def decompose(rubric_text: str) -> list[Criterion]:
@@ -51,14 +100,8 @@ async def decompose(rubric_text: str) -> list[Criterion]:
             temperature=0.0
         )
 
-        raw = resp.text.strip()
-        # Strip markdown code fences that some models wrap JSON in
-        if raw.startswith("```"):
-            raw = raw.split("```", 2)[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.rsplit("```", 1)[0].strip()
-        data: dict[str, Any] = json.loads(raw)
+        data: dict[str, Any] = _extract_json(resp.text)
+        logger.info("Rubric decomposed successfully into %d criteria", len(data.get("criteria", [])))
         criteria_list = data.get("criteria", [])
         
         result: list[Criterion] = []

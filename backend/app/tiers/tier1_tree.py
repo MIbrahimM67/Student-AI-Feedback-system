@@ -18,6 +18,7 @@ from app.services.llm_provider import build_llm_from_env, ChatMessage
 from app.grading.types import Tier, DocumentPayload, Criterion, GradingResult, PageImage
 from app.grading.grader import grade
 from app.grading import config
+from app.grading.rubric import _extract_json
 
 logger = logging.getLogger(__name__)
 
@@ -115,13 +116,7 @@ async def navigate(index: list[TreeIndexItem], criterion: Criterion) -> list[int
             temperature=0.0
         )
         
-        raw = resp.text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```", 2)[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.rsplit("```", 1)[0].strip()
-        data = json.loads(raw)
+        data = _extract_json(resp.text)
         selected_idx = data.get("selected_index")
         
         if selected_idx is not None and 0 <= selected_idx < len(index):

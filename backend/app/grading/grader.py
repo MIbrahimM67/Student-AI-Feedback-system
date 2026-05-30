@@ -15,6 +15,7 @@ from typing import Any
 from app.services.llm_provider import build_llm_from_env
 from app.grading.types import Tier, DocumentPayload, PageImage, Criterion, GradingResult
 from app.grading import config
+from app.grading.rubric import _extract_json
 
 logger = logging.getLogger(__name__)
 
@@ -125,13 +126,7 @@ async def grade(
             temperature=0.2
         )
 
-        raw = resp.text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```", 2)[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.rsplit("```", 1)[0].strip()
-        data: dict[str, Any] = json.loads(raw)
+        data: dict[str, Any] = _extract_json(resp.text)
         per_criterion = data.get("per_criterion", {})
         feedback = data.get("feedback", "No feedback provided.")
         
