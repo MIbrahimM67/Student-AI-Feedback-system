@@ -363,8 +363,8 @@ async def single_upload(
     now = datetime.now(timezone.utc)
     
     content = await file.read()
-    if len(content) > settings.STUDENT_FILE_MAX_MB * 1024 * 1024:
-        raise HTTPException(413, f"File exceeds {settings.STUDENT_FILE_MAX_MB}MB limit.")
+    if len(content) > settings.STUDENT_MAX_FILE_MB * 1024 * 1024:
+        raise HTTPException(413, f"File exceeds {settings.STUDENT_MAX_FILE_MB}MB limit.")
         
     blob_name = f"submissions/{org_id}/{assignment_id}/{sub_id}_{file.filename}"
     try:
@@ -377,10 +377,10 @@ async def single_upload(
         await conn.execute(
             """
             INSERT INTO submissions 
-              (id, org_id, assignment_id, type, stdin_text, file_url, status, student_name, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, 'uploaded', $7, $8)
+              (id, org_id, assignment_id, subject_id, type, mode, stdin_text, file_url, file_name, status, student_name, created_at)
+            VALUES ($1, $2, $3, $4, $5, 'single', $6, $7, $8, 'uploaded', $9, $10)
             """,
-            sub_id, org_id, assignment_id, type, stdin_text, file_url, student_name, now,
+            sub_id, org_id, assignment_id, subject_id, type, stdin_text, file_url, file.filename, student_name, now,
         )
         
     # Queue single processing directly
