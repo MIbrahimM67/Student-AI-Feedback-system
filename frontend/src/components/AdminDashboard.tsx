@@ -3,9 +3,11 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/api";
-import { 
-  Shield, Check, X, ShieldAlert, FileWarning, 
-  History, Users, Sparkles, Loader2, RefreshCw 
+import {
+  Shield, Check, X, ShieldAlert,
+  History, Users, Loader2, RefreshCw,
+  GraduationCap, Landmark, UserCircle2, AlertTriangle,
+  BadgeCheck, Clock, ExternalLink,
 } from "lucide-react";
 
 interface FacultyApplication {
@@ -18,196 +20,265 @@ interface FacultyApplication {
   officialEmail: string;
   proofFileUrl: string;
   status: string;
+  createdAt: string;
 }
 
 interface WarningAlert {
   id: string;
   userId: string;
-  submissionId: string;
+  submissionId: string | null;
   reason: string;
   severity: string;
   status: string;
   createdAt: string;
 }
 
+interface UserRow {
+  uid: string;
+  email: string;
+  displayName: string;
+  role: string;
+  facultyStatus: string;
+  proStatus: string;
+  warningCount: number;
+  createdAt: string;
+}
+
+interface AuditLog {
+  id: string;
+  actorId: string;
+  action: string;
+  target: string;
+  timestamp: string;
+  details: string;
+}
+
+const SEVERITY_BADGE: Record<string, string> = {
+  low: "bg-yellow-50 text-yellow-700 border-yellow-200",
+  medium: "bg-orange-50 text-orange-700 border-orange-200",
+  high: "bg-red-50 text-red-700 border-red-200",
+};
+
+const ROLE_BADGE: Record<string, string> = {
+  admin: "bg-rose-50 text-rose-700 border-rose-200",
+  instructor: "bg-green-50 text-green-700 border-green-200",
+  student: "bg-blue-50 text-blue-700 border-blue-200",
+};
+
 export const AdminDashboard: React.FC = () => {
   const { user } = useAuth();
-  
-  // Dashboard Metrics & Data Lists State
+
   const [apps, setApps] = useState<FacultyApplication[]>([]);
   const [warnings, setWarnings] = useState<WarningAlert[]>([]);
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
-  
-  // General status flags
-  const [loading, setLoading] = useState<boolean>(false);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [users, setUsers] = useState<UserRow[]>([]);
+
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const fetchAdminData = async () => {
     setLoading(true);
     setError(null);
-    try {
-      const [appsRes, warningsRes] = await Promise.all([
-        api.get("/api/admin/faculty-applications"),
-        api.get("/api/admin/warnings"),
-      ]);
-      setApps(Array.isArray(appsRes.data) ? appsRes.data : []);
-      setWarnings(Array.isArray(warningsRes.data) ? warningsRes.data : []);
-    } catch (err: any) {
-      console.error("Failed to fetch admin data:", err);
-      setError(err.message || "Failed to load admin data.");
-    } finally {
-      setLoading(false);
+
+    const [appsRes, warningsRes, auditRes, usersRes] = await Promise.allSettled([
+      api.get("/api/admin/faculty-applications"),
+      api.get("/api/admin/warnings"),
+      api.get("/api/admin/audit-logs"),
+      api.get("/api/admin/users"),
+    ]);
+
+    if (appsRes.status === "fulfilled") {
+      setApps(Array.isArray(appsRes.value.data) ? appsRes.value.data : []);
+    } else {
+      console.error("Failed to load faculty applications:", appsRes.reason);
+      setError("Failed to connect to the server. Ensure the backend is running and you have admin privileges.");
     }
+
+    if (warningsRes.status === "fulfilled") {
+      setWarnings(Array.isArray(warningsRes.value.data) ? warningsRes.value.data : []);
+    } else {
+      console.error("Failed to load warnings:", warningsRes.reason);
+    }
+
+    if (auditRes.status === "fulfilled") {
+      setAuditLogs(Array.isArray(auditRes.value.data) ? auditRes.value.data : []);
+    } else {
+      console.error("Failed to load audit logs:", auditRes.reason);
+    }
+
+    if (usersRes.status === "fulfilled") {
+      setUsers(Array.isArray(usersRes.value.data) ? usersRes.value.data : []);
+    } else {
+      console.error("Failed to load users:", usersRes.reason);
+    }
+
+    setLoading(false);
   };
 
   useEffect(() => {
     fetchAdminData();
   }, [user]);
 
-  // Approve faculty application
   const handleApproveApp = async (id: string) => {
-    setLoading(true);
-    setError(null);
     try {
       await api.post(`/api/admin/faculty-applications/${id}/approve`);
-      setSuccessMsg("Faculty verification granted and privileges updated.");
+      setSuccessMsg("Faculty verification granted. User upgraded to Instructor.");
+      setTimeout(() => setSuccessMsg(null), 4000);
       fetchAdminData();
     } catch (err: any) {
-      setError(err.message || "Failed to approve application.");
-    } finally {
-      setLoading(false);
+      setError(err.response?.data?.detail || err.message || "Failed to approve application.");
     }
   };
 
-  // Reject faculty application
   const handleRejectApp = async (id: string) => {
-    const reason = prompt("Please provide a reason for rejecting this application:") || "";
-    if (!reason.trim()) return;
-    setLoading(true);
-    setError(null);
+    const reason = prompt("Reason for rejection (shown to applicant):");
+    if (!reason?.trim()) return;
     try {
       await api.post(`/api/admin/faculty-applications/${id}/reject`, { reason });
-      setSuccessMsg("Faculty verification application rejected.");
+      setSuccessMsg("Application rejected.");
+      setTimeout(() => setSuccessMsg(null), 4000);
       fetchAdminData();
     } catch (err: any) {
-      setError(err.message || "Failed to reject application.");
-    } finally {
-      setLoading(false);
+      setError(err.response?.data?.detail || err.message || "Failed to reject application.");
     }
   };
 
-  // Dismiss user warning alert
   const handleDismissWarning = async (id: string) => {
-    setLoading(true);
-    setError(null);
     try {
       await api.post(`/api/admin/warnings/${id}/dismiss`);
-      setSuccessMsg("Warning dismissed. Counter levels reset in profiles.");
+      setSuccessMsg("Warning dismissed and user counter decremented.");
+      setTimeout(() => setSuccessMsg(null), 4000);
       fetchAdminData();
     } catch (err: any) {
-      setError(err.message || "Failed to dismiss warning alert.");
-    } finally {
-      setLoading(false);
+      setError(err.response?.data?.detail || err.message || "Failed to dismiss warning.");
     }
   };
 
   return (
-    <div className="max-w-6xl w-full mx-auto px-4 py-8 space-y-10 animate-fade-in-up">
-      
-      {/* Header Panel */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-800">
+    <div className="flex-1 p-6 overflow-y-auto space-y-6">
+
+      {/* Header */}
+      <div className="flex items-center justify-between pb-4 border-b border-[#eae7e1]">
         <div>
-          <h2 className="text-3xl font-black text-slate-850 dark:text-slate-100 flex items-center gap-2">
-            <Shield className="w-7 h-7 text-indigo-500 animate-float" />
+          <h2 className="text-base font-bold text-[#1c1c18] font-display flex items-center gap-2">
+            <Shield className="w-4 h-4 text-red-600" />
             Administrative Control Panel
           </h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
-            Oversee faculty status upgrades, clear student compliance warnings, and audit security events.
+          <p className="text-xs text-[#8e8b80] mt-0.5">
+            Oversee faculty status upgrades, clear compliance warnings, and audit security events.
           </p>
         </div>
-
         <button
           onClick={fetchAdminData}
           disabled={loading}
-          className="inline-flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-350 text-xs font-bold hover:bg-slate-50 active:scale-95 transition-all"
+          className="flex items-center gap-1.5 text-[10px] font-bold text-[#5e5c54] hover:text-[#1c1c18] border border-[#dfdbd3] py-1.5 px-3 rounded-lg cursor-pointer transition-colors"
         >
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          Refresh Registry
+          <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
+          Refresh
         </button>
       </div>
 
+      {/* Banners */}
       {error && (
-        <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-150 dark:border-rose-900/50 text-rose-600 dark:text-rose-450 text-xs font-semibold">
-          {error}
+        <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200">
+          <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+          <p className="text-xs text-red-700">{error}</p>
         </div>
       )}
       {successMsg && (
-        <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-150 dark:border-emerald-900/50 text-emerald-600 dark:text-emerald-400 text-xs font-semibold">
-          {successMsg}
+        <div className="flex items-start gap-2 p-3 rounded-xl bg-green-50 border border-green-200">
+          <BadgeCheck className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+          <p className="text-xs text-green-700">{successMsg}</p>
         </div>
       )}
 
-      {/* Row 1: Faculty Verifications Applications */}
-      <div className="glass-panel dark:bg-slate-900/60 p-8 rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-lg space-y-6">
-        <h3 className="text-lg font-black text-slate-850 dark:text-slate-100 flex items-center gap-2">
-          <Users className="w-5 h-5 text-indigo-500" />
+      {loading && (
+        <div className="flex items-center gap-2 text-xs text-[#8e8b80] py-4">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Loading admin data...
+        </div>
+      )}
+
+      {/* ---- Stats Row ---- */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          { label: "Total Users", value: users.length, icon: <Users className="w-4 h-4" />, color: "text-blue-700 bg-blue-50 border-blue-200" },
+          { label: "Pending Applications", value: apps.length, icon: <Clock className="w-4 h-4" />, color: "text-amber-700 bg-amber-50 border-amber-200" },
+          { label: "Active Warnings", value: warnings.length, icon: <ShieldAlert className="w-4 h-4" />, color: "text-red-700 bg-red-50 border-red-200" },
+          { label: "Audit Events", value: auditLogs.length, icon: <History className="w-4 h-4" />, color: "text-green-700 bg-green-50 border-green-200" },
+        ].map((stat) => (
+          <div key={stat.label} className={`dev-card p-4 border rounded-xl flex items-center gap-3 ${stat.color}`}>
+            {stat.icon}
+            <div>
+              <p className="text-xl font-black">{stat.value}</p>
+              <p className="text-[10px] font-semibold opacity-80">{stat.label}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ---- Pending Faculty Verifications ---- */}
+      <div className="dev-card p-5 space-y-4">
+        <h3 className="text-sm font-bold text-[#1c1c18] flex items-center gap-2">
+          <Landmark className="w-4 h-4 text-amber-600" />
           Pending Faculty Verifications
+          {apps.length > 0 && (
+            <span className="ml-1 text-[9px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
+              {apps.length}
+            </span>
+          )}
         </h3>
 
         {apps.length === 0 ? (
-          <p className="text-xs text-slate-450 italic py-4">No pending faculty registration applications found.</p>
+          <p className="text-xs text-[#8e8b80] italic py-3 text-center">No pending faculty registration applications.</p>
         ) : (
-          <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-2xl">
-            <table className="w-full border-collapse text-left text-xs">
+          <div className="overflow-x-auto rounded-xl border border-[#eae7e1]">
+            <table className="w-full text-xs text-left">
               <thead>
-                <tr className="bg-slate-50 dark:bg-slate-950 font-extrabold text-slate-500 border-b border-slate-200 dark:border-slate-800">
-                  <th className="py-3 px-4">Instructor</th>
-                  <th className="py-3 px-4">University</th>
+                <tr className="bg-[#f5f3ef] border-b border-[#eae7e1] text-[#5e5c54] font-bold text-[10px] uppercase tracking-wider">
+                  <th className="py-3 px-4">Name</th>
+                  <th className="py-3 px-4">University / Dept</th>
                   <th className="py-3 px-4">Designation</th>
-                  <th className="py-3 px-4">Institution Email</th>
-                  <th className="py-3 px-4">Proof Document</th>
+                  <th className="py-3 px-4">Official Email</th>
+                  <th className="py-3 px-4">Proof</th>
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+              <tbody className="divide-y divide-[#eae7e1]">
                 {apps.map((app) => (
-                  <tr key={app.id} className="hover:bg-slate-50/40 dark:hover:bg-slate-900/20 font-medium">
-                    <td className="py-4 px-4 font-bold text-slate-700 dark:text-slate-200">{app.fullName}</td>
-                    <td className="py-4 px-4 text-slate-500">{app.university} ({app.department})</td>
-                    <td className="py-4 px-4 text-slate-500">{app.designation}</td>
-                    <td className="py-4 px-4 font-semibold text-indigo-600 dark:text-indigo-400">{app.officialEmail}</td>
-                    <td className="py-4 px-4">
-                      <a 
-                        href={app.proofFileUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-xs text-indigo-500 font-extrabold hover:underline"
-                      >
-                        Open File
-                      </a>
-                    </td>
-                    <td className="py-4 px-4 text-right">
-                      {app.status === "pending" ? (
-                        <div className="inline-flex items-center gap-2 justify-end">
-                          <button
-                            onClick={() => handleApproveApp(app.id)}
-                            className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 border border-emerald-150 hover:bg-emerald-100 dark:hover:bg-emerald-900 active:scale-95 transition-all cursor-pointer"
-                            title="Approve verification"
-                          >
-                            <Check className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleRejectApp(app.id)}
-                            className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-450 border border-rose-150 hover:bg-rose-100 dark:hover:bg-rose-900 active:scale-95 transition-all cursor-pointer"
-                            title="Reject verification"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
+                  <tr key={app.id} className="hover:bg-[#f9f8f5] transition-colors">
+                    <td className="py-3 px-4 font-bold text-[#1c1c18]">{app.fullName}</td>
+                    <td className="py-3 px-4 text-[#5e5c54]">{app.university}{app.department ? ` · ${app.department}` : ""}</td>
+                    <td className="py-3 px-4 text-[#5e5c54]">{app.designation || "—"}</td>
+                    <td className="py-3 px-4 text-blue-700 font-semibold">{app.officialEmail}</td>
+                    <td className="py-3 px-4">
+                      {app.proofFileUrl ? (
+                        <a href={app.proofFileUrl} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:underline">
+                          <ExternalLink className="w-3 h-3" /> View
+                        </a>
                       ) : (
-                        <span className="text-[10px] font-extrabold text-slate-400 uppercase">{app.status}</span>
+                        <span className="text-[#8e8b80] text-[10px]">None</span>
                       )}
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <div className="inline-flex items-center gap-2">
+                        <button
+                          onClick={() => handleApproveApp(app.id)}
+                          className="flex items-center gap-1 py-1 px-2.5 rounded-lg bg-green-50 text-green-700 border border-green-200 text-[10px] font-bold hover:bg-green-100 transition-colors cursor-pointer"
+                          title="Approve"
+                        >
+                          <Check className="w-3 h-3" /> Approve
+                        </button>
+                        <button
+                          onClick={() => handleRejectApp(app.id)}
+                          className="flex items-center gap-1 py-1 px-2.5 rounded-lg bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold hover:bg-red-100 transition-colors cursor-pointer"
+                          title="Reject"
+                        >
+                          <X className="w-3 h-3" /> Reject
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -217,41 +288,100 @@ export const AdminDashboard: React.FC = () => {
         )}
       </div>
 
-      {/* Row 2: Policy Warnings List & Audit Logger */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        
-        {/* Active compliance warnings alerts */}
-        <div className="lg:col-span-7 glass-panel dark:bg-slate-900/60 p-8 rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-lg space-y-6">
-          <h3 className="text-lg font-black text-slate-850 dark:text-slate-100 flex items-center gap-2">
-            <ShieldAlert className="w-5 h-5 text-rose-500" />
+      {/* ---- Users Registry ---- */}
+      <div className="dev-card p-5 space-y-4">
+        <h3 className="text-sm font-bold text-[#1c1c18] flex items-center gap-2">
+          <UserCircle2 className="w-4 h-4 text-blue-600" />
+          User Registry
+          <span className="ml-1 text-[9px] font-black px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+            {users.length}
+          </span>
+        </h3>
+
+        {users.length === 0 ? (
+          <p className="text-xs text-[#8e8b80] italic py-3 text-center">No users registered yet.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-[#eae7e1]">
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="bg-[#f5f3ef] border-b border-[#eae7e1] text-[#5e5c54] font-bold text-[10px] uppercase tracking-wider">
+                  <th className="py-3 px-4">User</th>
+                  <th className="py-3 px-4">Role</th>
+                  <th className="py-3 px-4">Faculty Status</th>
+                  <th className="py-3 px-4">Warnings</th>
+                  <th className="py-3 px-4">Joined</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#eae7e1]">
+                {users.map((u) => (
+                  <tr key={u.uid} className="hover:bg-[#f9f8f5] transition-colors">
+                    <td className="py-3 px-4">
+                      <p className="font-bold text-[#1c1c18]">{u.displayName || "—"}</p>
+                      <p className="text-[10px] text-[#8e8b80] font-mono">{u.email}</p>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${ROLE_BADGE[u.role] || "bg-gray-50 text-gray-600 border-gray-200"}`}>
+                        {u.role}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      {u.facultyStatus !== "none" ? (
+                        <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200">
+                          {u.facultyStatus}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-[#8e8b80]">—</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4">
+                      {u.warningCount > 0 ? (
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
+                          {u.warningCount}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-[#8e8b80]">0</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-[10px] text-[#8e8b80] font-mono">
+                      {new Date(u.createdAt).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ---- Bottom Row: Warnings + Audit ---- */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+        {/* Compliance Warnings */}
+        <div className="dev-card p-5 space-y-3">
+          <h3 className="text-sm font-bold text-[#1c1c18] flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-red-500" />
             Academic Compliance Warnings
           </h3>
-
           {warnings.length === 0 ? (
-            <p className="text-xs text-slate-450 italic py-4">No active compliance warnings flagged.</p>
+            <p className="text-xs text-[#8e8b80] italic py-3 text-center">No active compliance warnings.</p>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
               {warnings.map((warn) => (
-                <div key={warn.id} className="p-4 rounded-2xl border border-rose-100 dark:border-rose-900/30 bg-rose-50/10 dark:bg-rose-950/10 space-y-3">
+                <div key={warn.id} className="p-3 rounded-xl border border-[#eae7e1] bg-[#fafaf8] space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="py-1 px-2.5 rounded-lg bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 border border-rose-150 font-bold text-[9px] uppercase tracking-wider">
-                      Severity: {warn.severity}
+                    <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${SEVERITY_BADGE[warn.severity] || "bg-gray-50 text-gray-600 border-gray-200"}`}>
+                      {warn.severity}
                     </span>
-                    <span className="text-[10px] text-slate-450 font-medium">{new Date(warn.createdAt).toLocaleString()}</span>
+                    <span className="text-[10px] text-[#8e8b80]">{new Date(warn.createdAt).toLocaleString()}</span>
                   </div>
-
-                  <p className="text-xs text-slate-700 dark:text-slate-350 leading-relaxed font-semibold">
-                    {warn.reason}
-                  </p>
-
-                  <div className="flex items-center justify-between pt-2 border-t border-rose-100 dark:border-rose-900/20">
-                    <span className="text-[10px] text-slate-400 font-bold">User: {warn.userId}</span>
+                  <p className="text-xs text-[#1c1c18] leading-relaxed">{warn.reason}</p>
+                  <div className="flex items-center justify-between pt-1 border-t border-[#eae7e1]">
+                    <span className="text-[9px] text-[#8e8b80] font-mono">User: {warn.userId.slice(0, 12)}…</span>
                     <button
                       onClick={() => handleDismissWarning(warn.id)}
-                      className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+                      className="flex items-center gap-1 text-[10px] font-bold text-green-700 hover:text-green-800 cursor-pointer"
                     >
-                      <Check className="w-3.5 h-3.5" />
-                      Dismiss Alert & Reset Count
+                      <Check className="w-3 h-3" /> Dismiss
                     </button>
                   </div>
                 </div>
@@ -260,31 +390,31 @@ export const AdminDashboard: React.FC = () => {
           )}
         </div>
 
-        {/* System audit log feed */}
-        <div className="lg:col-span-5 glass-panel dark:bg-slate-900/60 p-8 rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-lg space-y-6">
-          <h3 className="text-lg font-black text-slate-850 dark:text-slate-100 flex items-center gap-2">
-            <History className="w-5 h-5 text-indigo-500" />
+        {/* Security Audit Logger */}
+        <div className="dev-card p-5 space-y-3">
+          <h3 className="text-sm font-bold text-[#1c1c18] flex items-center gap-2">
+            <History className="w-4 h-4 text-indigo-500" />
             Security Audit Logger
           </h3>
-
-          <div className="space-y-4 max-h-[350px] overflow-y-auto pr-1">
-            {auditLogs.map((log) => (
-              <div key={log.id} className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-xl space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 tracking-wider">{log.action}</span>
-                  <span className="text-[9px] text-slate-400">{new Date(log.timestamp).toLocaleTimeString()}</span>
+          {auditLogs.length === 0 ? (
+            <p className="text-xs text-[#8e8b80] italic py-3 text-center">No audit events recorded yet.</p>
+          ) : (
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              {auditLogs.map((log) => (
+                <div key={log.id} className="p-3 rounded-xl bg-[#f5f3ef] border border-[#eae7e1] space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-indigo-700 uppercase tracking-wider">{log.action}</span>
+                    <span className="text-[9px] text-[#8e8b80]">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                  </div>
+                  <p className="text-[10px] text-[#5e5c54] italic">{log.details}</p>
+                  <p className="text-[9px] text-[#8e8b80] font-mono">Actor: {log.actorId.slice(0, 12)}…</p>
                 </div>
-                <p className="text-[10px] text-slate-600 dark:text-slate-350 leading-relaxed italic">
-                  "{log.details}"
-                </p>
-                <div className="text-[9px] text-slate-450">Actor: {log.actorId}</div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
       </div>
-
     </div>
   );
 };

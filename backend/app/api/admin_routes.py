@@ -58,9 +58,24 @@ async def _get_admin(uid: str = Depends(_get_verified_uid)) -> dict:
 async def list_faculty_applications(admin: dict = Depends(_get_admin)):
     async with get_conn(str(admin["org_id"])) as conn:
         rows = await conn.fetch(
-            "SELECT * FROM faculty_applications ORDER BY created_at DESC LIMIT 200"
+            "SELECT * FROM faculty_applications WHERE status = 'pending' ORDER BY created_at DESC LIMIT 200"
         )
-    return [dict(r) for r in rows]
+    # Return camelCase to match the frontend AdminDashboard interface
+    result = []
+    for r in rows:
+        result.append({
+            "id": str(r["id"]),
+            "userId": r["user_id"],
+            "fullName": r["full_name"],
+            "university": r["university"] or "",
+            "department": r["department"] or "",
+            "designation": r["designation"] or "",
+            "officialEmail": r["official_email"] or "",
+            "proofFileUrl": r["proof_file_url"] or "",
+            "status": r["status"],
+            "createdAt": r["created_at"].isoformat(),
+        })
+    return result
 
 
 class RejectionPayload(BaseModel):
@@ -182,9 +197,62 @@ async def revoke_pro(target_uid: str, admin: dict = Depends(_get_admin)):
 async def list_warnings(admin: dict = Depends(_get_admin)):
     async with get_conn(str(admin["org_id"])) as conn:
         rows = await conn.fetch(
-            "SELECT * FROM warnings WHERE status = 'active' ORDER BY created_at DESC"
+            "SELECT * FROM warnings WHERE status = 'active' ORDER BY created_at DESC LIMIT 100"
         )
-    return [dict(r) for r in rows]
+    result = []
+    for r in rows:
+        result.append({
+            "id": str(r["id"]),
+            "userId": r["user_id"],
+            "submissionId": str(r["submission_id"]) if r["submission_id"] else None,
+            "reason": r["reason"],
+            "severity": r["severity"],
+            "status": r["status"],
+            "createdAt": r["created_at"].isoformat(),
+        })
+    return result
+
+
+@router.get("/audit-logs")
+async def list_audit_logs(admin: dict = Depends(_get_admin), limit: int = 50):
+    async with get_conn(str(admin["org_id"])) as conn:
+        rows = await conn.fetch(
+            "SELECT * FROM audit_logs WHERE org_id = $1 ORDER BY created_at DESC LIMIT $2",
+            admin["org_id"], limit
+        )
+    result = []
+    for r in rows:
+        result.append({
+            "id": str(r["id"]),
+            "actorId": r["actor_uid"] or "",
+            "action": r["action"],
+            "target": r["target"] or "",
+            "timestamp": r["created_at"].isoformat(),
+            "details": f"Action '{r['action']}' performed on {r['target'] or 'system'}",
+        })
+    return result
+
+
+@router.get("/users")
+async def list_users(admin: dict = Depends(_get_admin)):
+    async with get_conn(str(admin["org_id"])) as conn:
+        rows = await conn.fetch(
+            "SELECT uid, email, display_name, role, faculty_status, pro_status, warning_count, created_at FROM users WHERE org_id = $1 ORDER BY created_at DESC",
+            admin["org_id"]
+        )
+    result = []
+    for r in rows:
+        result.append({
+            "uid": r["uid"],
+            "email": r["email"],
+            "displayName": r["display_name"] or "",
+            "role": r["role"],
+            "facultyStatus": r["faculty_status"],
+            "proStatus": r["pro_status"],
+            "warningCount": r["warning_count"],
+            "createdAt": r["created_at"].isoformat(),
+        })
+    return result
 
 
 @router.post("/warnings/{warning_id}/dismiss")
