@@ -365,7 +365,8 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
         "reference_sections_used": report.reference_sections_used,
         "latency_ms": report.latency_ms,
         "est_cost_usd": report.est_cost_usd,
-        "code_execution_result": code_execution_result  # Keep this for the UI
+        "code_execution_result": code_execution_result,
+        "sandbox_logs": code_execution_result
     }
     
     # The new pipeline doesn't output confidence (which was mostly fake anyway) or status directly.

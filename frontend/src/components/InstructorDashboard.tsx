@@ -9,7 +9,7 @@ import {
   FileSpreadsheet, FileArchive, Upload, Table as TableIcon, 
   CheckCircle2, BadgeCheck, Loader2, Play, Plus, RefreshCw, 
   ClipboardList, HelpCircle, BookOpen, Layers, ArrowLeft,
-  FileText, Settings
+  FileText, Settings, Terminal
 } from "lucide-react";
 import { BatchUploadTutorialModal } from "./BatchUploadTutorialModal";
 
@@ -1137,6 +1137,42 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                                                   Number(score) >= 4 ? 'bg-emerald-50 text-emerald-600' :
                                                   'bg-amber-50 text-amber-600'
                                                 }`}>{score} pts</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {/* Sandbox Logs */}
+                                      {detail.ai_payload?.sandbox_logs && detail.ai_payload.sandbox_logs.length > 0 && (
+                                        <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 font-mono">
+                                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                            <Terminal className="w-3 h-3" /> Sandbox Execution Logs
+                                          </div>
+                                          <div className="space-y-3">
+                                            {detail.ai_payload.sandbox_logs.map((log: any, i: number) => (
+                                              <div key={i} className="text-[10px] space-y-1">
+                                                <div className="flex items-center gap-2 text-indigo-400">
+                                                  <span className="font-bold">Test Case {i+1}</span>
+                                                  {log.passed ? (
+                                                    <span className="text-emerald-400">✓ Passed</span>
+                                                  ) : (
+                                                    <span className="text-rose-400">✗ Failed</span>
+                                                  )}
+                                                </div>
+                                                <div className="text-slate-300">
+                                                  <span className="text-slate-500">Input:</span> {log.input}
+                                                </div>
+                                                <div className="text-slate-300">
+                                                  <span className="text-slate-500">Expected:</span> {log.expected_output}
+                                                </div>
+                                                <div className="text-slate-300">
+                                                  <span className="text-slate-500">Actual:</span> {log.actual_output}
+                                                </div>
+                                                {log.error && (
+                                                  <div className="text-rose-400 break-words mt-1 bg-rose-500/10 p-2 rounded">
+                                                    {log.error}
+                                                  </div>
+                                                )}
                                               </div>
                                             ))}
                                           </div>

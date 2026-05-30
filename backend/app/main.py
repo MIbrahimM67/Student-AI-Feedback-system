@@ -82,7 +82,8 @@ async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled Exception: {error_details}")
     return JSONResponse(
         status_code=500,
-        content={"message": str(exc), "details": error_details}
+        content={"message": str(exc), "details": error_details},
+        headers={"Access-Control-Allow-Origin": "*"}
     )
 
 
