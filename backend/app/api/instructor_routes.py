@@ -725,10 +725,13 @@ async def export_batch_excel(batch_id: str, user: dict = Depends(_get_instructor
             raise HTTPException(404, "Batch not found.")
             
         reports = await conn.fetch("""
-            SELECT s.student_name, s.file_name, fr.final_overall_score, fr.final_max_score, fr.final_status
+            SELECT s.student_name, s.file_name, 
+                   COALESCE(fr.final_overall_score, fr.ai_overall_score) as score, 
+                   COALESCE(fr.final_max_score, fr.ai_max_score) as max_score, 
+                   COALESCE(fr.final_status, fr.ai_status) as status
             FROM feedback_reports fr
             JOIN submissions s ON s.id = fr.submission_id
-            WHERE fr.batch_id = $1 AND fr.published_at IS NOT NULL
+            WHERE fr.batch_id = $1
         """, batch_id)
 
     wb = openpyxl.Workbook()
@@ -737,13 +740,15 @@ async def export_batch_excel(batch_id: str, user: dict = Depends(_get_instructor
     ws.append(["Student Name", "File Name", "Final Score", "Max Score", "Status", "Percentage"])
     
     for r in reports:
-        pct = (r["final_overall_score"] / r["final_max_score"]) if r["final_max_score"] else 0
+        score = r["score"] or 0
+        max_score = r["max_score"] or 0
+        pct = (score / max_score) if max_score else 0
         ws.append([
             r["student_name"], 
             r["file_name"], 
-            r["final_overall_score"], 
-            r["final_max_score"], 
-            r["final_status"],
+            score, 
+            max_score, 
+            r["status"],
             f"{pct*100:.1f}%"
         ])
 
@@ -771,10 +776,12 @@ async def export_batch_zip(batch_id: str, user: dict = Depends(_get_instructor))
             raise HTTPException(404, "Batch not found.")
             
         reports = await conn.fetch("""
-            SELECT s.student_name, fr.final_overall_score, fr.final_payload
+            SELECT s.student_name, s.file_name,
+                   COALESCE(fr.final_overall_score, fr.ai_overall_score) as score,
+                   COALESCE(fr.final_payload, fr.ai_payload) as payload
             FROM feedback_reports fr
             JOIN submissions s ON s.id = fr.submission_id
-            WHERE fr.batch_id = $1 AND fr.published_at IS NOT NULL
+            WHERE fr.batch_id = $1
         """, batch_id)
 
     zip_stream = io.BytesIO()
@@ -782,17 +789,27 @@ async def export_batch_zip(batch_id: str, user: dict = Depends(_get_instructor))
         for r in reports:
             # For MVP, we generate text-based summaries instead of heavy PDF rendering
             student_name = r["student_name"].replace(" ", "_")
-            content = f"Feedback Report for {r['student_name']}\n"
-            content += f"Final Score: {r['final_overall_score']}\n\n"
+            payload = dict(r["payload"]) if r["payload"] else {}
+        
+            # Build text summary
+            summary = f"Student: {r['student_name']}\nFile: {r['file_name']}\n"
+            summary += f"Final Score: {r['score'] or 0}\n\n"
+        
+            # Add feedback if available
+            if "feedback" in payload:
+                summary += f"Feedback:\n{payload['feedback']}\n\n"
             
-            payload = r["final_payload"] or {}
-            rubrics = payload.get("rubricScores", [])
-            for rub in rubrics:
-                content += f"Criterion: {rub.get('criterionId', 'Unknown')}\n"
-                content += f"Score: {rub.get('score', 0)}/{rub.get('maxScore', 0)}\n"
-                content += f"Feedback: {rub.get('feedback', '')}\n\n"
+            # Add criteria breakdown if available
+            if "per_criterion" in payload:
+                summary += "Criteria Breakdown:\n"
+                for crit, score in payload["per_criterion"].items():
+                    summary += f"- {crit}: {score} pts\n"
                 
-            zf.writestr(f"{student_name}_feedback.txt", content)
+            # Add fallback info if nothing else is present
+            if not summary.strip() or ("feedback" not in payload and "per_criterion" not in payload):
+                 summary += f"Detailed feedback payload:\n{json.dumps(payload, indent=2)}"
+                
+            zf.writestr(f"{student_name}_feedback.txt", summary)
 
     zip_stream.seek(0)
     return StreamingResponse(

@@ -1050,13 +1050,12 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                      </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                     {batchReports.map((report) => {
+                      {batchReports.map((report) => {
                         const isExpanded = expandedReportId === report.report_id;
                         const detail = reportDetails[report.report_id];
                         return (
-                          <>
+                          <React.Fragment key={report.submission_id}>
                             <tr
-                              key={report.submission_id}
                               className="hover:bg-slate-50 transition-colors cursor-pointer"
                               onClick={() => {
                                 if (isExpanded) { setExpandedReportId(null); }
