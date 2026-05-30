@@ -4,14 +4,14 @@ import tempfile
 import time
 import logging
 from typing import Dict, Any, Optional
-from backend.app.config import settings
+from app.config import settings
 
 logger = logging.getLogger("code_sandbox")
 
 class CodeSandboxService:
     def __init__(self):
-        self.timeout = settings.SANDBOX_TIMEOUT
-        self.memory_limit = f"{settings.SANDBOX_MEMORY_LIMIT_MB}m"
+        self.timeout = getattr(settings, "SANDBOX_TIMEOUT_SECONDS", 5)
+        self.memory_limit = f"{getattr(settings, 'SANDBOX_MEMORY_MB', 256)}m"
         self._init_docker()
 
     def _init_docker(self):
@@ -55,7 +55,7 @@ class CodeSandboxService:
         logger.info(f"Initiating execution for {lang} code assignment...")
 
         # If Docker is available, attempt real sandboxed execution
-        if self.has_docker and not settings.USE_MOCKS:
+        if self.has_docker and not getattr(settings, "USE_MOCKS", False):
             try:
                 return await self._run_in_docker(code_text, lang, stdin_text, zip_path)
             except Exception as e:
