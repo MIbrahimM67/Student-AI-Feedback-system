@@ -376,13 +376,39 @@ async def single_upload(
             
     try:
         async with get_conn(org_id) as conn:
+            # Find or create a batch for individual uploads
+            batch_row = await conn.fetchrow(
+                "SELECT id FROM batches WHERE assignment_id = $1 AND batch_name = 'Individual Uploads'",
+                assignment_id
+            )
+            
+            if batch_row:
+                batch_id = str(batch_row["id"])
+            else:
+                batch_id = str(uuid.uuid4())
+                await conn.execute(
+                    """
+                    INSERT INTO batches
+                      (id, org_id, instructor_id, subject_id, assignment_id,
+                       batch_name, plagiarism_enabled, status, total_files, processed_files, created_at)
+                    VALUES ($1,$2,$3,$4,$5,'Individual Uploads',$6,'uploaded',0,0,$7)
+                    """,
+                    batch_id, org_id, uid, subject_id, assignment_id,
+                    plagiarism_enabled, now,
+                )
+
             await conn.execute(
                 """
                 INSERT INTO submissions 
-                  (id, org_id, assignment_id, subject_id, type, mode, stdin_text, file_url, file_name, status, student_name, created_at)
-                VALUES ($1, $2, $3, $4, $5, 'single', $6, $7, $8, 'uploaded', $9, $10)
+                  (id, org_id, assignment_id, subject_id, batch_id, type, mode, stdin_text, file_url, file_name, status, student_name, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6, 'single', $7, $8, $9, 'uploaded', $10, $11)
                 """,
-                sub_id, org_id, assignment_id, subject_id, type, stdin_text, file_url, file.filename, student_name, now,
+                sub_id, org_id, assignment_id, subject_id, batch_id, type, stdin_text, file_url, file.filename, student_name, now,
+            )
+            
+            # Increment the batch total files count
+            await conn.execute(
+                "UPDATE batches SET total_files = total_files + 1 WHERE id = $1", batch_id
             )
     except Exception as e:
         logger.error("DB Insert Failed: %s", e)
