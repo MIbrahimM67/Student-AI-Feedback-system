@@ -637,6 +637,7 @@ async def get_report_detail(
     """
     Fetch the full details of a specific feedback report, including AI payload.
     """
+    import json
     async with get_conn(user["org_id"]) as conn:
         report = await conn.fetchrow(
             "SELECT id, submission_id, batch_id, ai_overall_score, ai_max_score, ai_payload, final_payload FROM feedback_reports WHERE id = $1",
@@ -645,7 +646,13 @@ async def get_report_detail(
         if not report:
             raise HTTPException(404, "Report not found.")
             
-    return dict(report)
+        r_dict = dict(report)
+        if isinstance(r_dict.get("ai_payload"), str):
+            r_dict["ai_payload"] = json.loads(r_dict["ai_payload"])
+        if isinstance(r_dict.get("final_payload"), str):
+            r_dict["final_payload"] = json.loads(r_dict["final_payload"])
+            
+    return r_dict
 
 class ApprovePayload(BaseModel):
     final_payload: Optional[dict] = None   # If None, use AI payload as-is
@@ -662,6 +669,7 @@ async def approve_report(
     Instructor approves (and optionally edits) the AI grade.
     Sets approved_at. Students can see the report only after published_at is set.
     """
+    import json
     now = datetime.now(timezone.utc)
     org_id = user["org_id"]
 
@@ -674,12 +682,21 @@ async def approve_report(
             raise HTTPException(404, "Report not found.")
 
         was_edited = payload.final_payload is not None
-        final_payload = payload.final_payload or existing["ai_payload"]
+        # Parse ai_payload if it's a string from asyncpg
+        ai_payload = existing["ai_payload"]
+        if isinstance(ai_payload, str):
+            ai_payload = json.loads(ai_payload)
+
+        final_payload = payload.final_payload or ai_payload
 
         # Compute final score from final_payload (Python does the math)
-        rubric_scores = final_payload.get("rubricScores", [])
-        final_score = sum(s.get("score", 0) for s in rubric_scores)
-        max_score = sum(s.get("maxScore", 0) for s in rubric_scores)
+        # Note: the new grading payload has "per_criterion" instead of "rubricScores"
+        final_score = 0
+        max_score = existing["ai_max_score"]
+        if "per_criterion" in final_payload:
+             final_score = sum(float(s) for s in final_payload["per_criterion"].values())
+        else:
+             final_score = existing["ai_overall_score"]
 
         await conn.execute(
             """
@@ -691,7 +708,7 @@ async def approve_report(
             WHERE id = $7
             """,
             user["uid"], now,
-            final_payload if was_edited else existing["ai_payload"],
+            json.dumps(final_payload) if isinstance(final_payload, dict) else final_payload,
             final_score, max_score, was_edited,
             report_id,
         )
