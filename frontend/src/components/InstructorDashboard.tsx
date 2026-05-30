@@ -781,6 +781,9 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
 
   // History State
   const [historyBatches, setHistoryBatches] = useState<any[]>([]);
+  const [batchName, setBatchName] = useState("");
+  const [renamingBatchId, setRenamingBatchId] = useState<string|null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   const handleSingleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -829,15 +832,14 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
       fd.append("subject_id", subject.id);
       fd.append("type", fileType);
       fd.append("file", batchFile);
+      if (batchName.trim()) fd.append("batch_name", batchName.trim());
 
       const token = await auth.currentUser?.getIdToken();
       if (!token) throw new Error("Authentication failed");
 
       const res = await fetch(`${API_URL}/api/instructor/batch`, {
         method: "POST",
-        headers: {
-          "Authorization": `Bearer ${token}`
-        },
+        headers: { "Authorization": `Bearer ${token}` },
         body: fd
       });
 
@@ -849,7 +851,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
       const resData = await res.json();
       setBatchId(resData.batch_id);
       setSuccessMsg(resData.message);
-      setBatchFile(null);
+      setBatchFile(null); setBatchName("");
       setStagedStudents([]);
       startPollingProgress(resData.batch_id);
     } catch(err:any) {
@@ -904,6 +906,23 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
     } catch (err: any) {
       console.error(err);
     }
+  };
+
+  const handleRenameBatch = async (batchId: string) => {
+    if (!renameValue.trim()) return;
+    try {
+      await api.patch(`/api/instructor/batch/${batchId}/name`, { batch_name: renameValue.trim() });
+      setHistoryBatches(prev => prev.map(b => b.id === batchId ? { ...b, batch_name: renameValue.trim() } : b));
+      setRenamingBatchId(null); setRenameValue("");
+    } catch (err: any) { setError(err.message || "Rename failed."); }
+  };
+
+  const handleDeleteBatch = async (batchId: string, batchName: string) => {
+    if (!confirm(`Delete batch "${batchName}"? This will permanently remove all grading data.`)) return;
+    try {
+      await api.delete(`/api/instructor/batch/${batchId}`);
+      setHistoryBatches(prev => prev.filter(b => b.id !== batchId));
+    } catch (err: any) { setError(err.message || "Delete failed."); }
   };
 
   const handleApproveReport = async (reportId: string, finalScore: number) => {
@@ -1135,8 +1154,12 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
               </div>
             </div>
           ) : (
-            <form onSubmit={handleStageBatch} className="space-y-6">
+                  <form onSubmit={handleStageBatch} className="space-y-6">
               <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><ClipboardList className="w-5 h-5 text-emerald-500"/> Batch ZIP Upload</h3>
+              <div className="space-y-1.5">
+                 <label className="text-[10px] font-extrabold text-slate-500 uppercase">Batch Name <span className="text-slate-400 font-normal normal-case">(optional)</span></label>
+                 <input type="text" value={batchName} onChange={e=>setBatchName(e.target.value)} className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none focus:border-emerald-500" placeholder='e.g. "Midterm Exam — Batch A"' />
+              </div>
               <div className="space-y-1.5">
                  <label className="text-[10px] font-extrabold text-slate-500 uppercase">Submissions Format</label>
                  <select value={fileType} onChange={e=>setFileType(e.target.value)} className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none">
@@ -1158,7 +1181,6 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
         </div>
       )}
 
-      {/* GRADING HISTORY */}
       {uploadMode === "history" && !reviewingReports && (
         <div className="glass-panel p-8 rounded-3xl border border-slate-200 shadow-sm bg-white space-y-6">
           <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><ClipboardList className="w-5 h-5 text-amber-500"/> Past Grading Batches</h3>
@@ -1168,22 +1190,47 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold sticky top-0">
                   <tr>
+                    <th className="p-4 uppercase tracking-wider">Batch Name</th>
                     <th className="p-4 uppercase tracking-wider">Date</th>
-                    <th className="p-4 uppercase tracking-wider">Batch ID</th>
                     <th className="p-4 uppercase tracking-wider">Progress</th>
                     <th className="p-4 uppercase tracking-wider">Status</th>
-                    <th className="p-4 uppercase tracking-wider text-right">Action</th>
+                    <th className="p-4 uppercase tracking-wider text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {historyBatches.map(hb => {
                     const processed = (hb.processed_files || 0) + (hb.needs_review_count || 0);
                     const isDone = processed >= hb.total_files && hb.total_files > 0;
+                    const displayName = hb.batch_name || `Batch ${hb.id.split("-")[0]}`;
                     
                     return (
                       <tr key={hb.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-4 font-bold text-slate-700">{new Date(hb.created_at).toLocaleDateString()}</td>
-                        <td className="p-4 font-mono text-slate-400 text-[10px]">{hb.id.split("-")[0]}...</td>
+                        <td className="p-4">
+                          {renamingBatchId === hb.id ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={renameValue}
+                                onChange={e => setRenameValue(e.target.value)}
+                                onKeyDown={e => { if(e.key === 'Enter') handleRenameBatch(hb.id); if(e.key === 'Escape') { setRenamingBatchId(null); setRenameValue(""); } }}
+                                autoFocus
+                                className="flex-1 py-1.5 px-2 border border-emerald-300 rounded-lg text-xs font-bold focus:outline-none focus:border-emerald-500 bg-white"
+                              />
+                              <button onClick={() => handleRenameBatch(hb.id)} className="text-emerald-600 font-bold text-xs hover:text-emerald-700">Save</button>
+                              <button onClick={() => { setRenamingBatchId(null); setRenameValue(""); }} className="text-slate-400 font-bold text-xs hover:text-slate-600">✕</button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 group">
+                              <span className="font-bold text-slate-700">{displayName}</span>
+                              <button
+                                onClick={() => { setRenamingBatchId(hb.id); setRenameValue(displayName); }}
+                                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-indigo-500 transition-all text-[10px] font-bold"
+                                title="Rename"
+                              >✎</button>
+                            </div>
+                          )}
+                        </td>
+                        <td className="p-4 text-slate-500">{new Date(hb.created_at).toLocaleDateString()}</td>
                         <td className="p-4">
                           <div className="flex items-center gap-2">
                              <div className="w-24 h-1.5 bg-slate-200 rounded-full overflow-hidden">
@@ -1201,13 +1248,22 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                            </span>
                         </td>
                         <td className="p-4 text-right">
-                           <button 
-                             onClick={() => { setBatchId(hb.id); fetchBatchReports(hb.id); }} 
-                             disabled={!isDone}
-                             className="bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
-                           >
-                             View Reports
-                           </button>
+                          <div className="flex items-center justify-end gap-2">
+                            <button 
+                              onClick={() => { setBatchId(hb.id); fetchBatchReports(hb.id); }} 
+                              disabled={!isDone}
+                              className="bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                            >
+                              View Reports
+                            </button>
+                            <button
+                              onClick={() => handleDeleteBatch(hb.id, displayName)}
+                              className="bg-white border border-rose-200 text-rose-500 hover:bg-rose-50 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                              title="Delete batch"
+                            >
+                              🗑
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );

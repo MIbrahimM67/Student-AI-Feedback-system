@@ -399,6 +399,7 @@ async def single_upload(
 async def upload_batch(
     assignment_id: str = Form(...),
     subject_id: str = Form(...),
+    batch_name: Optional[str] = Form(None),
     plagiarism_enabled: bool = Form(False),
     type: str = Form("text"),
     stdin_text: Optional[str] = Form(None),
@@ -425,10 +426,11 @@ async def upload_batch(
                 """
                 INSERT INTO batches
                   (id, org_id, instructor_id, subject_id, assignment_id,
-                   plagiarism_enabled, status, total_files, processed_files, created_at)
-                VALUES ($1,$2,$3,$4,$5,$6,'uploaded',0,0,$7)
+                   batch_name, plagiarism_enabled, status, total_files, processed_files, created_at)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,'uploaded',0,0,$8)
                 """,
                 batch_id, org_id, uid, subject_id, assignment_id,
+                batch_name or f"Batch {now.strftime('%b %d, %H:%M')}",
                 plagiarism_enabled, now,
             )
 
@@ -566,6 +568,44 @@ async def get_batch(batch_id: str, user: dict = Depends(_get_instructor)):
     if not row:
         raise HTTPException(404, "Batch not found.")
     return dict(row)
+
+
+class RenameBatchPayload(BaseModel):
+    batch_name: str
+
+
+@router.patch("/batch/{batch_id}/name")
+async def rename_batch(
+    batch_id: str,
+    payload: RenameBatchPayload,
+    user: dict = Depends(_get_instructor),
+):
+    """Rename a batch."""
+    async with get_conn(user["org_id"]) as conn:
+        result = await conn.execute(
+            "UPDATE batches SET batch_name = $1 WHERE id = $2 AND instructor_id = $3",
+            payload.batch_name, batch_id, user["uid"],
+        )
+    if result == "UPDATE 0":
+        raise HTTPException(404, "Batch not found.")
+    return {"status": "renamed", "batch_name": payload.batch_name}
+
+
+@router.delete("/batch/{batch_id}")
+async def delete_batch(
+    batch_id: str,
+    user: dict = Depends(_get_instructor),
+):
+    """Delete a batch and all its submissions/reports (CASCADE)."""
+    async with get_conn(user["org_id"]) as conn:
+        row = await conn.fetchrow(
+            "SELECT id FROM batches WHERE id = $1 AND instructor_id = $2",
+            batch_id, user["uid"],
+        )
+        if not row:
+            raise HTTPException(404, "Batch not found.")
+        await conn.execute("DELETE FROM batches WHERE id = $1", batch_id)
+    return {"status": "deleted", "batch_id": batch_id}
 
 
 @router.get("/batch/{batch_id}/reports")

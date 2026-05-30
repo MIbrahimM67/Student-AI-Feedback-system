@@ -44,13 +44,13 @@ services:
       DATABASE_URL: postgresql+asyncpg://app_user:${APP_USER_PASSWORD}@postgres:5432/feedback
       REDIS_URL: redis://redis:6379/0
       GRADIENT_API_KEY: ${GRADIENT_API_KEY}
-      GRADIENT_BASE_URL: "https://api.digitalocean.com/v1/inference"
+      GRADIENT_BASE_URL: "https://inference.do-ai.run/v1"
       GRADIENT_EMBED_MODEL: "bge-m3"
       GRADIENT_RERANK_MODEL: "bge-reranker-v2-m3"
-      GRADIENT_MODEL_SPECIALIST: "meta-llama-3.3-70b-instruct"
-      GRADIENT_MODEL_JUDGE: "meta-llama-3.3-70b-instruct"
-      GRADIENT_MODEL_SENIOR: "meta-llama-3.3-70b-instruct"
-      GRADIENT_MODEL_UTILITY: "meta-llama-3.3-70b-instruct"
+      GRADIENT_MODEL_SPECIALIST: "openai-gpt-oss-120b"
+      GRADIENT_MODEL_JUDGE: "openai-gpt-oss-120b"
+      GRADIENT_MODEL_SENIOR: "openai-gpt-oss-120b"
+      GRADIENT_MODEL_UTILITY: "openai-gpt-oss-20b"
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
       FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL}
       FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY}
@@ -72,13 +72,13 @@ services:
       DATABASE_URL: postgresql+asyncpg://app_user:${APP_USER_PASSWORD}@postgres:5432/feedback
       REDIS_URL: redis://redis:6379/0
       GRADIENT_API_KEY: ${GRADIENT_API_KEY}
-      GRADIENT_BASE_URL: "https://api.digitalocean.com/v1/inference"
+      GRADIENT_BASE_URL: "https://inference.do-ai.run/v1"
       GRADIENT_EMBED_MODEL: "bge-m3"
       GRADIENT_RERANK_MODEL: "bge-reranker-v2-m3"
-      GRADIENT_MODEL_SPECIALIST: "meta-llama-3.3-70b-instruct"
-      GRADIENT_MODEL_JUDGE: "meta-llama-3.3-70b-instruct"
-      GRADIENT_MODEL_SENIOR: "meta-llama-3.3-70b-instruct"
-      GRADIENT_MODEL_UTILITY: "meta-llama-3.3-70b-instruct"
+      GRADIENT_MODEL_SPECIALIST: "openai-gpt-oss-120b"
+      GRADIENT_MODEL_JUDGE: "openai-gpt-oss-120b"
+      GRADIENT_MODEL_SENIOR: "openai-gpt-oss-120b"
+      GRADIENT_MODEL_UTILITY: "openai-gpt-oss-20b"
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
       FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL}
       FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY}

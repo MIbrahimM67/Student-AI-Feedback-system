@@ -26,9 +26,11 @@ CONTEXT_BUDGET_TOKENS: int = 200_000
 
 # ---- Grading model -----------------------------------------------------------
 
-# DECISION: Gemini 2.5 Flash — multimodal, long-context, fast, cost-effective.
-# Matches the model already configured in the existing grading pipeline.
-GEMINI_MODEL: str = "gemini-2.5-flash"
+import os
+
+# DECISION: Pull from the same env var used by llm_provider.py so the model
+# is always consistent with what DO Inference has configured.
+GEMINI_MODEL: str = os.environ.get("GRADIENT_MODEL_SPECIALIST", "openai-gpt-oss-120b")
 
 # ---- Tier 2 (Vector fallback) ------------------------------------------------
 
