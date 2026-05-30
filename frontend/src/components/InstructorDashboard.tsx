@@ -754,7 +754,7 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
 
 // --- LAYER 3: ASSIGNMENT UPLOAD ZONE ---
 const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment, onTutorial: () => void }> = ({ subject, assignment, onTutorial }) => {
-  const [uploadMode, setUploadMode] = useState<"single"|"batch">("single");
+  const [uploadMode, setUploadMode] = useState<"single" | "batch" | "history">("single");
 
   // Shared state
   const [loading, setLoading] = useState(false);
