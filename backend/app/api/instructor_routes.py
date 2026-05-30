@@ -376,26 +376,17 @@ async def single_upload(
             
     try:
         async with get_conn(org_id) as conn:
-            # Find or create a batch for individual uploads
-            batch_row = await conn.fetchrow(
-                "SELECT id FROM batches WHERE assignment_id = $1 AND batch_name = 'Individual Uploads'",
-                assignment_id
+            batch_id = str(uuid.uuid4())
+            await conn.execute(
+                """
+                INSERT INTO batches
+                  (id, org_id, instructor_id, subject_id, assignment_id,
+                   batch_name, plagiarism_enabled, status, total_files, processed_files, created_at)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,'uploaded',0,0,$8)
+                """,
+                batch_id, org_id, uid, subject_id, assignment_id,
+                f"{student_name} (Single)", plagiarism_enabled, now,
             )
-            
-            if batch_row:
-                batch_id = str(batch_row["id"])
-            else:
-                batch_id = str(uuid.uuid4())
-                await conn.execute(
-                    """
-                    INSERT INTO batches
-                      (id, org_id, instructor_id, subject_id, assignment_id,
-                       batch_name, plagiarism_enabled, status, total_files, processed_files, created_at)
-                    VALUES ($1,$2,$3,$4,$5,'Individual Uploads',$6,'uploaded',0,0,$7)
-                    """,
-                    batch_id, org_id, uid, subject_id, assignment_id,
-                    plagiarism_enabled, now,
-                )
 
             await conn.execute(
                 """
