@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
-import api from "@/lib/api";
+import api, { API_URL } from "@/lib/api";
+import { auth } from "@/lib/firebase";
+import { getIdToken } from "firebase/auth";
 import { 
   FileSpreadsheet, FileArchive, Upload, Table as TableIcon, 
   CheckCircle2, BadgeCheck, Loader2, Play, Plus, RefreshCw, 
@@ -516,8 +518,21 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
       const fd = new FormData();
       fd.append("title", refTitle);
       fd.append("file", refFile);
-      // Do NOT set Content-Type header explicitly; Axios needs to set it automatically to include the boundary
-      await api.post(`/api/instructor/subjects/${subject.id}/references`, fd);
+      // Using native fetch instead of Axios to completely bypass any interceptor header mutations
+      // that might strip the boundary from the multipart/form-data payload.
+      const token = await getIdToken(auth.currentUser!);
+      const res = await fetch(`${API_URL}/api/instructor/subjects/${subject.id}/references`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        },
+        body: fd
+      });
+      
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText);
+      }
 
       setRefStatus("Success! Knowledge Graph is being updated in the background.");
       setRefTitle(""); setRefFile(null);
