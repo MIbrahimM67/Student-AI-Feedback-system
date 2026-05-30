@@ -838,12 +838,11 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
       }
 
       const resData = await res.json();
-      setBatchId(resData.batchId);
-      setStagedStudents(resData.nameReviewList.map((item: any) => ({
-        submissionId: item.submissionId,
-        fileName: item.fileName,
-        extractedName: item.extractedName || "Unknown"
-      })));
+      setBatchId(resData.batch_id);
+      setSuccessMsg(resData.message);
+      setBatchFile(null);
+      setStagedStudents([]);
+      startPollingProgress(resData.batch_id);
     } catch(err:any) {
       setError(err.message || "Batch staging failed.");
     } finally { setLoading(false); }
