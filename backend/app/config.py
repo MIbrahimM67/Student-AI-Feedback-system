@@ -23,10 +23,10 @@ class Settings(BaseSettings):
     GRADIENT_BASE_URL: str = "https://inference.do-ai.run/v1"
 
     # Models
-    GRADIENT_MODEL_SPECIALIST: str = "openai-gpt-oss-120b"
-    GRADIENT_MODEL_JUDGE: str = "alibaba-qwen3-32b"
-    GRADIENT_MODEL_SENIOR: str = "openai-gpt-oss-120b"
-    GRADIENT_MODEL_UTILITY: str = "openai-gpt-oss-20b"
+    GRADIENT_MODEL_SPECIALIST: str = "meta-llama/Meta-Llama-3-8B-Instruct"
+    GRADIENT_MODEL_JUDGE: str = "meta-llama/Meta-Llama-3-8B-Instruct"
+    GRADIENT_MODEL_SENIOR: str = "meta-llama/Meta-Llama-3-8B-Instruct"
+    GRADIENT_MODEL_UTILITY: str = "meta-llama/Meta-Llama-3-8B-Instruct"
     GRADIENT_EMBED_MODEL: str = "bge-m3"
     GRADIENT_RERANK_MODEL: str = "bge-reranker-v2-m3"
     GRADIENT_VISION_OCR_MODEL: Optional[str] = None  # optional vision upgrade
