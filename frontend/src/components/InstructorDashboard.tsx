@@ -779,6 +779,9 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
   const [batchReports, setBatchReports] = useState<any[]>([]);
   const [reviewingReports, setReviewingReports] = useState(false);
 
+  // History State
+  const [historyBatches, setHistoryBatches] = useState<any[]>([]);
+
   const handleSingleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if(!studentName || !singleFile) return setError("Name and file required.");
@@ -894,6 +897,15 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
     }
   };
 
+  const fetchAssignmentHistory = async () => {
+    try {
+      const res = await api.get(`/api/instructor/assignments/${assignment.id}/batches`);
+      setHistoryBatches(res.data.batches || []);
+    } catch (err: any) {
+      console.error(err);
+    }
+  };
+
   const handleApproveReport = async (reportId: string, finalScore: number) => {
     try {
       await api.post(`/api/instructor/batch/${batchId}/reports/${reportId}/approve`, {
@@ -909,6 +921,12 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
   useEffect(() => {
     return () => { if(pollIntervalId) clearInterval(pollIntervalId); };
   }, [pollIntervalId]);
+
+  useEffect(() => {
+    if (uploadMode === 'history') {
+      fetchAssignmentHistory();
+    }
+  }, [uploadMode]);
 
   return (
     <div className="space-y-6">
@@ -930,6 +948,9 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
          </button>
          <button onClick={()=>setUploadMode("batch")} className={`flex-1 py-4 rounded-2xl border-2 font-bold text-sm transition-all ${uploadMode === "batch" ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"}`}>
             Classroom Batch (Master ZIP)
+         </button>
+         <button onClick={()=>setUploadMode("history")} className={`flex-1 py-4 rounded-2xl border-2 font-bold text-sm transition-all ${uploadMode === "history" ? "border-amber-500 bg-amber-50 text-amber-700" : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"}`}>
+            Grading History
          </button>
       </div>
 
@@ -1122,6 +1143,71 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                  {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto"/> : "Stage Batch & Extract Names"}
               </button>
             </form>
+          )}
+        </div>
+      )}
+
+      {/* GRADING HISTORY */}
+      {uploadMode === "history" && !reviewingReports && (
+        <div className="glass-panel p-8 rounded-3xl border border-slate-200 shadow-sm bg-white space-y-6">
+          <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><ClipboardList className="w-5 h-5 text-amber-500"/> Past Grading Batches</h3>
+          
+          {historyBatches.length > 0 ? (
+            <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold sticky top-0">
+                  <tr>
+                    <th className="p-4 uppercase tracking-wider">Date</th>
+                    <th className="p-4 uppercase tracking-wider">Batch ID</th>
+                    <th className="p-4 uppercase tracking-wider">Progress</th>
+                    <th className="p-4 uppercase tracking-wider">Status</th>
+                    <th className="p-4 uppercase tracking-wider text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {historyBatches.map(hb => {
+                    const processed = (hb.processed_files || 0) + (hb.needs_review_count || 0);
+                    const isDone = processed >= hb.total_files && hb.total_files > 0;
+                    
+                    return (
+                      <tr key={hb.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-4 font-bold text-slate-700">{new Date(hb.created_at).toLocaleDateString()}</td>
+                        <td className="p-4 font-mono text-slate-400 text-[10px]">{hb.id.split("-")[0]}...</td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-2">
+                             <div className="w-24 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                               <div className="bg-amber-500 h-full" style={{width: `${(processed / Math.max(1, hb.total_files)) * 100}%`}}/>
+                             </div>
+                             <span className="text-[10px] font-bold text-slate-500">{processed}/{hb.total_files}</span>
+                          </div>
+                        </td>
+                        <td className="p-4">
+                           <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-md border ${
+                             isDone ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
+                             "bg-amber-50 text-amber-600 border-amber-200"
+                           }`}>
+                             {isDone ? "Completed" : "Processing"}
+                           </span>
+                        </td>
+                        <td className="p-4 text-right">
+                           <button 
+                             onClick={() => { setBatchId(hb.id); fetchBatchReports(hb.id); }} 
+                             disabled={!isDone}
+                             className="bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                           >
+                             View Reports
+                           </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-xs font-medium text-slate-500 border border-dashed border-slate-200 rounded-2xl">
+               No past batches found for this assignment.
+            </div>
           )}
         </div>
       )}

@@ -324,6 +324,22 @@ async def get_assignments(
             
     return {"assignments": assignments}
 
+@router.get("/assignments/{assignment_id}/batches")
+async def get_assignment_batches(
+    assignment_id: str,
+    user: dict = Depends(_get_instructor),
+):
+    """
+    List all batches for a given assignment, ordered by creation date.
+    """
+    org_id = user["org_id"]
+    async with get_conn(org_id) as conn:
+        rows = await conn.fetch(
+            "SELECT * FROM batches WHERE assignment_id = $1::uuid AND instructor_id = $2 ORDER BY created_at DESC",
+            assignment_id, user["uid"]
+        )
+    return {"batches": [dict(r) for r in rows]}
+
 # ---- Single upload ----------------------------------------------------------
 
 @router.post("/single-upload", status_code=202)
