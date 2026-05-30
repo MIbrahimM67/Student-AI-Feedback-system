@@ -216,4 +216,4 @@ def build_llm_from_env() -> ResilientLLM:
     #   AnthropicProvider(api_key=os.environ["ANTHROPIC_API_KEY"])
     #   OpenAIProvider(api_key=os.environ["OPENAI_API_KEY"])
     failover: list[LLMProvider] = []
-    return ResilientLLM(primary=primary, failover=failover)
+    return ResilientLLM(primary=primary, failover=failover, max_retries=6, base_backoff_s=2.0)
