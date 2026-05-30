@@ -6,6 +6,7 @@ This should run ONCE per assignment setup, and the result cached.
 """
 from __future__ import annotations
 
+import ast
 import json
 import logging
 from typing import Any
@@ -14,26 +15,21 @@ from app.services.llm_provider import build_llm_from_env, ChatMessage
 from app.grading.types import Criterion
 from app.grading import config
 
-import ast
-import re
-
 logger = logging.getLogger(__name__)
 
 
 def _extract_json(text: str) -> dict:
     """
-    Robustly extract a JSON object from LLM output that may include:
-    - Markdown code fences (```json ... ```)
-    - Single-quoted Python dicts
-    - Extra text before/after the JSON object
+    Robustly extract a JSON object from LLM output.
+    Uses raw_decode to find the first valid JSON object at any character position,
+    handling markdown fences, extra leading chars (rogue '{'), and trailing garbage.
     """
     text = text.strip()
 
-    # 1. Strip markdown code fences
+    # Strip markdown code fences first
     if "```" in text:
-        # Extract content between first ``` and last ```
         parts = text.split("```")
-        for part in parts[1::2]:  # odd-indexed parts are inside fences
+        for part in parts[1::2]:
             candidate = part.strip()
             if candidate.startswith("json"):
                 candidate = candidate[4:].strip()
@@ -41,27 +37,24 @@ def _extract_json(text: str) -> dict:
                 text = candidate
                 break
 
-    # 2. Try standard json.loads
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-
-    # 3. Try to find the first {...} block via regex and parse it
-    match = re.search(r'\{.*\}', text, re.DOTALL)
-    if match:
-        candidate = match.group(0)
-        try:
-            return json.loads(candidate)
-        except json.JSONDecodeError:
-            pass
-        # 4. Last resort — ast.literal_eval handles single-quoted Python dicts
-        try:
-            result = ast.literal_eval(candidate)
-            if isinstance(result, dict):
+    # Use raw_decode to find the FIRST valid JSON object anywhere in the string.
+    # This handles extra leading characters like a rogue '{' on line 1.
+    decoder = json.JSONDecoder()
+    for i, char in enumerate(text):
+        if char == '{':
+            try:
+                result, _ = decoder.raw_decode(text, i)
                 return result
-        except Exception:
-            pass
+            except json.JSONDecodeError:
+                continue
+
+    # Last resort: ast.literal_eval for Python-style single-quoted dicts
+    try:
+        result = ast.literal_eval(text)
+        if isinstance(result, dict):
+            return result
+    except Exception:
+        pass
 
     raise ValueError(f"Could not extract JSON from LLM response: {text[:200]}")
 
@@ -69,7 +62,7 @@ def _extract_json(text: str) -> dict:
 async def decompose(rubric_text: str) -> list[Criterion]:
     """
     Decompose a raw rubric text into a list of discrete Criteria using the LLM.
-    Returns an empty list if decomposition fails.
+    Falls back to a single generic criterion if decomposition fails or returns empty.
     """
     llm = build_llm_from_env()
 
@@ -88,22 +81,27 @@ async def decompose(rubric_text: str) -> list[Criterion]:
         "}\n"
     )
 
+    _fallback = [Criterion(
+        id="overall_quality",
+        description=f"Evaluate overall quality based on: {rubric_text[:400]}",
+        max_points=100.0,
+    )]
+
     try:
         resp = await llm.chat(
             messages=[
                 ChatMessage(role="system", content=system_prompt),
                 ChatMessage(role="user", content=f"Decompose this rubric:\n\n{rubric_text}")
             ],
-            # Utility model is fine for structure extraction
             model=config.GEMINI_MODEL,
             response_format="json_object",
             temperature=0.0
         )
 
         data: dict[str, Any] = _extract_json(resp.text)
-        logger.info("Rubric decomposed successfully into %d criteria", len(data.get("criteria", [])))
+        logger.info("Rubric decomposed, raw criteria count: %d", len(data.get("criteria", [])))
         criteria_list = data.get("criteria", [])
-        
+
         result: list[Criterion] = []
         for c in criteria_list:
             result.append(
@@ -113,7 +111,13 @@ async def decompose(rubric_text: str) -> list[Criterion]:
                     max_points=float(c.get("max_points", 0.0)),
                 )
             )
+
+        if not result:
+            logger.warning("LLM returned empty criteria list — using generic fallback")
+            return _fallback
+
         return result
+
     except Exception as e:
-        logger.error("Rubric decomposition failed: %s", e)
-        return []
+        logger.error("Rubric decomposition failed: %s — using fallback", e)
+        return _fallback
