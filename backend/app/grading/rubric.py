@@ -64,6 +64,8 @@ async def decompose(rubric_text: str) -> list[Criterion]:
     Decompose a raw rubric text into a list of discrete Criteria using the LLM.
     Falls back to a single generic criterion if decomposition fails or returns empty.
     """
+    # Guard: coerce None/empty to a sensible default so slicing never fails
+    rubric_text = (rubric_text or "").strip() or "Evaluate the overall quality of the submission."
     llm = build_llm_from_env()
 
     system_prompt = (

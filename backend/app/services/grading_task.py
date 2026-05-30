@@ -291,7 +291,11 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
     # ---- Run pipeline -------------------------------------------------------
     try:
         # Get raw rubric text from criteria list or fallback
-        raw_rubric = "\n".join([f"{c['name']}: {c['description']}" for c in rubric_criteria]) if rubric_criteria else sub.get("rubric_text", "Evaluate comprehensively.")
+        raw_rubric = (
+            "\n".join([f"{c['name']}: {c['description']}" for c in rubric_criteria])
+            if rubric_criteria
+            else (sub.get("rubric_text") or None)
+        ) or "Evaluate the overall quality, correctness, and completeness of the submission."
         
         # We need physical paths for the new ingestion pipeline (PyMuPDF needs files)
         # We already downloaded the submission to tmp_path if it was a file, else we need a temp text file.
