@@ -784,6 +784,8 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
   const [batchName, setBatchName] = useState("");
   const [renamingBatchId, setRenamingBatchId] = useState<string|null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [expandedReportId, setExpandedReportId] = useState<string|null>(null);
+  const [reportDetails, setReportDetails] = useState<Record<string, any>>({});
 
   const handleSingleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -928,12 +930,21 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
   const handleApproveReport = async (reportId: string, finalScore: number) => {
     try {
       await api.post(`/api/instructor/batch/${batchId}/reports/${reportId}/approve`, {
-         // Sending empty final_payload assumes we accept AI as-is for the MVP
          final_payload: null 
       });
       fetchBatchReports(batchId!);
     } catch (err: any) {
       setError(err.message || "Approval failed.");
+    }
+  };
+
+  const fetchReportDetail = async (reportId: string) => {
+    if (reportDetails[reportId]) return; // already loaded
+    try {
+      const res = await api.get(`/api/instructor/reports/${reportId}`);
+      setReportDetails(prev => ({ ...prev, [reportId]: res.data }));
+    } catch (err: any) {
+      console.error("Failed to load report detail", err);
     }
   };
 
@@ -1039,53 +1050,106 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                      </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                     {batchReports.map((report) => (
-                       <tr key={report.submission_id} className="hover:bg-slate-50 transition-colors">
-                          <td className="p-4">
-                            <div className="font-bold text-slate-700 text-sm">{report.student_name}</div>
-                            <div className="text-[10px] text-slate-400 font-mono mt-0.5">{report.file_name}</div>
-                          </td>
-                          <td className="p-4">
-                             {report.submission_status === 'failed' ? (
-                               <div className="text-xs font-bold text-rose-500">Processing Failed</div>
-                             ) : (
-                               <div className="text-xl font-black text-slate-800">{report.final_status ? report.final_status === 'pass' ? report.final_overall_score || report.ai_overall_score : report.ai_overall_score : report.ai_overall_score}<span className="text-xs text-slate-400 font-medium">/{report.ai_max_score}</span></div>
-                             )}
-                          </td>
-                          <td className="p-4">
-                             {report.submission_status === 'failed' ? (
-                               <span className="text-xs text-slate-400">—</span>
-                             ) : (
-                               <div className="flex items-center gap-1.5">
-                                 <div className="w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                                   <div className={`h-full ${report.ai_overall_confidence > 0.8 ? 'bg-emerald-500' : report.ai_overall_confidence > 0.6 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{width: `${(report.ai_overall_confidence || 0) * 100}%`}}/>
-                                 </div>
-                                 <span className="text-[10px] font-bold text-slate-500">{Math.round((report.ai_overall_confidence || 0) * 100)}%</span>
-                               </div>
-                             )}
-                          </td>
-                          <td className="p-4">
-                             <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-md border ${
-                               report.submission_status === 'failed' ? "bg-rose-50 text-rose-600 border-rose-200" :
-                               report.published_at ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
-                               "bg-amber-50 text-amber-600 border-amber-200"
-                             }`}>
-                               {report.submission_status === 'failed' ? "Failed" : report.published_at ? "Approved" : "Needs Review"}
-                             </span>
-                          </td>
-                          <td className="p-4 text-right">
-                             {report.submission_status === 'failed' ? (
-                               <span className="text-xs font-bold text-rose-400">Error</span>
-                             ) : !report.published_at ? (
-                               <button onClick={() => handleApproveReport(report.report_id, report.ai_overall_score)} className="bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors">
-                                 Approve
-                               </button>
-                             ) : (
-                               <span className="text-xs font-bold text-slate-400">Published</span>
-                             )}
-                          </td>
-                       </tr>
-                     ))}
+                     {batchReports.map((report) => {
+                        const isExpanded = expandedReportId === report.report_id;
+                        const detail = reportDetails[report.report_id];
+                        return (
+                          <>
+                            <tr
+                              key={report.submission_id}
+                              className="hover:bg-slate-50 transition-colors cursor-pointer"
+                              onClick={() => {
+                                if (isExpanded) { setExpandedReportId(null); }
+                                else { setExpandedReportId(report.report_id); if (report.report_id) fetchReportDetail(report.report_id); }
+                              }}
+                            >
+                              <td className="p-4">
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-slate-400 transition-transform text-xs ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+                                  <div>
+                                    <div className="font-bold text-slate-700 text-sm">{report.student_name}</div>
+                                    <div className="text-[10px] text-slate-400 font-mono mt-0.5">{report.file_name}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="p-4">
+                                 {report.submission_status === 'failed' ? (
+                                   <div className="text-xs font-bold text-rose-500">Processing Failed</div>
+                                 ) : (
+                                   <div className="text-xl font-black text-slate-800">{report.final_status ? report.final_status === 'pass' ? report.final_overall_score || report.ai_overall_score : report.ai_overall_score : report.ai_overall_score}<span className="text-xs text-slate-400 font-medium">/{report.ai_max_score}</span></div>
+                                 )}
+                              </td>
+                              <td className="p-4">
+                                 {report.submission_status === 'failed' ? (
+                                   <span className="text-xs text-slate-400">—</span>
+                                 ) : (
+                                   <div className="flex items-center gap-1.5">
+                                     <div className="w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                       <div className={`h-full ${report.ai_overall_confidence > 0.8 ? 'bg-emerald-500' : report.ai_overall_confidence > 0.6 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{width: `${(report.ai_overall_confidence || 0) * 100}%`}}/>
+                                     </div>
+                                     <span className="text-[10px] font-bold text-slate-500">{Math.round((report.ai_overall_confidence || 0) * 100)}%</span>
+                                   </div>
+                                 )}
+                              </td>
+                              <td className="p-4">
+                                 <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-md border ${
+                                   report.submission_status === 'failed' ? "bg-rose-50 text-rose-600 border-rose-200" :
+                                   report.published_at ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
+                                   "bg-amber-50 text-amber-600 border-amber-200"
+                                 }`}>
+                                   {report.submission_status === 'failed' ? "Failed" : report.published_at ? "Approved" : "Needs Review"}
+                                 </span>
+                              </td>
+                              <td className="p-4 text-right" onClick={e => e.stopPropagation()}>
+                                 {report.submission_status === 'failed' ? (
+                                   <span className="text-xs font-bold text-rose-400">Error</span>
+                                 ) : !report.published_at ? (
+                                   <button onClick={() => handleApproveReport(report.report_id, report.ai_overall_score)} className="bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors">
+                                     Approve
+                                   </button>
+                                 ) : (
+                                   <span className="text-xs font-bold text-slate-400">Published</span>
+                                 )}
+                              </td>
+                            </tr>
+                            {isExpanded && (
+                              <tr key={`${report.submission_id}-detail`} className="bg-indigo-50/50 border-b border-indigo-100">
+                                <td colSpan={5} className="px-6 py-5">
+                                  {!detail ? (
+                                    <div className="text-xs text-slate-400 animate-pulse">Loading feedback...</div>
+                                  ) : (
+                                    <div className="space-y-4">
+                                      {/* AI Feedback */}
+                                      <div className="bg-white rounded-xl border border-slate-200 p-4">
+                                        <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-2">AI Feedback</div>
+                                        <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">{detail.ai_payload?.feedback || 'No feedback available.'}</p>
+                                      </div>
+                                      {/* Per-Criterion Breakdown */}
+                                      {detail.ai_payload?.per_criterion && Object.keys(detail.ai_payload.per_criterion).length > 0 && (
+                                        <div className="bg-white rounded-xl border border-slate-200 p-4">
+                                          <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-3">Criteria Breakdown</div>
+                                          <div className="space-y-2">
+                                            {Object.entries(detail.ai_payload.per_criterion).map(([criterionId, score]: [string, any]) => (
+                                              <div key={criterionId} className="flex items-center justify-between text-xs">
+                                                <span className="font-medium text-slate-600 capitalize">{criterionId.replace(/_/g, ' ')}</span>
+                                                <span className={`font-bold px-2 py-0.5 rounded-md ${
+                                                  Number(score) === 0 ? 'bg-rose-50 text-rose-600' :
+                                                  Number(score) >= 4 ? 'bg-emerald-50 text-emerald-600' :
+                                                  'bg-amber-50 text-amber-600'
+                                                }`}>{score} pts</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            )}
+                          </>
+                        );
+                     })}
                   </tbody>
                </table>
             </div>

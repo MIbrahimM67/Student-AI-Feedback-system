@@ -16,6 +16,7 @@ from __future__ import annotations
 import io
 import logging
 import os
+import zipfile
 from pathlib import Path
 
 import fitz  # PyMuPDF
@@ -56,6 +57,9 @@ def ingest(path: str) -> DocumentPayload:
     if suffix in _PDF_EXTENSIONS:
         return _ingest_pdf(path)
 
+    if suffix == ".zip":
+        return _ingest_zip(path)
+
     # Unknown type: attempt PDF rendering, fall back to text extraction
     logger.warning("Unknown file type %s — attempting PDF rendering.", suffix)
     try:
@@ -63,6 +67,58 @@ def ingest(path: str) -> DocumentPayload:
     except Exception:
         logger.error("Could not ingest %s as PDF.", path)
         raise ValueError(f"Unsupported file type: {suffix}")
+
+
+# Extensions we want to extract from student ZIPs as readable text
+_CODE_EXTENSIONS = {
+    ".py", ".cpp", ".c", ".java", ".js", ".ts", ".cs", ".go", ".rb", ".php",
+    ".swift", ".kt", ".rs", ".sh", ".html", ".css", ".sql", ".txt", ".md",
+    ".h", ".hpp", ".cc", ".r", ".m", ".pl", ".scala", ".dart"
+}
+
+
+def _ingest_zip(path: str) -> DocumentPayload:
+    """
+    Extract all readable code/text files from a student ZIP submission.
+    Concatenates them with filename headers so the grader sees the actual code.
+    """
+    parts = []
+    try:
+        with zipfile.ZipFile(path, "r") as zf:
+            # Sort so files come in a predictable order
+            names = sorted(zf.namelist())
+            for name in names:
+                # Skip directories and hidden/meta files
+                if name.endswith("/") or name.startswith("__MACOSX") or "/.git/" in name:
+                    continue
+                ext = Path(name).suffix.lower()
+                if ext not in _CODE_EXTENSIONS:
+                    continue
+                try:
+                    content = zf.read(name).decode("utf-8", errors="replace").strip()
+                    if content:
+                        parts.append(f"=== FILE: {name} ===\n{content}")
+                except Exception as e:
+                    logger.warning("Could not read %s from ZIP: %s", name, e)
+    except zipfile.BadZipFile:
+        logger.warning("Bad ZIP file at %s — treating as empty submission", path)
+
+    if not parts:
+        logger.warning("ZIP %s had no readable code files — submission will be empty", path)
+        text = "[No readable source code files found in submission ZIP]"
+    else:
+        text = "\n\n".join(parts)
+        logger.info("ZIP %s: extracted %d file(s), ~%d chars", path, len(parts), len(text))
+
+    est_tokens = len(text) // 4
+    return DocumentPayload(
+        source_path=path,
+        pages=[],
+        est_tokens=est_tokens,
+        has_structure=False,
+        text_only=True,
+        plain_text=text,
+    )
 
 
 def _ingest_text(path: str) -> DocumentPayload:

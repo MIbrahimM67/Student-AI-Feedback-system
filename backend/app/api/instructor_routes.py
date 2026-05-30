@@ -629,6 +629,24 @@ async def list_batch_reports(batch_id: str, user: dict = Depends(_get_instructor
 
 # ---- Approve a report -------------------------------------------------------
 
+@router.get("/reports/{report_id}")
+async def get_report_detail(
+    report_id: str,
+    user: dict = Depends(_get_instructor)
+):
+    """
+    Fetch the full details of a specific feedback report, including AI payload.
+    """
+    async with get_conn(user["org_id"]) as conn:
+        report = await conn.fetchrow(
+            "SELECT id, submission_id, batch_id, ai_overall_score, ai_max_score, ai_payload, final_payload FROM feedback_reports WHERE id = $1",
+            report_id
+        )
+        if not report:
+            raise HTTPException(404, "Report not found.")
+            
+    return dict(report)
+
 class ApprovePayload(BaseModel):
     final_payload: Optional[dict] = None   # If None, use AI payload as-is
 
