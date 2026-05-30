@@ -24,7 +24,8 @@ from fastapi import (
 )
 from pydantic import BaseModel
 
-from app.auth.firebase import verify_id_token, get_storage_bucket
+from app.auth.firebase import verify_id_token
+from app.services import local_storage
 from app.db.postgres import get_conn
 from app.workers.celery_app import celery_app
 
@@ -160,30 +161,13 @@ async def upload_reference(
     if file_size_mb > 50:
         raise HTTPException(413, "Reference file must be under 50MB.")
 
-    # Upload to Firebase Storage
+    # Upload to Local Storage
     blob_name = f"references/{org_id}/{subject_id}/{ref_id}_{file.filename}"
-    tmp_path = None
     try:
-        bucket = get_storage_bucket()
-        with tempfile.NamedTemporaryFile(
-            delete=False, suffix=os.path.splitext(file.filename)[1]
-        ) as tmp:
-            tmp.write(content)
-            tmp_path = tmp.name
-
-        blob = bucket.blob(blob_name)
-        blob.upload_from_filename(tmp_path)
-        blob.make_public()
-        file_url = blob.public_url
-    except RuntimeError as e:
-        logger.error("Firebase Storage not initialised: %s", e)
-        raise HTTPException(503, f"File storage is not configured: {e}")
+        file_url = local_storage.save_file(content, blob_name)
     except Exception as e:
-        logger.error("Firebase Storage upload failed: %s", e, exc_info=True)
+        logger.error("Local storage upload failed: %s", e, exc_info=True)
         raise HTTPException(500, f"File upload failed: {e}")
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.remove(tmp_path)
 
 
     async with get_conn(org_id) as conn:
@@ -342,21 +326,12 @@ async def single_upload(
     if len(content) > settings.STUDENT_FILE_MAX_MB * 1024 * 1024:
         raise HTTPException(413, f"File exceeds {settings.STUDENT_FILE_MAX_MB}MB limit.")
         
-    bucket = get_storage_bucket()
     blob_name = f"submissions/{org_id}/{assignment_id}/{sub_id}_{file.filename}"
-    
-    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
-        
     try:
-        blob = bucket.blob(blob_name)
-        blob.upload_from_filename(tmp_path)
-        blob.make_public()
-        file_url = blob.public_url
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        file_url = local_storage.save_file(content, blob_name)
+    except Exception as e:
+        logger.error("Local storage upload failed: %s", e)
+        raise HTTPException(500, f"File upload failed: {e}")
             
     async with get_conn(org_id) as conn:
         await conn.execute(
@@ -416,7 +391,6 @@ async def upload_batch(
 
     total_size = 0
     submission_ids = []
-    bucket = get_storage_bucket()
 
     content = await file.read()
     if len(content) > settings.INSTRUCTOR_BATCH_MAX_MB * 1024 * 1024:
@@ -462,10 +436,8 @@ async def upload_batch(
                 sub_id = str(uuid.uuid4())
                 blob_name = f"batches/{org_id}/{batch_id}/{sub_id}_{student_name}.zip"
 
-                blob = bucket.blob(blob_name)
-                blob.upload_from_filename(student_zip_path)
-                blob.make_public()
-                file_url = blob.public_url
+                with open(student_zip_path, "rb") as f:
+                    file_url = local_storage.save_file(f.read(), blob_name)
 
                 async with get_conn(org_id) as conn:
                     await conn.execute(
@@ -660,13 +632,9 @@ async def submit_faculty_application(
     proof_url = None
     if proofFile and proofFile.filename:
         try:
-            bucket = get_storage_bucket()
             content = await proofFile.read()
             blob_path = f"faculty_proofs/{uid}/{uuid.uuid4()}_{proofFile.filename}"
-            blob = bucket.blob(blob_path)
-            blob.upload_from_string(content, content_type=proofFile.content_type or "application/octet-stream")
-            blob.make_public()
-            proof_url = blob.public_url
+            proof_url = local_storage.save_file(content, blob_path)
         except Exception as e:
             logger.warning(f"Proof file upload failed: {e}")
 

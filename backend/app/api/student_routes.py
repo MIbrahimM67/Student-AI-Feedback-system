@@ -17,7 +17,8 @@ from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile, status
 
-from app.auth.firebase import verify_id_token, get_storage_bucket
+from app.auth.firebase import verify_id_token
+from app.services import local_storage
 from app.db.postgres import get_conn
 from app.workers.celery_app import celery_app
 
@@ -105,23 +106,10 @@ async def create_submission(
         blob_name = f"submissions/{uid}/{submission_id}_{file_name}"
 
         try:
-            bucket = get_storage_bucket()
-            with tempfile.NamedTemporaryFile(
-                delete=False, suffix=os.path.splitext(file_name)[1]
-            ) as tmp:
-                tmp.write(content)
-                tmp_path = tmp.name
-
-            blob = bucket.blob(blob_name)
-            blob.upload_from_filename(tmp_path)
-            blob.make_public()
-            file_url = blob.public_url
+            file_url = local_storage.save_file(content, blob_name)
         except Exception as e:
             logger.error("Storage upload failed: %s", e)
             raise HTTPException(500, "File upload failed. Please try again.")
-        finally:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
 
     # ---- Reference File upload (Firebase Storage) ---------------------------
     reference_file_url = None
@@ -137,20 +125,10 @@ async def create_submission(
         reference_file_name = reference_file.filename
         blob_name = f"submissions/{uid}/{submission_id}_ref_{reference_file_name}"
         try:
-            bucket = get_storage_bucket()
-            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(reference_file_name)[1]) as tmp:
-                tmp.write(content)
-                tmp_path = tmp.name
-            blob = bucket.blob(blob_name)
-            blob.upload_from_filename(tmp_path)
-            blob.make_public()
-            reference_file_url = blob.public_url
+            reference_file_url = local_storage.save_file(content, blob_name)
         except Exception as e:
             logger.error("Reference storage upload failed: %s", e)
             raise HTTPException(500, "Reference file upload failed.")
-        finally:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
 
     if not input_text and not file_url:
         raise HTTPException(400, "Provide either input_text or a file.")

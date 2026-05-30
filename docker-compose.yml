@@ -36,6 +36,7 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./backend:/app
+      - api_uploads:/app/uploads
     ports:
       - "8000:8000"
     environment:
@@ -66,6 +67,7 @@ services:
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
     volumes:
       - ./backend:/app
+      - api_uploads:/app/uploads
     environment:
       DATABASE_URL: postgresql+asyncpg://app_user:${APP_USER_PASSWORD}@postgres:5432/feedback
       REDIS_URL: redis://redis:6379/0
@@ -105,3 +107,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  api_uploads:

@@ -101,16 +101,23 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
 
     if sub["file_url"] and not extracted_text.strip():
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=60) as client:
-                resp = await client.get(sub["file_url"])
-                resp.raise_for_status()
+            from app.services.local_storage import get_local_path
+            local_path = get_local_path(sub["file_url"])
+            
+            if local_path and os.path.exists(local_path):
+                tmp_path = local_path
+                ext = os.path.splitext(sub["file_name"] or local_path)[1].lower()
+            else:
+                import httpx
+                async with httpx.AsyncClient(timeout=60) as client:
+                    resp = await client.get(sub["file_url"])
+                    resp.raise_for_status()
 
-            ext = os.path.splitext(sub["file_name"] or ".pdf")[1].lower()
-            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-                tmp.write(resp.content)
-                tmp_path = tmp.name
-            files_to_cleanup.append(tmp_path)
+                ext = os.path.splitext(sub["file_name"] or ".pdf")[1].lower()
+                with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+                    tmp.write(resp.content)
+                    tmp_path = tmp.name
+                files_to_cleanup.append(tmp_path)
 
             if ext == ".zip":
                 tmp_zip_path = tmp_path
