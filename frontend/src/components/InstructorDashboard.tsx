@@ -695,7 +695,22 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
       fd.append("type", fileType);
       fd.append("file", singleFile);
 
-      await api.post("/api/instructor/single-upload", fd);
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error("Authentication failed");
+
+      const res = await fetch(`${API_URL}/api/instructor/single-upload`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        },
+        body: fd
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || "Failed to upload.");
+      }
+
       setSuccessMsg(`Submission for ${studentName} queued for grading!`);
       setStudentName(""); setSingleFile(null);
     } catch(err: any) {
@@ -716,9 +731,25 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
       fd.append("type", fileType);
       fd.append("file", batchFile);
 
-      const res = await api.post("/api/instructor/batch", fd);
-      setBatchId(res.data.batchId);
-      setStagedStudents(res.data.nameReviewList.map((item: any) => ({
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error("Authentication failed");
+
+      const res = await fetch(`${API_URL}/api/instructor/batch`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        },
+        body: fd
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || "Batch staging failed.");
+      }
+
+      const resData = await res.json();
+      setBatchId(resData.batchId);
+      setStagedStudents(resData.nameReviewList.map((item: any) => ({
         submissionId: item.submissionId,
         fileName: item.fileName,
         extractedName: item.extractedName || "Unknown"
