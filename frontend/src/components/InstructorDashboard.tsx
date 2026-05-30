@@ -769,9 +769,15 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
   // Batch Upload State
   const [batchFile, setBatchFile] = useState<File|null>(null);
   const [batchId, setBatchId] = useState<string|null>(null);
-  const [stagedStudents, setStagedStudents] = useState<StagedStudent[]>([]);
-  const [pollIntervalId, setPollIntervalId] = useState<NodeJS.Timeout | null>(null);
+  const [stagedStudents, setStagedStudents] = useState<any[]>([]);
+  
+  // Polling State
   const [gradingProgress, setGradingProgress] = useState<any>(null);
+  const [pollIntervalId, setPollIntervalId] = useState<NodeJS.Timeout|null>(null);
+
+  // Batch Review State
+  const [batchReports, setBatchReports] = useState<any[]>([]);
+  const [reviewingReports, setReviewingReports] = useState(false);
 
   const handleSingleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -869,12 +875,35 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
       try {
         const res = await api.get(`/api/instructor/batch/${id}`);
         setGradingProgress(res.data);
-        if (res.data.status === "completed" || res.data.status === "failed") {
+        const processed = (res.data.processed_files || 0) + (res.data.needs_review_count || 0);
+        if (processed >= (res.data.total_files || 0) && res.data.total_files > 0) {
           clearInterval(interval); setPollIntervalId(null);
         }
       } catch (err) {}
     }, 3000);
     setPollIntervalId(interval);
+  };
+
+  const fetchBatchReports = async (id: string) => {
+    try {
+      setReviewingReports(true);
+      const res = await api.get(`/api/instructor/batch/${id}/reports`);
+      setBatchReports(res.data.reports || []);
+    } catch (err: any) {
+      setError(err.message || "Failed to fetch reports.");
+    }
+  };
+
+  const handleApproveReport = async (reportId: string, finalScore: number) => {
+    try {
+      await api.post(`/api/instructor/batch/${batchId}/reports/${reportId}/approve`, {
+         // Sending empty final_payload assumes we accept AI as-is for the MVP
+         final_payload: null 
+      });
+      fetchBatchReports(batchId!);
+    } catch (err: any) {
+      setError(err.message || "Approval failed.");
+    }
   };
 
   useEffect(() => {
@@ -907,19 +936,83 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
       {error && <div className="p-4 rounded-xl bg-rose-50 text-rose-600 text-xs font-semibold">{error}</div>}
       {successMsg && <div className="p-4 rounded-xl bg-emerald-50 text-emerald-600 text-xs font-semibold">{successMsg}</div>}
 
-      {gradingProgress && (
+      {gradingProgress && !reviewingReports && (
          <div className="glass-panel p-8 rounded-3xl border border-slate-200 shadow-lg space-y-6 bg-white">
-            <h3 className="text-lg font-black text-slate-800">Batch Grading Progress: {gradingProgress.status}</h3>
+            <h3 className="text-lg font-black text-slate-800">
+               Batch Grading Progress: {((gradingProgress.processed_files + gradingProgress.needs_review_count) >= gradingProgress.total_files) ? "Completed" : "Processing"}
+            </h3>
             <div className="w-full bg-slate-100 h-3.5 rounded-full overflow-hidden border border-slate-200">
-               <div className="bg-gradient-to-r from-indigo-600 to-emerald-500 h-full transition-all" style={{width: `${(gradingProgress.processedFiles / gradingProgress.totalFiles) * 100}%`}} />
+               <div className="bg-gradient-to-r from-indigo-600 to-emerald-500 h-full transition-all" style={{width: `${((gradingProgress.processed_files + gradingProgress.needs_review_count) / Math.max(1, gradingProgress.total_files)) * 100}%`}} />
             </div>
-            {gradingProgress.status === "completed" && (
+            
+            {((gradingProgress.processed_files + gradingProgress.needs_review_count) >= gradingProgress.total_files) && (
               <div className="flex gap-4 pt-4 border-t border-slate-100">
-                <a href={gradingProgress.exportExcelUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold"><FileSpreadsheet className="w-4 h-4"/> Excel Report</a>
-                <a href={gradingProgress.exportZipUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-bold"><FileArchive className="w-4 h-4"/> PDF Summaries</a>
+                <button onClick={() => fetchBatchReports(gradingProgress.id)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 transition-colors text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-md">
+                   <ClipboardList className="w-4 h-4"/> Review {gradingProgress.total_files} Graded Submissions
+                </button>
                 <button onClick={()=>setGradingProgress(null)} className="ml-auto text-xs font-bold text-slate-400">Clear</button>
               </div>
             )}
+         </div>
+      )}
+
+      {reviewingReports && (
+         <div className="glass-panel p-8 rounded-3xl border border-slate-200 shadow-lg space-y-6 bg-white">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><ClipboardList className="w-5 h-5 text-indigo-500"/> Batch Reports Review</h3>
+              <button onClick={() => setReviewingReports(false)} className="text-xs font-bold text-slate-400 hover:text-slate-600">Close Review</button>
+            </div>
+            <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+               <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold sticky top-0">
+                     <tr>
+                        <th className="p-4 uppercase tracking-wider">Student</th>
+                        <th className="p-4 uppercase tracking-wider">AI Score</th>
+                        <th className="p-4 uppercase tracking-wider">Confidence</th>
+                        <th className="p-4 uppercase tracking-wider">Status</th>
+                        <th className="p-4 uppercase tracking-wider text-right">Action</th>
+                     </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                     {batchReports.map((report) => (
+                       <tr key={report.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="p-4">
+                            <div className="font-bold text-slate-700 text-sm">{report.student_name}</div>
+                            <div className="text-[10px] text-slate-400 font-mono mt-0.5">{report.file_name}</div>
+                          </td>
+                          <td className="p-4">
+                             <div className="text-xl font-black text-slate-800">{report.final_status ? report.final_status === 'pass' ? report.final_overall_score || report.ai_overall_score : report.ai_overall_score : report.ai_overall_score}<span className="text-xs text-slate-400 font-medium">/{report.ai_max_score}</span></div>
+                          </td>
+                          <td className="p-4">
+                             <div className="flex items-center gap-1.5">
+                               <div className="w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                 <div className={`h-full ${report.ai_overall_confidence > 0.8 ? 'bg-emerald-500' : report.ai_overall_confidence > 0.6 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{width: `${report.ai_overall_confidence * 100}%`}}/>
+                               </div>
+                               <span className="text-[10px] font-bold text-slate-500">{Math.round(report.ai_overall_confidence * 100)}%</span>
+                             </div>
+                          </td>
+                          <td className="p-4">
+                             <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-md border ${
+                               report.published_at ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
+                               "bg-amber-50 text-amber-600 border-amber-200"
+                             }`}>
+                               {report.published_at ? "Approved" : "Needs Review"}
+                             </span>
+                          </td>
+                          <td className="p-4 text-right">
+                             {!report.published_at ? (
+                               <button onClick={() => handleApproveReport(report.id, report.ai_overall_score)} className="bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors">
+                                 Approve
+                               </button>
+                             ) : (
+                               <span className="text-xs font-bold text-slate-400">Published</span>
+                             )}
+                          </td>
+                       </tr>
+                     ))}
+                  </tbody>
+               </table>
+            </div>
          </div>
       )}
 
