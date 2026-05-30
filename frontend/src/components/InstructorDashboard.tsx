@@ -516,10 +516,15 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
       const fd = new FormData();
       fd.append("title", refTitle);
       fd.append("file", refFile);
-      await api.post(`/api/instructor/subjects/${subject.id}/references`, fd);
+      // Explicitly set multipart/form-data so Axios overrides the global JSON default
+      await api.post(`/api/instructor/subjects/${subject.id}/references`, fd, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
       setRefStatus("Success! Knowledge Graph is being updated in the background.");
       setRefTitle(""); setRefFile(null);
-    } catch (err) { setRefStatus("Failed to upload reference."); }
+    } catch (err: any) { 
+      setRefStatus(`Failed: ${err.message || "Could not upload reference."}`);
+    }
   };
 
   return (
