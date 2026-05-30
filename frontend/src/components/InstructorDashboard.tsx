@@ -516,10 +516,9 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
       const fd = new FormData();
       fd.append("title", refTitle);
       fd.append("file", refFile);
-      // Explicitly set multipart/form-data so Axios overrides the global JSON default
-      await api.post(`/api/instructor/subjects/${subject.id}/references`, fd, {
-        headers: { "Content-Type": "multipart/form-data" }
-      });
+      // Do NOT set Content-Type header explicitly; Axios needs to set it automatically to include the boundary
+      await api.post(`/api/instructor/subjects/${subject.id}/references`, fd);
+
       setRefStatus("Success! Knowledge Graph is being updated in the background.");
       setRefTitle(""); setRefFile(null);
     } catch (err: any) { 
