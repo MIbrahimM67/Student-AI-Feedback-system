@@ -28,6 +28,7 @@ from app.auth.firebase import verify_id_token
 from app.services import local_storage
 from app.db.postgres import get_conn
 from app.workers.celery_app import celery_app
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -373,15 +374,19 @@ async def single_upload(
         logger.error("Local storage upload failed: %s", e)
         raise HTTPException(500, f"File upload failed: {e}")
             
-    async with get_conn(org_id) as conn:
-        await conn.execute(
-            """
-            INSERT INTO submissions 
-              (id, org_id, assignment_id, subject_id, type, mode, stdin_text, file_url, file_name, status, student_name, created_at)
-            VALUES ($1, $2, $3, $4, $5, 'single', $6, $7, $8, 'uploaded', $9, $10)
-            """,
-            sub_id, org_id, assignment_id, subject_id, type, stdin_text, file_url, file.filename, student_name, now,
-        )
+    try:
+        async with get_conn(org_id) as conn:
+            await conn.execute(
+                """
+                INSERT INTO submissions 
+                  (id, org_id, assignment_id, subject_id, type, mode, stdin_text, file_url, file_name, status, student_name, created_at)
+                VALUES ($1, $2, $3, $4, $5, 'single', $6, $7, $8, 'uploaded', $9, $10)
+                """,
+                sub_id, org_id, assignment_id, subject_id, type, stdin_text, file_url, file.filename, student_name, now,
+            )
+    except Exception as e:
+        logger.error("DB Insert Failed: %s", e)
+        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")
         
     # Queue single processing directly
     from app.workers.celery_app import celery_app
