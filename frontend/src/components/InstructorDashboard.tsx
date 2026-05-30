@@ -962,7 +962,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
               <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><ClipboardList className="w-5 h-5 text-indigo-500"/> Batch Reports Review</h3>
               <div className="flex items-center gap-3">
                  <button onClick={() => {
-                   auth.currentUser?.getIdToken().then(token => {
+                   auth.currentUser?.getIdToken().then((token: string) => {
                      fetch(`${API_URL}/api/instructor/batch/${batchId}/export/excel`, { headers: { Authorization: `Bearer ${token}` } })
                        .then(res => res.blob()).then(blob => {
                          const url = window.URL.createObjectURL(blob);
@@ -973,7 +973,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                    <FileSpreadsheet className="w-4 h-4"/> Export Excel
                  </button>
                  <button onClick={() => {
-                   auth.currentUser?.getIdToken().then(token => {
+                   auth.currentUser?.getIdToken().then((token: string) => {
                      fetch(`${API_URL}/api/instructor/batch/${batchId}/export/zip`, { headers: { Authorization: `Bearer ${token}` } })
                        .then(res => res.blob()).then(blob => {
                          const url = window.URL.createObjectURL(blob);
