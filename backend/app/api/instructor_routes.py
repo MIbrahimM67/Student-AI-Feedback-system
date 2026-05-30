@@ -197,6 +197,30 @@ async def upload_reference(
         "message": "File uploaded. Indexing started — knowledge base will be ready in ~1 minute.",
     }
 
+@router.get("/subjects/{subject_id}/references")
+async def list_references(
+    subject_id: str,
+    user: dict = Depends(_get_instructor),
+):
+    """
+    Returns all reference materials uploaded for a specific subject.
+    """
+    org_id = user["org_id"]
+    
+    async with get_conn(org_id) as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, title, type, index_status, chunk_count, created_at
+            FROM reference_materials
+            WHERE subject_id = $1::uuid
+            ORDER BY created_at DESC
+            """,
+            subject_id
+        )
+        
+    return {
+        "references": [dict(r) for r in rows]
+    }
 
 # ---- Assignments -------------------------------------------------------------
 
