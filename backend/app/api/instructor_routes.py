@@ -370,100 +370,110 @@ async def upload_batch(
     org_id = user["org_id"]
     uid = user["uid"]
 
-    if not file.filename.lower().endswith(".zip"):
-        raise HTTPException(400, "Batch upload must be a single .zip file.")
-
-    batch_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc)
-
-    # Create batch row
-    async with get_conn(org_id) as conn:
-        await conn.execute(
-            """
-            INSERT INTO batches
-              (id, org_id, instructor_id, subject_id, assignment_id,
-               plagiarism_enabled, status, total_files, processed_files, created_at)
-            VALUES ($1,$2,$3,$4,$5,$6,'uploaded',0,0,$7)
-            """,
-            batch_id, org_id, uid, subject_id, assignment_id,
-            plagiarism_enabled, now,
-        )
-
-    total_size = 0
-    submission_ids = []
-
-    content = await file.read()
-    if len(content) > settings.INSTRUCTOR_BATCH_MAX_MB * 1024 * 1024:
-        raise HTTPException(413, f"Batch exceeds {settings.INSTRUCTOR_BATCH_MAX_MB}MB limit.")
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
-        tmp.write(content)
-        tmp_zip_path = tmp.name
+    import traceback
 
     try:
-        import zipfile
-        import shutil
-        with tempfile.TemporaryDirectory() as extract_dir:
-            with zipfile.ZipFile(tmp_zip_path, 'r') as zip_ref:
-                zip_ref.extractall(extract_dir)
+        if not file.filename.lower().endswith(".zip"):
+            raise HTTPException(400, "Batch upload must be a single .zip file.")
 
-            # Detect root dir if the zip wraps everything in one master folder
-            root_contents = os.listdir(extract_dir)
-            if len(root_contents) == 1 and os.path.isdir(os.path.join(extract_dir, root_contents[0])):
-                base_dir = os.path.join(extract_dir, root_contents[0])
-            else:
-                base_dir = extract_dir
+        batch_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc)
 
-            student_folders = [d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))]
-            
-            # If no folders found, maybe they zipped files directly instead of folders
-            if not student_folders:
-                raise HTTPException(400, "No student folders found inside the ZIP.")
+        # Create batch row
+        async with get_conn(org_id) as conn:
+            await conn.execute(
+                """
+                INSERT INTO batches
+                  (id, org_id, instructor_id, subject_id, assignment_id,
+                   plagiarism_enabled, status, total_files, processed_files, created_at)
+                VALUES ($1,$2,$3,$4,$5,$6,'uploaded',0,0,$7)
+                """,
+                batch_id, org_id, uid, subject_id, assignment_id,
+                plagiarism_enabled, now,
+            )
 
-            if len(student_folders) > settings.INSTRUCTOR_BATCH_MAX_FILES:
-                 raise HTTPException(400, f"Maximum {settings.INSTRUCTOR_BATCH_MAX_FILES} student folders per batch.")
+        total_size = 0
+        submission_ids = []
 
-            # Update batch row with actual student count
-            async with get_conn(org_id) as conn:
-                await conn.execute("UPDATE batches SET total_files = $1 WHERE id = $2", len(student_folders), batch_id)
+        content = await file.read()
+        if len(content) > settings.INSTRUCTOR_BATCH_MAX_MB * 1024 * 1024:
+            raise HTTPException(413, f"Batch exceeds {settings.INSTRUCTOR_BATCH_MAX_MB}MB limit.")
 
-            for student_name in student_folders:
-                student_path = os.path.join(base_dir, student_name)
-                student_zip_base = os.path.join(extract_dir, f"st_{student_name}")
-                shutil.make_archive(student_zip_base, 'zip', student_path)
-                student_zip_path = f"{student_zip_base}.zip"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
+            tmp.write(content)
+            tmp_zip_path = tmp.name
 
-                sub_id = str(uuid.uuid4())
-                blob_name = f"batches/{org_id}/{batch_id}/{sub_id}_{student_name}.zip"
+        try:
+            import zipfile
+            import shutil
+            with tempfile.TemporaryDirectory() as extract_dir:
+                with zipfile.ZipFile(tmp_zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(extract_dir)
 
-                with open(student_zip_path, "rb") as f:
-                    file_url = local_storage.save_file(f.read(), blob_name)
+                # Detect root dir if the zip wraps everything in one master folder
+                root_contents = os.listdir(extract_dir)
+                if len(root_contents) == 1 and os.path.isdir(os.path.join(extract_dir, root_contents[0])):
+                    base_dir = os.path.join(extract_dir, root_contents[0])
+                else:
+                    base_dir = extract_dir
 
+                student_folders = [d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))]
+                
+                # If no folders found, maybe they zipped files directly instead of folders
+                if not student_folders:
+                    raise HTTPException(400, "No student folders found inside the ZIP.")
+
+                if len(student_folders) > settings.INSTRUCTOR_BATCH_MAX_FILES:
+                     raise HTTPException(400, f"Maximum {settings.INSTRUCTOR_BATCH_MAX_FILES} student folders per batch.")
+
+                # Update batch row with actual student count
                 async with get_conn(org_id) as conn:
-                    await conn.execute(
-                        """
-                        INSERT INTO submissions
-                          (id, org_id, assignment_id, subject_id, batch_id,
-                           type, mode, stdin_text, file_url, file_name, student_name, status, created_at)
-                        VALUES ($1,$2,$3,$4,$5,$6,'batch',$7,$8,$9,$10,'uploaded',$11)
-                        """,
-                        sub_id, org_id, assignment_id, subject_id, batch_id,
-                        type, stdin_text, file_url, f"{student_name}.zip", student_name, now,
-                    )
-                submission_ids.append(sub_id)
+                    await conn.execute("UPDATE batches SET total_files = $1 WHERE id = $2", len(student_folders), batch_id)
 
-    finally:
-        if os.path.exists(tmp_zip_path):
-            os.remove(tmp_zip_path)
+                for student_name in student_folders:
+                    student_path = os.path.join(base_dir, student_name)
+                    student_zip_base = os.path.join(extract_dir, f"st_{student_name}")
+                    shutil.make_archive(student_zip_base, 'zip', student_path)
+                    student_zip_path = f"{student_zip_base}.zip"
 
-    # Queue batch grading
-    celery_app.send_task("tasks.run_batch_grading", args=[batch_id, org_id])
+                    sub_id = str(uuid.uuid4())
+                    blob_name = f"batches/{org_id}/{batch_id}/{sub_id}_{student_name}.zip"
 
-    return {
-        "batch_id": batch_id,
-        "total_files": len(submission_ids),
-        "message": f"Batch uploaded successfully. Queued {len(submission_ids)} students for grading.",
-    }
+                    with open(student_zip_path, "rb") as f:
+                        file_url = local_storage.save_file(f.read(), blob_name)
+
+                    async with get_conn(org_id) as conn:
+                        await conn.execute(
+                            """
+                            INSERT INTO submissions
+                              (id, org_id, assignment_id, subject_id, batch_id,
+                               type, mode, stdin_text, file_url, file_name, student_name, status, created_at)
+                            VALUES ($1,$2,$3,$4,$5,$6,'batch',$7,$8,$9,$10,'uploaded',$11)
+                            """,
+                            sub_id, org_id, assignment_id, subject_id, batch_id,
+                            type, stdin_text, file_url, f"{student_name}.zip", student_name, now,
+                        )
+                    submission_ids.append(sub_id)
+
+        finally:
+            if 'tmp_zip_path' in locals() and os.path.exists(tmp_zip_path):
+                os.remove(tmp_zip_path)
+
+        # Queue batch grading
+        celery_app.send_task("tasks.run_batch_grading", args=[batch_id, org_id])
+
+        return {
+            "batch_id": batch_id,
+            "total_files": len(submission_ids),
+            "message": f"Batch uploaded successfully. Queued {len(submission_ids)} students for grading.",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = f"Batch processing failed: {str(e)}\n{traceback.format_exc()}"
+        logger.error(error_msg)
+        raise HTTPException(400, error_msg)
 
 
 # ---- Batch name confirmation + processing trigger ---------------------------
