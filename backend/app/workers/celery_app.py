@@ -142,4 +142,4 @@ def purge_expired_subjects(self):
             logger.info("Purged expired subjects: %s", result)
     
     _run_async(_purge())
-    logger.info("Dispatched %d grading tasks for batch=%s", len(submission_ids), batch_id)
+    logger.info("Purge task complete.")
