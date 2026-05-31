@@ -120,6 +120,7 @@ async def run_indexing(reference_id: str, org_id: str, subject_id: str) -> None:
 
     # ---- Step 4: Extract concepts per chunk (Utility model) ------------------
     concept_ids_per_chunk: list[list[str]] = []
+    import asyncio as _asyncio
     for chunk_text in raw_chunks:
         try:
             resp = await llm.chat(
@@ -150,6 +151,11 @@ async def run_indexing(reference_id: str, org_id: str, subject_id: str) -> None:
         except Exception as e:
             logger.warning("Concept extraction failed for chunk: %s", e)
             concept_ids_per_chunk.append([])
+
+        # Pace calls to stay within DO serverless RPM limit (~10 RPM)
+        await _asyncio.sleep(6)
+
+
 
     # ---- Step 5: Embed all chunks in one batch ------------------------------
     try:

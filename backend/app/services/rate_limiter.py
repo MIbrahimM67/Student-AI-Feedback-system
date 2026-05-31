@@ -11,7 +11,7 @@ REMAINING_KEY  = "do_infer:remaining"      # remaining in current window (from h
 RESET_KEY      = "do_infer:reset_at"       # unix epoch when window resets (from headers)
 WINDOW_KEY     = "do_infer:window"         # sliding-window request log
 
-FALLBACK_RPM   = 120     # conservative guess used only before first header arrives
+FALLBACK_RPM   = 10      # real observed DO serverless limit (~6-10 RPM effective)
 SAFETY_FACTOR  = 0.85    # use 85% of the discovered ceiling for headroom
 
 
