@@ -54,77 +54,42 @@ async def grade(
         if c.reference_hint:
             user_prompt += f"  Reference Hint: {c.reference_hint}\n"
     
-    # 2. Build the multimodal content list
-    # The new LLM provider format typically accepts a list of content blocks for Gemini.
-    # Since we are using an abstract LLMProvider, we need to adapt it. 
-    # Let's assume the provider supports passing a custom format if needed, but for now 
-    # we'll build a payload that fits the provider's `chat` signature, which we might need 
-    # to extend if it doesn't support images currently.
-    
-    # DECISION: We'll construct a standard text-based prompt for the LLM interface.
-    # Since ResilientLLM in llm_provider.py might not natively support multimodal
-    # images in its current ChatMessage dataclass, we will format it as a rich payload
-    # if the provider supports it, or fall back to text. The spec requires multimodal.
-    # I will update ResilientLLM or create a dedicated multimodal call here.
-    # For now, I'll structure it to pass base64 images if the provider allows.
-    
-    # Assuming ResilientLLM can handle a complex 'content' field or we'll wrap it.
-    # In a real multimodal Gemini call (via google-genai), we'd pass the parts array.
-    
-    # Let's simulate the multimodal parts array.
-    parts = []
-    
-    parts.append({"type": "text", "text": user_prompt})
-    
-    parts.append({"type": "text", "text": "\n=== REFERENCE MATERIAL ===\n"})
+    # Build text-only prompt — DO serverless (openai-gpt-oss-120b) is text-only;
+    # images cause 400. Use the extracted text already stored on each page.
+    user_parts: list[str] = [user_prompt]
+
+    user_parts.append("\n=== REFERENCE MATERIAL ===\n")
     for i, ref_page in enumerate(reference_pages):
-        parts.append({"type": "text", "text": f"--- Reference Page {i+1} ---"})
-        # Add image
-        parts.append({
-            "type": "image",
-            "mime_type": ref_page.mime_type,
-            "data": base64.b64encode(ref_page.image_bytes).decode("utf-8")
-        })
+        user_parts.append(f"--- Reference Page {i+1} ---")
         if ref_page.extracted_text:
-             parts.append({"type": "text", "text": f"Extracted Text:\n{ref_page.extracted_text}\n"})
-    
-    parts.append({"type": "text", "text": "\n=== STUDENT SUBMISSION ===\n"})
+            user_parts.append(ref_page.extracted_text)
+
+    user_parts.append("\n=== STUDENT SUBMISSION ===\n")
     if submission.text_only and submission.plain_text:
-        parts.append({"type": "text", "text": submission.plain_text})
+        user_parts.append(submission.plain_text)
     else:
         for i, sub_page in enumerate(submission.pages):
-            parts.append({"type": "text", "text": f"--- Submission Page {i+1} ---"})
-            parts.append({
-                "type": "image",
-                "mime_type": sub_page.mime_type,
-                "data": base64.b64encode(sub_page.image_bytes).decode("utf-8")
-            })
-            if sub_page.code_ocr_text:
-                 parts.append({"type": "text", "text": f"OCR (Code region):\n{sub_page.code_ocr_text}\n"})
+            user_parts.append(f"--- Submission Page {i+1} ---")
+            if sub_page.extracted_text:
+                user_parts.append(sub_page.extracted_text)
+            elif sub_page.code_ocr_text:
+                user_parts.append(sub_page.code_ocr_text)
 
-    # We need to call the LLM. 
-    # If `llm.chat` does not support multimodal parts, we'll need to extend it.
-    # For the scope of this file, we assume `llm.chat` accepts a JSON string that 
-    # our custom provider backend can parse, or we just pass the text.
-    # To strictly follow the spec ("Builds a multimodal Gemini request"), we must
-    # pass images. We will serialize the parts to JSON as the `content` string, 
-    # and the provider adapter can decode it.
-    
+    user_content = "\n".join(user_parts)
+
     from app.services.llm_provider import ChatMessage
-    
+
     try:
-        # Wrap parts in JSON so the provider can unpack it into a multimodal request
-        content_json = json.dumps({"multimodal_parts": parts})
-        
         resp = await llm.chat(
             messages=[
                 ChatMessage(role="system", content=system_prompt),
-                ChatMessage(role="user", content=content_json)
+                ChatMessage(role="user", content=user_content)
             ],
             model=config.GEMINI_MODEL,
-            response_format="json_object",
+            # NOTE: response_format omitted — DO serverless returns 400 if set
             temperature=0.2
         )
+
 
         data: dict[str, Any] = _extract_json(resp.text)
         per_criterion = data.get("per_criterion", {})
