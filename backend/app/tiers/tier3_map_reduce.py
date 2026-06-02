@@ -11,10 +11,12 @@ import asyncio
 
 from app.grading.types import Tier, DocumentPayload, Criterion, GradingResult
 from app.grading.grader import grade
+from app.router.router import _dedicated_available
 
 logger = logging.getLogger(__name__)
 
-CHUNK_SIZE = 4  # pages per chunk
+SERVERLESS_CHUNK_SIZE = 4  # pages per chunk for 8k context models
+DEDICATED_CHUNK_SIZE = 80  # pages per chunk for 128k context models (Groq)
 COOLDOWN_DELAY_S = 3.0  # seconds to wait between chunks
 
 
@@ -27,6 +29,9 @@ async def grade_tier3(
     Grade a massive submission by breaking it into chunks and aggregating the scores.
     """
     logger.info("Executing Tier 3 (Map-Reduce) grading for %s", submission.source_path)
+    
+    # Dynamically select chunk size based on available model capacity
+    chunk_size = DEDICATED_CHUNK_SIZE if _dedicated_available() else SERVERLESS_CHUNK_SIZE
 
     # In Tier 3, we process the student's submission in chunks.
     # We still pass the reference pages (if any) to every chunk, but since Tier 3
@@ -48,10 +53,10 @@ async def grade_tier3(
         )
 
     chunks = []
-    for i in range(0, total_pages, CHUNK_SIZE):
-        chunks.append(submission.pages[i:i + CHUNK_SIZE])
+    for i in range(0, total_pages, chunk_size):
+        chunks.append(submission.pages[i:i + chunk_size])
 
-    logger.info("Split submission into %d chunks of up to %d pages each", len(chunks), CHUNK_SIZE)
+    logger.info("Split submission into %d chunks of up to %d pages each", len(chunks), chunk_size)
 
     chunk_results: list[GradingResult] = []
     
