@@ -15,7 +15,6 @@ from app.services.llm_provider import build_llm_from_env, build_dedicated_llm_fr
 from app.grading.types import Tier, DocumentPayload, PageImage, Criterion, GradingResult
 from app.grading import config
 from app.grading.rubric import _extract_json
-from app.router.router import TIER0_BUDGET
 
 logger = logging.getLogger(__name__)
 
@@ -34,17 +33,16 @@ async def grade(
     t_start = time.time()
     reference_sections_used = reference_sections_used or []
 
-    # Auto-select LLM: use dedicated (Groq/128k) for large submissions, serverless for small
-    combined_tokens = submission.est_tokens + sum(
-        len((p.extracted_text or "").split()) * 1.3 for p in reference_pages
-    )
+    # Prefer dedicated (Groq) whenever configured — it has no per-minute rate limit
+    # issues, 500 req/day, and handles both small and large chunks equally well.
+    # Fall back to DO serverless only when dedicated is not configured.
     dedicated = build_dedicated_llm_from_env()
-    if dedicated and combined_tokens > TIER0_BUDGET:
+    if dedicated:
         llm = dedicated
-        logger.info("Using dedicated LLM (Groq) for large submission: ~%d tokens", int(combined_tokens))
+        logger.info("Using dedicated LLM (Groq) for grading call")
     else:
         llm = build_llm_from_env()
-        logger.info("Using serverless LLM for submission: ~%d tokens", int(combined_tokens))
+        logger.info("Using serverless LLM for grading call")
 
     # 1. Build the prompt text
     system_prompt = (
