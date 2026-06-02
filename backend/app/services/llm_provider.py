@@ -244,15 +244,34 @@ class ResilientLLM:
         return await self._with_retries("rerank", lambda p: p.rerank(**kwargs))
 
 
+
 # ---- Factory ----------------------------------------------------------------
 
+def build_dedicated_llm_from_env() -> ResilientLLM | None:
+    """Build a dedicated (high-capacity) LLM if env vars are configured.
+    Returns None if no dedicated endpoint is configured.
+    """
+    from app.config import settings
+    if not settings.DEDICATED_INFERENCE_BASE_URL or not settings.DEDICATED_INFERENCE_TOKEN:
+        return None
+    dedicated = GradientProvider(
+        api_key=settings.DEDICATED_INFERENCE_TOKEN,
+        base_url=settings.DEDICATED_INFERENCE_BASE_URL,
+        timeout=120.0,  # longer timeout for large context grading
+    )
+    # Serverless as fallback if dedicated fails
+    fallback = GradientProvider(
+        api_key=os.environ["GRADIENT_API_KEY"],
+        base_url=os.environ["GRADIENT_BASE_URL"],
+    )
+    return ResilientLLM(primary=dedicated, failover=[fallback], max_retries=3, base_backoff_s=2.0)
+
+
 def build_llm_from_env() -> ResilientLLM:
+    """Build the standard (serverless) LLM provider."""
     primary = GradientProvider(
         api_key=os.environ["GRADIENT_API_KEY"],
         base_url=os.environ["GRADIENT_BASE_URL"],
     )
-    # Add failover providers here when keys are available:
-    #   AnthropicProvider(api_key=os.environ["ANTHROPIC_API_KEY"])
-    #   OpenAIProvider(api_key=os.environ["OPENAI_API_KEY"])
     failover: list[LLMProvider] = []
     return ResilientLLM(primary=primary, failover=failover, max_retries=6, base_backoff_s=2.0)

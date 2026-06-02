@@ -15,27 +15,42 @@ logger = logging.getLogger(__name__)
 
 
 SERVERLESS_INPUT_CAP = 8192 
-TIER0_BUDGET = int(SERVERLESS_INPUT_CAP * 0.8)  # 6553 tokens
+TIER0_BUDGET = int(SERVERLESS_INPUT_CAP * 0.8)  # 6553 tokens — serverless safe limit
+DEDICATED_CONTEXT_CAP = 120_000  # Groq/Llama-3.3-70B: 128k window, leave headroom
+
+
+def _dedicated_available() -> bool:
+    """True when a high-capacity dedicated endpoint is configured."""
+    from app.config import settings
+    return bool(settings.DEDICATED_INFERENCE_BASE_URL and settings.DEDICATED_INFERENCE_TOKEN)
+
 
 def route(sub_payload: DocumentPayload, ref_payload: DocumentPayload) -> Tier:
     """
     Route the document payload to the cheapest capable grading tier.
     """
     combined = sub_payload.est_tokens + ref_payload.est_tokens
-    logger.info("Routing payload: combined_tokens=%d, sub_tokens=%d, ref_has_structure=%s", 
-                combined, sub_payload.est_tokens, ref_payload.has_structure)
+    logger.info("Routing payload: combined_tokens=%d, sub_tokens=%d, dedicated=%s",
+                combined, sub_payload.est_tokens, _dedicated_available())
 
+    # Small enough for serverless — always Tier 0
     if combined <= TIER0_BUDGET:
-        logger.info("Decision: Tier 0 (Context Stuffing)")
-        return Tier.CONTEXT          # full-context, the quality path, for everything that fits
-        
+        logger.info("Decision: Tier 0 (Context Stuffing) via serverless")
+        return Tier.CONTEXT
+
+    # Large doc — use dedicated endpoint (128k context) if available
+    if _dedicated_available() and combined <= DEDICATED_CONTEXT_CAP:
+        logger.info("Decision: Tier 0 (Context Stuffing) via dedicated endpoint — full %d tokens", combined)
+        return Tier.CONTEXT
+
+    # Dedicated not available OR even too big for 128k — fall through to chunked tiers
     if sub_payload.est_tokens > TIER0_BUDGET:
-        logger.info("Decision: Tier 3 (Map-Reduce Grading)")
-        return Tier.MAP_REDUCE       # submission itself too big -> Tier 3
-        
+        logger.info("Decision: Tier 3 (Map-Reduce) — no dedicated endpoint available")
+        return Tier.MAP_REDUCE
+
     if ref_payload.has_structure:
         logger.info("Decision: Tier 1 (Tree Navigation)")
-        return Tier.TREE             # Tier 1
-        
+        return Tier.TREE
+
     logger.info("Decision: Tier 2 (Vector Fallback)")
-    return Tier.VECTOR               # reference too big -> Tier 2 RAG
+    return Tier.VECTOR

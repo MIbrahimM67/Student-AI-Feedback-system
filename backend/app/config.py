@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     GRADIENT_API_KEY: str
     GRADIENT_BASE_URL: str = "https://api.digitalocean.com/v1/inference"
 
+    # Dedicated inference endpoint (Groq / any OpenAI-compatible)
+    # When set, large submissions are routed here instead of Map-Reduce chunking.
+    DEDICATED_INFERENCE_BASE_URL: Optional[str] = None
+    DEDICATED_INFERENCE_TOKEN: Optional[str] = None
+    DEDICATED_MODEL: str = "llama-3.3-70b-versatile"  # Groq model name
+
     # Models
     GRADIENT_MODEL_SPECIALIST: str = "meta-llama-3.3-70b-instruct"
     GRADIENT_MODEL_JUDGE: str = "meta-llama-3.3-70b-instruct"
