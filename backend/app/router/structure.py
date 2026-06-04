@@ -19,7 +19,10 @@ logger = logging.getLogger(__name__)
 
 def estimate_tokens(payload: DocumentPayload) -> int:
     """
-    Estimate the total Gemini token cost of this document.
+    Estimate the total token cost of this document.
+    NOTE: Since grader.py operates in text-only mode (extracted_text from pages),
+    we only count text tokens — not image tokens. Image token costs (800/page) are
+    only relevant if the model receives base64-encoded images, which it currently does not.
     """
     if payload.text_only and payload.plain_text:
         return len(payload.plain_text) // 4  # rough heuristic: 4 chars ≈ 1 token
@@ -32,9 +35,11 @@ def estimate_tokens(payload: DocumentPayload) -> int:
             if page.code_ocr_text:
                 text_tokens += len(page.code_ocr_text) // 4
 
-    image_tokens = len(payload.pages) * config.TOKENS_PER_PAGE_IMAGE
+    # NOTE: image_tokens intentionally omitted — grader sends text only.
+    # Re-enable this line only if base64 image payloads are restored:
+    # image_tokens = len(payload.pages) * config.TOKENS_PER_PAGE_IMAGE
 
-    return text_tokens + image_tokens
+    return text_tokens
 
 
 def detect_structure(path: str) -> bool:
