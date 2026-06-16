@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     # 0 means no cap. Positive values scan the whole PDF and send the most
     # visually relevant pages, rather than blindly taking the first N pages.
     VISUAL_EXTRACTION_MAX_PDF_PAGES: int = 20
+    VISUAL_EXTRACTION_PAGE_DELAY_SECONDS: float = 6.0
 
     # Firebase (Auth + Storage ONLY)
     FIREBASE_PROJECT_ID: str = ""

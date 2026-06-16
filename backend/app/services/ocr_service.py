@@ -13,6 +13,7 @@ Flow:
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import os
@@ -129,12 +130,27 @@ class OCRService:
                     tmp.write(pix.tobytes("png"))
                     tmp_path = tmp.name
                 try:
-                    analysis = await self._vision_model_extract(tmp_path, f"{filename} page {idx + 1}")
-                    if analysis.strip():
-                        parts.append(f"--- Page {idx + 1} visual analysis ---\n{analysis}")
+                    try:
+                        analysis = await self._vision_model_extract(tmp_path, f"{filename} page {idx + 1}")
+                        if analysis.strip():
+                            parts.append(f"--- Page {idx + 1} visual analysis ---\n{analysis}")
+                    except Exception as page_error:
+                        logger.warning(
+                            "Vision extraction failed for %s page %d: %s",
+                            filename,
+                            idx + 1,
+                            page_error,
+                        )
+                        parts.append(
+                            f"--- Page {idx + 1} visual analysis unavailable ---\n"
+                            f"Vision extraction failed for this page: {page_error}"
+                        )
                 finally:
                     if os.path.exists(tmp_path):
                         os.remove(tmp_path)
+
+                if settings.VISUAL_EXTRACTION_PAGE_DELAY_SECONDS > 0 and idx != page_indices[-1]:
+                    await asyncio.sleep(settings.VISUAL_EXTRACTION_PAGE_DELAY_SECONDS)
 
             doc.close()
 
