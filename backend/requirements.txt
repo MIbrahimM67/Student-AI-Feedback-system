@@ -28,8 +28,7 @@ pydantic-settings==2.6.1
 python-multipart==0.0.12
 pymupdf==1.24.14               # PDF text extraction (fitz)
 python-docx==1.1.2             # DOCX extraction
-pillow==11.0.0                 # image preprocessing for OCR
-pytesseract==0.3.13            # Tesseract OCR wrapper
+pillow==11.0.0                 # image handling for vision extraction
 
 # PDF report generation
 reportlab==4.2.5
@@ -44,3 +43,4 @@ tiktoken==0.8.0                # token counting for chunk sizing
 python-jose[cryptography]==3.3.0
 python-dotenv==1.0.1
 tenacity==9.0.0                # retry logic (complements ResilientLLM)
+docker==7.1.0                  # docker sdk for code execution sandboxing

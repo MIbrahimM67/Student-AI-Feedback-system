@@ -54,15 +54,15 @@ export const InstructorDashboard: React.FC = () => {
   const isPending = user?.facultyStatus === "pending";
 
   return (
-    <div className="max-w-6xl w-full mx-auto px-4 py-8 space-y-10 animate-fade-in-up">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-200">
+    <div className="w-full px-5 py-6 space-y-6 animate-fade-in-up">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-[var(--color-rule)]">
         <div>
-          <h2 className="text-3xl font-black text-slate-800 flex items-center gap-2">
-            <BadgeCheck className="w-7 h-7 text-emerald-500 animate-float" />
-            Instructor Dashboard
+          <h2 className="text-2xl font-bold text-[var(--color-ink)] flex items-center gap-2">
+            <BadgeCheck className="w-6 h-6 text-[var(--color-success)]" />
+            Faculty Workbench
           </h2>
-          <p className="text-slate-500 text-sm mt-1">
-            Manage subjects, assignments, references, and AI evaluations.
+          <p className="text-[var(--color-muted)] text-sm mt-1">
+            Manage subjects, references, assignments, batch intake, and published reports.
           </p>
         </div>
       </div>
@@ -119,10 +119,10 @@ const VerificationForm: React.FC<{ isPending: boolean }> = ({ isPending }) => {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-      <div className="lg:col-span-7 glass-panel p-8 rounded-3xl border border-slate-200 shadow-xl space-y-6">
+      <div className="lg:col-span-7 glass-panel p-6 border border-[var(--color-rule)] shadow-[var(--shadow-panel)] space-y-6">
         <div className="space-y-1">
-          <h3 className="text-xl font-black text-slate-800">Faculty Verification Application</h3>
-          <p className="text-xs text-slate-500">Provide credentials to unlock batch operations and pro features.</p>
+          <h3 className="text-xl font-bold text-[var(--color-ink)]">Faculty Verification Application</h3>
+          <p className="text-xs text-[var(--color-muted)]">Provide credentials to unlock subject and batch operations.</p>
         </div>
 
         {error && <div className="p-4 rounded-xl bg-rose-50 text-rose-600 text-xs font-semibold">{error}</div>}
@@ -216,25 +216,24 @@ const VerificationForm: React.FC<{ isPending: boolean }> = ({ isPending }) => {
         )}
       </div>
 
-      <div className="lg:col-span-5 glass-panel bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-950 text-white p-8 rounded-3xl shadow-2xl relative overflow-hidden space-y-6">
-        <div className="absolute top-0 right-0 w-44 h-44 bg-emerald-500/10 rounded-full blur-2xl -z-10" />
+      <div className="lg:col-span-5 border border-[oklch(96%_0.012_92_/_0.16)] bg-[var(--color-ink)] text-[var(--color-paper)] p-6 shadow-[var(--shadow-panel)] relative overflow-hidden space-y-6">
         <div className="space-y-2">
-          <span className="py-1 px-3.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 text-[10px] font-extrabold uppercase tracking-widest">
-            Faculty Tier
+          <span className="py-1 px-3.5 bg-[oklch(30%_0.045_255)] text-[var(--color-paper)] border border-[var(--color-accent-2)] text-[10px] font-extrabold uppercase tracking-widest">
+            Faculty access
           </span>
-          <h3 className="text-2xl font-black tracking-tight">Assignment Feedback Pro</h3>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Scale your evaluations across whole classrooms instantly. Standard accounts are limited to single-file submissions.
+          <h3 className="text-2xl font-bold tracking-normal text-[var(--color-paper)]">Classroom grading operations</h3>
+          <p className="text-xs text-[oklch(82%_0.012_92)] leading-relaxed">
+            Verification lets faculty create classrooms, attach reference material, and process student submissions in batches.
           </p>
         </div>
-        <div className="border-t border-slate-800 my-4" />
+        <div className="border-t border-[oklch(96%_0.012_92_/_0.14)] my-4" />
         <div className="space-y-4">
-          <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Unlocked Pro Privileges:</h4>
-          <ul className="space-y-3.5 text-xs text-slate-350">
-            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-400" /> Staged Bulk Uploads (up to 30 files / 100MB)</li>
-            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-400" /> Cross-submission Plagiarism matching</li>
-            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-400" /> Excel summaries export</li>
-            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-400" /> Create isolated subject classrooms</li>
+          <h4 className="text-[10px] font-extrabold text-[oklch(78%_0.014_92)] uppercase tracking-wider">Available after approval</h4>
+          <ul className="space-y-3.5 text-xs text-[oklch(86%_0.012_92)]">
+            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" /> Staged bulk uploads</li>
+            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" /> Cross-submission plagiarism matching</li>
+            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" /> Excel summaries export</li>
+            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" /> Isolated subject classrooms</li>
           </ul>
         </div>
       </div>
@@ -285,10 +284,10 @@ const VerifiedDashboard: React.FC = () => {
     <div className="space-y-6">
       
       {/* Navigation Breadcrumbs */}
-      <div className="flex items-center gap-2 text-xs font-bold text-slate-500 mb-6">
+      <div className="flex items-center gap-2 text-xs font-bold text-[var(--color-muted)] mb-6">
         <button 
           onClick={() => { setActiveSubject(null); setActiveAssignment(null); fetchSubjects(); }} 
-          className="hover:text-indigo-600 transition-colors"
+          className="hover:text-[var(--color-accent)] transition-colors"
         >
           My Classrooms
         </button>
@@ -297,7 +296,7 @@ const VerifiedDashboard: React.FC = () => {
             <span>/</span>
             <button 
               onClick={() => setActiveAssignment(null)} 
-              className={`hover:text-indigo-600 transition-colors ${!activeAssignment ? 'text-indigo-600' : ''}`}
+              className={`hover:text-[var(--color-accent)] transition-colors ${!activeAssignment ? 'text-[var(--color-accent)]' : ''}`}
             >
               {activeSubject.code}
             </button>
@@ -306,7 +305,7 @@ const VerifiedDashboard: React.FC = () => {
         {activeAssignment && (
           <>
             <span>/</span>
-            <span className="text-indigo-600">{activeAssignment.title}</span>
+            <span className="text-[var(--color-accent)]">{activeAssignment.title}</span>
           </>
         )}
       </div>
@@ -351,21 +350,20 @@ const SubjectsView: React.FC<{ subjects: Subject[], onSelect: (s: Subject) => vo
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-black text-slate-800">Your Classrooms</h3>
+        <h3 className="text-lg font-bold text-[var(--color-ink)]">Your Classrooms</h3>
         <button 
           onClick={() => setCreating(!creating)}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-2"
+          className="bg-[var(--color-ink)] hover:bg-[var(--color-ink-2)] text-[var(--color-paper)] px-4 py-2 text-xs font-bold inline-flex items-center gap-2"
         >
           <Plus className="w-4 h-4" /> New Classroom
         </button>
       </div>
 
       {creating && (
-        <div className="glass-panel p-8 rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-200/50 mb-8 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-2xl -z-10" />
+        <div className="glass-panel p-6 border border-[var(--color-rule)] bg-[var(--color-surface)] shadow-[var(--shadow-panel)] mb-8 relative overflow-hidden">
           <div className="mb-6">
-            <h4 className="text-xl font-black text-slate-800">Launch a New Classroom</h4>
-            <p className="text-xs text-slate-500 mt-1">Define the subject space where assignments and knowledge bases will live.</p>
+            <h4 className="text-xl font-bold text-[var(--color-ink)]">Create Classroom</h4>
+            <p className="text-xs text-[var(--color-muted)] mt-1">Define the subject space where assignments and reference material will live.</p>
           </div>
           <form onSubmit={handleCreate} className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
@@ -410,7 +408,7 @@ const SubjectsView: React.FC<{ subjects: Subject[], onSelect: (s: Subject) => vo
       )}
 
       {subjects.length === 0 && !creating && (
-        <div className="text-center py-20 bg-slate-50 rounded-3xl border border-dashed border-slate-300">
+        <div className="text-center py-20 bg-[var(--color-paper-2)] border border-dashed border-[var(--color-rule-2)]">
           <BookOpen className="w-10 h-10 text-slate-300 mx-auto mb-3" />
           <p className="text-sm font-bold text-slate-600">No classrooms created yet.</p>
           <p className="text-xs text-slate-500">Create a subject to begin adding reference materials and grading assignments.</p>
@@ -428,8 +426,8 @@ const SubjectsView: React.FC<{ subjects: Subject[], onSelect: (s: Subject) => vo
           return (
             <div 
               key={sub.id} 
-              className={`glass-panel p-6 rounded-3xl border transition-all bg-white group flex flex-col ${
-                isExpired ? "border-rose-300 bg-rose-50/30" : "border-slate-200 hover:border-indigo-300 hover:shadow-lg"
+              className={`glass-panel p-5 border transition-all bg-[var(--color-surface)] group flex flex-col ${
+                isExpired ? "border-red-200 bg-red-50" : "border-[var(--color-rule)] hover:border-[var(--color-accent)] hover:shadow-[var(--shadow-panel)]"
               }`}
             >
               <div 
@@ -581,17 +579,16 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
       {tab === "assignments" && (
         <div className="space-y-6">
           <div className="flex justify-end">
-            <button onClick={()=>setCreating(!creating)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-2">
+            <button onClick={()=>setCreating(!creating)} className="bg-[var(--color-ink)] hover:bg-[var(--color-ink-2)] text-[var(--color-paper)] px-4 py-2 text-xs font-bold inline-flex items-center gap-2">
               <Plus className="w-4 h-4"/> Create Assignment
             </button>
           </div>
 
           {creating && (
-            <div className="glass-panel p-8 rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-200/50 mb-8 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl -z-10" />
+            <div className="glass-panel p-6 border border-[var(--color-rule)] bg-[var(--color-surface)] shadow-[var(--shadow-panel)] mb-8 relative overflow-hidden">
               <div className="mb-6">
-                <h4 className="text-xl font-black text-slate-800">Draft New Assignment</h4>
-                <p className="text-xs text-slate-500 mt-1">Specify the prompt and rubric criteria for AI evaluation.</p>
+                <h4 className="text-xl font-bold text-[var(--color-ink)]">Create Assignment</h4>
+                <p className="text-xs text-[var(--color-muted)] mt-1">Specify the prompt and rubric criteria for evaluation.</p>
               </div>
               <form onSubmit={handleCreateAssignment} className="space-y-5">
                 <div className="space-y-1.5">
@@ -645,10 +642,10 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {assignments.map(assn => (
-              <div key={assn.id} onClick={() => onSelectAssignment(assn)} className="glass-panel p-6 rounded-3xl border border-slate-200 hover:border-indigo-300 hover:shadow-lg cursor-pointer transition-all bg-white">
+              <div key={assn.id} onClick={() => onSelectAssignment(assn)} className="glass-panel p-5 border border-[var(--color-rule)] hover:border-[var(--color-accent)] hover:shadow-[var(--shadow-panel)] cursor-pointer transition-all bg-[var(--color-surface)]">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl"><FileText className="w-5 h-5"/></div>
-                  <h4 className="text-base font-black text-slate-800">{assn.title}</h4>
+                  <h4 className="text-base font-bold text-[var(--color-ink)]">{assn.title}</h4>
                 </div>
                 <p className="text-xs text-slate-500 line-clamp-2">{assn.prompt || "No prompt provided."}</p>
               </div>
@@ -661,7 +658,7 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
       )}
 
       {tab === "references" && (
-        <div className="glass-panel p-8 rounded-3xl border border-slate-200 bg-slate-50 space-y-6">
+        <div className="glass-panel p-6 border border-[var(--color-rule)] bg-[var(--color-surface)] space-y-6">
           <div className="space-y-2">
             <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><BookOpen className="w-5 h-5 text-emerald-500"/> Subject Knowledge Base</h3>
             <div className="flex items-center gap-3 mt-1">
@@ -677,7 +674,7 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
               </span>
             </div>
             <p className="text-xs text-slate-500 leading-relaxed pt-2">
-              Upload textbook chapters, marking schemes, or past papers here. The AI will ingest these files, build a semantic knowledge graph for this subject, and automatically use them to evaluate student submissions.
+              Upload textbook chapters, marking schemes, or past papers here. The grading pipeline indexes these files for subject-aware evaluation.
             </p>
           </div>
           
@@ -963,24 +960,24 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
     <div className="space-y-6">
       
       {/* Current Assignment Context */}
-      <div className="glass-panel p-6 rounded-3xl border border-slate-200 bg-slate-50 flex justify-between items-center">
+      <div className="glass-panel p-5 border border-[var(--color-rule)] bg-[var(--color-surface)] flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
         <div>
            <h3 className="text-xl font-black text-slate-800">{assignment.title}</h3>
            <p className="text-xs text-slate-500 line-clamp-1 max-w-2xl mt-1"><span className="font-bold">Prompt:</span> {assignment.prompt}</p>
         </div>
-        <button onClick={onTutorial} className="text-xs font-bold text-slate-400 hover:text-indigo-500 bg-white border border-slate-200 px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm">
+        <button onClick={onTutorial} className="text-xs font-bold text-[var(--color-muted)] hover:text-[var(--color-accent)] bg-[var(--color-surface)] border border-[var(--color-rule)] px-3 py-1.5 flex items-center gap-1.5">
           <HelpCircle className="w-3.5 h-3.5"/> Batch Tutorial
         </button>
       </div>
 
       <div className="flex gap-4">
-         <button onClick={()=>setUploadMode("single")} className={`flex-1 py-4 rounded-2xl border-2 font-bold text-sm transition-all ${uploadMode === "single" ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"}`}>
+         <button onClick={()=>setUploadMode("single")} className={`flex-1 py-4 border font-bold text-sm transition-all ${uploadMode === "single" ? "border-[var(--color-accent)] bg-blue-50 text-[var(--color-accent)]" : "border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-rule-2)]"}`}>
             Single Submission Upload
          </button>
-         <button onClick={()=>setUploadMode("batch")} className={`flex-1 py-4 rounded-2xl border-2 font-bold text-sm transition-all ${uploadMode === "batch" ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"}`}>
+         <button onClick={()=>setUploadMode("batch")} className={`flex-1 py-4 border font-bold text-sm transition-all ${uploadMode === "batch" ? "border-[var(--color-success)] bg-green-50 text-[var(--color-success)]" : "border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-rule-2)]"}`}>
             Classroom Batch (Master ZIP)
          </button>
-         <button onClick={()=>setUploadMode("history")} className={`flex-1 py-4 rounded-2xl border-2 font-bold text-sm transition-all ${uploadMode === "history" ? "border-amber-500 bg-amber-50 text-amber-700" : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"}`}>
+         <button onClick={()=>setUploadMode("history")} className={`flex-1 py-4 border font-bold text-sm transition-all ${uploadMode === "history" ? "border-[var(--color-warning)] bg-amber-50 text-[var(--color-warning)]" : "border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-rule-2)]"}`}>
             Grading History
          </button>
       </div>
@@ -989,12 +986,12 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
       {successMsg && <div className="p-4 rounded-xl bg-emerald-50 text-emerald-600 text-xs font-semibold">{successMsg}</div>}
 
       {gradingProgress && !reviewingReports && (
-         <div className="glass-panel p-8 rounded-3xl border border-slate-200 shadow-lg space-y-6 bg-white">
+         <div className="glass-panel p-6 border border-[var(--color-rule)] shadow-[var(--shadow-panel)] space-y-6 bg-[var(--color-surface)]">
             <h3 className="text-lg font-black text-slate-800">
                Batch Grading Progress: {((gradingProgress.processed_files + gradingProgress.needs_review_count) >= gradingProgress.total_files) ? "Completed" : "Processing"}
             </h3>
             <div className="w-full bg-slate-100 h-3.5 rounded-full overflow-hidden border border-slate-200">
-               <div className="bg-gradient-to-r from-indigo-600 to-emerald-500 h-full transition-all" style={{width: `${((gradingProgress.processed_files + gradingProgress.needs_review_count) / Math.max(1, gradingProgress.total_files)) * 100}%`}} />
+               <div className="bg-[var(--color-accent)] h-full transition-all" style={{width: `${((gradingProgress.processed_files + gradingProgress.needs_review_count) / Math.max(1, gradingProgress.total_files)) * 100}%`}} />
             </div>
             
             {((gradingProgress.processed_files + gradingProgress.needs_review_count) >= gradingProgress.total_files) && (
@@ -1009,7 +1006,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
       )}
 
       {reviewingReports && (
-         <div className="glass-panel p-8 rounded-3xl border border-slate-200 shadow-lg space-y-6 bg-white">
+         <div className="glass-panel p-6 border border-[var(--color-rule)] shadow-[var(--shadow-panel)] space-y-6 bg-[var(--color-surface)]">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><ClipboardList className="w-5 h-5 text-indigo-500"/> Batch Reports Review</h3>
               <div className="flex items-center gap-3">
@@ -1194,7 +1191,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
 
       {/* SINGLE UPLOAD FORM */}
       {uploadMode === "single" && !gradingProgress && (
-        <form onSubmit={handleSingleUpload} className="glass-panel p-8 rounded-3xl border border-slate-200 shadow-sm bg-white space-y-6">
+        <form onSubmit={handleSingleUpload} className="glass-panel p-6 border border-[var(--color-rule)] shadow-[var(--shadow-panel)] bg-[var(--color-surface)] space-y-6">
            <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Upload className="w-5 h-5 text-indigo-500"/> Single Student Grading</h3>
            <div className="grid grid-cols-2 gap-6">
               <div className="space-y-1.5">
@@ -1222,7 +1219,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
 
       {/* BATCH UPLOAD FORM */}
       {uploadMode === "batch" && !gradingProgress && (
-        <div className="glass-panel p-8 rounded-3xl border border-slate-200 shadow-sm bg-white space-y-6">
+        <div className="glass-panel p-6 border border-[var(--color-rule)] shadow-[var(--shadow-panel)] bg-[var(--color-surface)] space-y-6">
           
           {stagedStudents.length > 0 ? (
             <div className="space-y-4">
@@ -1282,7 +1279,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
       )}
 
       {uploadMode === "history" && !reviewingReports && (
-        <div className="glass-panel p-8 rounded-3xl border border-slate-200 shadow-sm bg-white space-y-6">
+        <div className="glass-panel p-6 border border-[var(--color-rule)] shadow-[var(--shadow-panel)] bg-[var(--color-surface)] space-y-6">
           <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><ClipboardList className="w-5 h-5 text-amber-500"/> Past Grading Batches</h3>
           
           {historyBatches.length > 0 ? (

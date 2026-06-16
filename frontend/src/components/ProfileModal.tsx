@@ -133,10 +133,10 @@ export const ProfileModal: React.FC<Props> = ({ open, onClose }) => {
       onClick={handleOverlayClick}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
     >
-      <div className="relative bg-[#fbfaf7] border border-[#eae7e1] rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-fade-in-up">
+      <div className="relative bg-[var(--color-surface)] border border-[var(--color-rule)] shadow-[var(--shadow-panel)] w-full max-w-lg mx-4 overflow-hidden animate-fade-in-up">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#eae7e1] bg-[#f5f3ef]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-rule)] bg-[var(--color-paper-2)]">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-[#1c1c18] flex items-center justify-center">
               <User className="w-4 h-4 text-white" />

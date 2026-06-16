@@ -7,78 +7,87 @@ import { RoleSelectionSection } from "@/components/RoleSelectionSection";
 import { StudentDashboard } from "@/components/StudentDashboard";
 import { InstructorDashboard } from "@/components/InstructorDashboard";
 import { AdminDashboard } from "@/components/AdminDashboard";
-import { 
-  Sparkles, LogOut, Shield, GraduationCap, 
-  Landmark, ChevronRight, Terminal, UserCog
+import {
+  Archive,
+  ChevronRight,
+  GraduationCap,
+  Landmark,
+  LogOut,
+  Shield,
+  Terminal,
+  UserCog,
 } from "lucide-react";
 import { ProfileModal } from "@/components/ProfileModal";
 
+const roleStyles: Record<string, string> = {
+  admin: "text-[var(--color-error)] bg-red-50 border-red-200",
+  instructor: "text-[var(--color-success)] bg-green-50 border-green-200",
+  student: "text-[var(--color-accent)] bg-blue-50 border-blue-200",
+};
 
 export default function Home() {
   const { user, loading, logout } = useAuth();
   const [profileOpen, setProfileOpen] = React.useState(false);
 
-
-  // Full Screen Monospace IDE Loading Screen
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col justify-center items-center bg-[#fbfaf7] text-[#1c1c18]">
-        <div className="flex items-center gap-3 mb-4">
-          <Terminal className="w-6 h-6 text-violet-650 animate-pulse" />
-          <span className="font-mono text-xs font-bold uppercase tracking-widest text-[#5e5c54]">Hydrating Session Context...</span>
-        </div>
-        <div className="w-48 bg-[#f4f2eb] h-1 rounded-full overflow-hidden border border-[#dfdbd3]">
-          <div className="bg-violet-650 h-full w-2/3 rounded-full animate-pulse-subtle" />
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--color-paper)] px-6 text-[var(--color-ink)]">
+        <div className="w-full max-w-sm border border-[var(--color-rule)] bg-[var(--color-surface)] p-5 shadow-[var(--shadow-panel)]">
+          <div className="mb-4 flex items-center gap-3">
+            <Terminal className="w-5 h-5 text-[var(--color-accent)]" />
+            <span className="font-mono text-xs font-bold text-[var(--color-ink-2)]">Opening workspace session</span>
+          </div>
+          <div className="h-1.5 overflow-hidden bg-[var(--color-paper-2)]">
+            <div className="h-full w-2/3 animate-pulse bg-[var(--color-accent)]" />
+          </div>
         </div>
       </div>
     );
   }
 
-  // PORTAL ROUTING 1: Non-authenticated Guest Landing
   if (!user) {
     return (
-      <main className="min-h-screen flex flex-col bg-[#fbfaf7] text-[#1c1c18]">
-        <header className="py-4 px-8 border-b border-[#eae7e1] bg-[#fbfaf7]/80 backdrop-blur-md sticky top-0 z-50">
-          <div className="max-w-7xl w-full mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="p-1.5 bg-[#1c1c18] rounded-xl shadow-sm">
-                <Sparkles className="w-4.5 h-4.5 text-white" />
+      <main className="min-h-screen bg-[var(--color-paper)] text-[var(--color-ink)]">
+        <header className="sticky top-0 z-50 border-b border-[var(--color-rule)] bg-[var(--color-paper)]/95 px-4 py-3 backdrop-blur sm:px-6 lg:px-10">
+          <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center border border-[var(--color-ink)] bg-[var(--color-ink)] text-[var(--color-paper)]">
+                <Archive className="w-4 h-4" />
               </div>
-              <span className="font-bold text-sm tracking-tight text-[#1c1c18] uppercase font-mono">
-                GradeWise
-              </span>
+              <div>
+                <span className="block text-sm font-extrabold text-[var(--color-ink)]">GradeWise</span>
+                <span className="block text-[10px] font-semibold text-[var(--color-muted)]">Academic grading workbench</span>
+              </div>
             </div>
-            <span className="text-[10px] font-mono font-bold text-[#5e5c54] border border-[#dfdbd3] py-1 px-3.5 rounded-full uppercase tracking-wider bg-[#f4f2eb]">
-              GradeWise Engine v3.0
+            <span className="hidden border border-[var(--color-rule)] bg-[var(--color-surface)] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-muted)] sm:inline-flex">
+              Secure Google session
             </span>
           </div>
         </header>
-        
+
         <LandingSection />
       </main>
     );
   }
 
-  // Determine current active dashboard role strictly based on user auth role claim
   const activeRole = user.role;
-  
+
   if (!activeRole) {
     return (
-      <main className="min-h-screen flex flex-col bg-[#fbfaf7] text-[#1c1c18]">
+      <main className="min-h-screen bg-[var(--color-paper)] text-[var(--color-ink)]">
         <RoleSelectionSection />
       </main>
     );
   }
 
-  // Helper metadata styling for active sidebar nodes
   const getSidebarMeta = (role: string) => {
     switch (role) {
       case "admin":
-        return { label: "Admin Suite", icon: <Shield className="w-4 h-4" />, border: "border-rose-355", text: "text-red-750 bg-red-100 border-red-200" };
+        return { label: "Admin Suite", icon: <Shield className="w-4 h-4" /> };
       case "instructor":
-        return { label: "Faculty Hub", icon: <Landmark className="w-4 h-4" />, border: "border-cyan-355", text: "text-[#15803d] bg-green-50 border-green-200" };
+        return { label: "Faculty Hub", icon: <Landmark className="w-4 h-4" /> };
       default:
-        return { label: "Student Console", icon: <GraduationCap className="w-4 h-4" />, border: "border-violet-355", text: "text-violet-750 bg-violet-50 border-violet-200" };
+        return { label: "Student Desk", icon: <GraduationCap className="w-4 h-4" /> };
     }
   };
 
@@ -86,118 +95,95 @@ export default function Home() {
 
   return (
     <>
-      <div className="min-h-screen flex bg-[#fbfaf7] text-[#1c1c18] overflow-hidden">
-        
-        {/* --- SIDEBAR PANEL (250px fixed) --- */}
-        <aside className="hidden lg:flex flex-col w-[250px] bg-[#f5f3ef] border-r border-[#eae7e1] relative z-40 shrink-0 select-none">
-          
-          {/* Brand Header */}
-          <div className="py-6 px-6 border-b border-[#eae7e1] flex items-center gap-2.5">
-            <div className="p-1.5 bg-[#1c1c18] rounded-xl shadow-sm">
-              <Sparkles className="w-4 h-4 text-white" />
+      <div className="flex min-h-screen overflow-hidden bg-[var(--color-paper)] text-[var(--color-ink)]">
+        <aside className="hidden w-[264px] shrink-0 select-none flex-col border-r border-[var(--color-rule)] bg-[var(--color-ink)] text-[var(--color-paper)] lg:flex">
+          <div className="border-b border-[oklch(96%_0.012_92_/_0.14)] p-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center border border-[oklch(96%_0.012_92_/_0.22)] bg-[oklch(24%_0.014_82)]">
+                <Archive className="w-4 h-4 text-[var(--color-accent-2)]" />
+              </div>
+              <div>
+                <span className="block text-sm font-extrabold">GradeWise</span>
+                <span className="block text-[10px] text-[oklch(78%_0.014_92)]">Workbench</span>
+              </div>
             </div>
-            <span className="font-extrabold text-xs uppercase tracking-widest font-mono text-[#1c1c18]">
-              GradeWise
-            </span>
           </div>
 
-          {/* Sidebar Nav Nodes */}
-          <div className="flex-1 py-6 px-4 space-y-7">
+          <nav className="flex-1 p-4">
+            <div className="mb-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[oklch(72%_0.018_92)]">
+              Console
+            </div>
             <div className="space-y-2">
-              <span className="text-[9px] font-bold text-[#8e8b80] uppercase tracking-widest font-mono block px-2">Console Portal</span>
-              
-              <div className="space-y-1">
-                {activeRole === "student" && (
-                  <div className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-xl font-bold text-xs bg-white border border-[#dfdbd3] text-[#1c1c18] shadow-sm">
-                    <GraduationCap className="w-4 h-4 text-violet-650" />
-                    Student Console
-                  </div>
-                )}
-
-                {activeRole === "instructor" && (
-                  <div className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-xl font-bold text-xs bg-white border border-[#dfdbd3] text-[#1c1c18] shadow-sm">
-                    <Landmark className="w-4 h-4 text-green-700" />
-                    Faculty Hub
-                  </div>
-                )}
-
-                {activeRole === "admin" && (
-                  <div className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-xl font-bold text-xs bg-white border border-[#dfdbd3] text-[#1c1c18] shadow-sm">
-                    <Shield className="w-4 h-4 text-red-600" />
-                    Admin Suite
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* User Capsule Footer */}
-          <div className="p-4 border-t border-[#eae7e1] bg-[#f5f3ef] space-y-4">
-            <button
-              onClick={() => setProfileOpen(true)}
-              className="w-full flex items-center gap-2.5 p-1.5 rounded-xl bg-white border border-[#dfdbd3] shadow-sm hover:border-[#1c1c18] hover:shadow-md transition-all group cursor-pointer text-left"
-              title="Edit profile"
-            >
-              {user.photoURL ? (
-                <img src={user.photoURL} alt={user.displayName} className="w-7 h-7 rounded-lg object-cover" />
-              ) : (
-                <div className="w-7 h-7 rounded-lg bg-[#1c1c18] text-white font-extrabold flex items-center justify-center text-xs">
-                  {user.displayName.substring(0, 1).toUpperCase()}
-                </div>
-              )}
-              <div className="flex flex-col text-left truncate flex-1">
-                <span className="text-[10px] font-bold text-[#1c1c18] truncate">{user.displayName}</span>
-                <span className="text-[8px] text-[#8e8b80] font-mono truncate">{user.email}</span>
-              </div>
-              <UserCog className="w-3.5 h-3.5 text-[#8e8b80] group-hover:text-[#1c1c18] shrink-0 transition-colors" />
-            </button>
-
-            <button
-              onClick={logout}
-              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-[#dfdbd3] hover:border-red-200 hover:bg-red-50 hover:text-red-650 text-[#5e5c54] font-bold text-xs transition-all active:scale-98 cursor-pointer"
-            >
-              <LogOut className="w-4.5 h-4.5" />
-              Sign Out Session
-            </button>
-          </div>
-
-        </aside>
-
-        {/* --- MAIN DISPLAY WORKSPACE --- */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-[#fbfaf7]">
-          
-          {/* Workspace Top Toolbar */}
-          <header className="py-4 px-6 border-b border-[#eae7e1] bg-[#fbfaf7]/85 backdrop-blur-md sticky top-0 z-30 flex items-center justify-between gap-4">
-            
-            {/* Breadcrumb Indicator */}
-            <div className="flex items-center gap-2 text-xs font-semibold text-[#8e8b80] font-mono">
-              <span>Workspace</span>
-              <ChevronRight className="w-3.5 h-3.5 text-[#8e8b80]/60" />
-              <span className="text-[#1c1c18] font-bold">{currentMeta.label}</span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* Display active console badge */}
-              <div className={`py-1 px-3.5 rounded-full border text-[9px] font-bold tracking-widest uppercase flex items-center gap-1.5 shadow-2xs ${currentMeta.text}`}>
+              <div className="flex w-full items-center gap-3 border border-[var(--color-accent-2)] bg-[oklch(30%_0.045_255)] px-3 py-3 text-xs font-bold">
                 {currentMeta.icon}
                 {currentMeta.label}
               </div>
             </div>
+          </nav>
 
+          <div className="space-y-3 border-t border-[oklch(96%_0.012_92_/_0.14)] p-4">
+            <button
+              onClick={() => setProfileOpen(true)}
+              className="flex min-h-0 w-full items-center gap-3 border border-[oklch(96%_0.012_92_/_0.14)] bg-[oklch(24%_0.014_82)] p-2 text-left"
+              title="Edit profile"
+            >
+              {user.photoURL ? (
+                <img src={user.photoURL} alt={user.displayName} className="h-9 w-9 object-cover" />
+              ) : (
+                <div className="flex h-9 w-9 items-center justify-center bg-[var(--color-paper)] text-xs font-extrabold text-[var(--color-ink)]">
+                  {user.displayName.substring(0, 1).toUpperCase()}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-bold">{user.displayName}</span>
+                <span className="block truncate font-mono text-[9px] text-[oklch(76%_0.012_92)]">{user.email}</span>
+              </div>
+              <UserCog className="h-4 w-4 shrink-0 text-[oklch(76%_0.012_92)]" />
+            </button>
+
+            <button
+              onClick={logout}
+              className="flex w-full items-center justify-center gap-2 border border-[oklch(96%_0.012_92_/_0.14)] px-3 py-2.5 text-xs font-bold text-[oklch(86%_0.012_92)] hover:bg-[oklch(24%_0.014_82)]"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign out
+            </button>
+          </div>
+        </aside>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b border-[var(--color-rule)] bg-[var(--color-paper)]/95 px-4 py-3 backdrop-blur sm:px-6">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-xs font-semibold text-[var(--color-muted)]">
+                <span>Workspace</span>
+                <ChevronRight className="h-3.5 w-3.5" />
+                <span className="truncate text-[var(--color-ink)]">{currentMeta.label}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className={`hidden items-center gap-1.5 border px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] sm:inline-flex ${roleStyles[activeRole]}`}>
+                {currentMeta.icon}
+                {currentMeta.label}
+              </span>
+              <button
+                onClick={() => setProfileOpen(true)}
+                className="inline-flex h-11 w-11 items-center justify-center border border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-ink)] lg:hidden"
+                title="Profile"
+              >
+                <UserCog className="h-4 w-4" />
+              </button>
+            </div>
           </header>
 
-          {/* Portal dashboard displays */}
-          <div className="flex-1 flex flex-col bg-[#fbfaf7]">
+          <div className="flex min-h-0 flex-1 flex-col">
             {activeRole === "student" && <StudentDashboard />}
             {activeRole === "instructor" && <InstructorDashboard />}
             {activeRole === "admin" && <AdminDashboard />}
           </div>
-
         </div>
-
       </div>
 
-      {/* Profile edit modal — accessible from sidebar user card */}
       <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
     </>
   );

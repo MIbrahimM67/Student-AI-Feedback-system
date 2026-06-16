@@ -14,13 +14,24 @@ import os
 import asyncio
 import time
 import logging
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Any, Sequence
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+
+def _strip_thinking(text: str) -> str:
+    """Remove Qwen-style hidden reasoning blocks from provider output."""
+    cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE).strip()
+    if cleaned:
+        return cleaned
+    if "<think>" in text.lower():
+        return re.sub(r"(?is)^.*?<think>.*", "", text).strip()
+    return text.strip()
 
 
 # ---- Data types -------------------------------------------------------------
@@ -28,7 +39,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ChatMessage:
     role: str   # "system" | "user" | "assistant"
-    content: str
+    content: str | list[dict[str, Any]]
 
 
 @dataclass
@@ -71,10 +82,20 @@ class LLMProvider(ABC):
 from app.services.rate_limiter import acquire_slot, update_from_headers
 import random
 
-class GradientProvider(LLMProvider):
-    name = "gradient"
+class OpenAICompatibleProvider(LLMProvider):
+    name = "openai-compatible"
 
-    def __init__(self, api_key: str, base_url: str, timeout: float = 90.0):
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str,
+        timeout: float = 90.0,
+        *,
+        name: str = "openai-compatible",
+        rate_limited: bool = False,
+    ):
+        self.name = name
+        self._rate_limited = rate_limited
         self._client = httpx.AsyncClient(
             base_url=base_url.rstrip("/"),
             headers={"Authorization": f"Bearer {api_key}"},
@@ -100,14 +121,16 @@ class GradientProvider(LLMProvider):
             body["response_format"] = {"type": "json_object"}
 
         t0 = time.perf_counter()
-        acquire_slot()
+        if self._rate_limited:
+            acquire_slot()
         r = await self._client.post("/chat/completions", json=body)
-        update_from_headers(r.headers)
+        if self._rate_limited:
+            update_from_headers(r.headers)
         r.raise_for_status()
         data = r.json()
         usage = data.get("usage", {})
         return ChatResponse(
-            text=data["choices"][0]["message"]["content"],
+            text=_strip_thinking(data["choices"][0]["message"]["content"]),
             model=model,
             input_tokens=usage.get("prompt_tokens", 0),
             output_tokens=usage.get("completion_tokens", 0),
@@ -115,12 +138,14 @@ class GradientProvider(LLMProvider):
         )
 
     async def embed(self, texts: Sequence[str], *, model: str) -> list[list[float]]:
-        acquire_slot()
+        if self._rate_limited:
+            acquire_slot()
         r = await self._client.post(
             "/embeddings",
             json={"model": model, "input": list(texts)},
         )
-        update_from_headers(r.headers)
+        if self._rate_limited:
+            update_from_headers(r.headers)
         r.raise_for_status()
         data = r.json()
         return [item["embedding"] for item in data["data"]]
@@ -128,7 +153,8 @@ class GradientProvider(LLMProvider):
     async def rerank(
         self, query: str, documents: Sequence[str], *, model: str, top_k: int = 6
     ) -> list[tuple[int, float]]:
-        acquire_slot()
+        if self._rate_limited:
+            acquire_slot()
         r = await self._client.post(
             "/rerank",
             json={
@@ -138,11 +164,23 @@ class GradientProvider(LLMProvider):
                 "top_n": top_k,
             },
         )
-        update_from_headers(r.headers)
+        if self._rate_limited:
+            update_from_headers(r.headers)
         r.raise_for_status()
         data = r.json()
         results = data.get("results", [])
         return [(item["index"], item["relevance_score"]) for item in results]
+
+
+class GradientProvider(OpenAICompatibleProvider):
+    def __init__(self, api_key: str, base_url: str, timeout: float = 90.0):
+        super().__init__(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=timeout,
+            name="gradient",
+            rate_limited=True,
+        )
 
 
 # ---- Resilient wrapper: retries + failover ----------------------------------
@@ -254,24 +292,43 @@ def build_dedicated_llm_from_env() -> ResilientLLM | None:
     from app.config import settings
     if not settings.DEDICATED_INFERENCE_BASE_URL or not settings.DEDICATED_INFERENCE_TOKEN:
         return None
-    dedicated = GradientProvider(
+    dedicated = OpenAICompatibleProvider(
         api_key=settings.DEDICATED_INFERENCE_TOKEN,
         base_url=settings.DEDICATED_INFERENCE_BASE_URL,
         timeout=120.0,  # longer timeout for large context grading
+        name="dedicated",
     )
-    # Serverless as fallback if dedicated fails
-    fallback = GradientProvider(
-        api_key=os.environ["GRADIENT_API_KEY"],
-        base_url=os.environ["GRADIENT_BASE_URL"],
-    )
-    return ResilientLLM(primary=dedicated, failover=[fallback], max_retries=3, base_backoff_s=2.0)
+    failover: list[LLMProvider] = []
+    if settings.GRADIENT_API_KEY:
+        failover.append(GradientProvider(
+            api_key=settings.GRADIENT_API_KEY,
+            base_url=settings.GRADIENT_BASE_URL,
+        ))
+    return ResilientLLM(primary=dedicated, failover=failover, max_retries=3, base_backoff_s=2.0)
 
 
 def build_llm_from_env() -> ResilientLLM:
-    """Build the standard (serverless) LLM provider."""
+    """Build the standard DigitalOcean Gradient chat provider."""
+    from app.config import settings
+
     primary = GradientProvider(
-        api_key=os.environ["GRADIENT_API_KEY"],
-        base_url=os.environ["GRADIENT_BASE_URL"],
+        api_key=settings.GRADIENT_API_KEY,
+        base_url=settings.GRADIENT_BASE_URL,
     )
     failover: list[LLMProvider] = []
     return ResilientLLM(primary=primary, failover=failover, max_retries=6, base_backoff_s=2.0)
+
+
+def build_vision_llm_from_env() -> ResilientLLM | None:
+    """Build the vision-capable provider for diagrams, flowcharts, and design images."""
+    from app.config import settings
+
+    if settings.GRADIENT_VISION_OCR_MODEL and settings.GRADIENT_API_KEY:
+        provider = GradientProvider(
+            api_key=settings.GRADIENT_API_KEY,
+            base_url=settings.GRADIENT_BASE_URL,
+            timeout=180.0,
+        )
+        return ResilientLLM(primary=provider, failover=[], max_retries=2, base_backoff_s=1.0)
+
+    return None

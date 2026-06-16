@@ -6,6 +6,7 @@ Never import this from the frontend.
 import os
 from typing import Optional
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 
 
 class Settings(BaseSettings):
@@ -19,7 +20,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://redis:6379/0"
 
     # DigitalOcean Gradient (serverless inference)
-    GRADIENT_API_KEY: str
+    GRADIENT_API_KEY: str = ""
     GRADIENT_BASE_URL: str = "https://api.digitalocean.com/v1/inference"
 
     # Dedicated inference endpoint (Groq / any OpenAI-compatible)
@@ -29,13 +30,15 @@ class Settings(BaseSettings):
     DEDICATED_MODEL: str = "llama-3.3-70b-versatile"  # Groq model name
 
     # Models
-    GRADIENT_MODEL_SPECIALIST: str = "meta-llama-3.3-70b-instruct"
-    GRADIENT_MODEL_JUDGE: str = "meta-llama-3.3-70b-instruct"
-    GRADIENT_MODEL_SENIOR: str = "meta-llama-3.3-70b-instruct"
-    GRADIENT_MODEL_UTILITY: str = "meta-llama-3.3-70b-instruct"
+    GRADIENT_MODEL_SPECIALIST: str = "openai-gpt-oss-120b"
+    GRADIENT_MODEL_JUDGE: str = "qwen3-32b"
+    GRADIENT_MODEL_SENIOR: str = "openai-gpt-oss-120b"
+    GRADIENT_MODEL_UTILITY: str = "openai-gpt-oss-20b"
     GRADIENT_EMBED_MODEL: str = "bge-m3"
     GRADIENT_RERANK_MODEL: str = "bge-reranker-v2-m3"
-    GRADIENT_VISION_OCR_MODEL: Optional[str] = None  # optional vision upgrade
+    GRADIENT_VISION_OCR_MODEL: Optional[str] = None  # cloud vision fallback
+    VISUAL_EXTRACTION_ENABLED: bool = True
+    VISUAL_EXTRACTION_MAX_PDF_PAGES: int = 8
 
     # Firebase (Auth + Storage ONLY)
     FIREBASE_PROJECT_ID: str = ""
@@ -49,6 +52,13 @@ class Settings(BaseSettings):
     INSTRUCTOR_BATCH_MAX_MB: int = 100
     SANDBOX_TIMEOUT_SECONDS: int = 5
     SANDBOX_MEMORY_MB: int = 256
+
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def parse_debug(cls, value):
+        if isinstance(value, str) and value.lower() in {"release", "production", "prod"}:
+            return False
+        return value
 
     class Config:
         env_file = ".env"

@@ -2,7 +2,17 @@
 
 import React, { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { GraduationCap, Landmark, Loader2, AlertTriangle, ChevronRight, ChevronLeft, User, Building2, BookOpen } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
+  Building2,
+  GraduationCap,
+  Landmark,
+  Loader2,
+  User,
+} from "lucide-react";
 
 export const RoleSelectionSection: React.FC = () => {
   const { user: authUser, selectRole, loading, error } = useAuth();
@@ -14,174 +24,189 @@ export const RoleSelectionSection: React.FC = () => {
     department: "",
   });
 
-  const handleNext = () => {
-    if (selectedRole) setStep(2);
-  };
-
-  const handleBack = () => {
-    setStep(1);
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedRole) {
-      selectRole(selectedRole, formData);
-    }
+    if (selectedRole) selectRole(selectedRole, formData);
   };
 
+  const roleCards = [
+    {
+      role: "student" as const,
+      icon: <GraduationCap className="w-5 h-5" />,
+      title: "Student",
+      text: "Submit work, track progress, and read published feedback.",
+    },
+    {
+      role: "instructor" as const,
+      icon: <Landmark className="w-5 h-5" />,
+      title: "Instructor",
+      text: "Manage subjects, references, assignments, and batch grading.",
+    },
+  ];
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#fbfaf7] px-4">
-      <div className="w-full max-w-md">
-
-        {/* Header */}
-        <div className="text-center mb-10">
-          <div className="w-12 h-12 rounded-2xl bg-[#1c1c18] flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <span className="text-white font-bold text-lg font-mono">G</span>
+    <div className="flex min-h-screen items-center justify-center px-4 py-8">
+      <div className="grid w-full max-w-5xl grid-cols-1 border border-[var(--color-rule)] bg-[var(--color-surface)] shadow-[var(--shadow-panel)] lg:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="border-b border-[var(--color-rule)] bg-[var(--color-ink)] p-6 text-[var(--color-paper)] lg:border-b-0 lg:border-r lg:border-[oklch(96%_0.012_92_/_0.14)]">
+          <div className="flex h-full flex-col justify-between gap-10">
+            <div className="space-y-5">
+              <div className="flex h-10 w-10 items-center justify-center border border-[oklch(96%_0.012_92_/_0.22)] bg-[oklch(24%_0.014_82)] font-mono text-sm font-black">
+                G
+              </div>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-[oklch(78%_0.014_92)]">
+                  Setup
+                </p>
+                <h1 className="mt-3 text-3xl leading-tight text-[var(--color-paper)]">
+                  Choose the desk you work from.
+                </h1>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[1, 2].map((item) => (
+                <div
+                  key={item}
+                  className={`h-1.5 ${step >= item ? "bg-[var(--color-accent-2)]" : "bg-[oklch(96%_0.012_92_/_0.16)]"}`}
+                />
+              ))}
+            </div>
           </div>
-          <h1 className="text-2xl font-bold text-[#1c1c18] font-display">
-            {step === 1 ? "Welcome to GradeWise" : "Complete Your Profile"}
-          </h1>
-          <p className="text-sm text-[#5e5c54] mt-2">
-            {step === 1 
-              ? "Select your role to continue. This is stored securely in the database." 
-              : "Tell us a bit more about yourself to personalize your experience."}
-          </p>
-        </div>
+        </aside>
 
-        {step === 1 && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={() => setSelectedRole("student")}
-                className={`group flex flex-col items-center gap-4 p-6 rounded-2xl border-2 transition-all cursor-pointer ${
-                  selectedRole === "student" 
-                    ? "border-violet-600 bg-violet-50/50 shadow-sm" 
-                    : "border-[#dfdbd3] bg-white hover:border-[#1c1c18] hover:shadow-md"
-                }`}
-              >
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
-                  selectedRole === "student" ? "bg-violet-600" : "bg-violet-50 group-hover:bg-violet-100"
-                }`}>
-                  <GraduationCap className={`w-6 h-6 ${selectedRole === "student" ? "text-white" : "text-violet-700"}`} />
-                </div>
-                <div className="text-center">
-                  <p className="text-sm font-bold text-[#1c1c18]">Student</p>
-                  <p className="text-[11px] text-[#8e8b80] mt-0.5 leading-relaxed">
-                    Submit assignments and view AI feedback
-                  </p>
-                </div>
-              </button>
-
-              <button
-                onClick={() => setSelectedRole("instructor")}
-                className={`group flex flex-col items-center gap-4 p-6 rounded-2xl border-2 transition-all cursor-pointer ${
-                  selectedRole === "instructor" 
-                    ? "border-green-600 bg-green-50/50 shadow-sm" 
-                    : "border-[#dfdbd3] bg-white hover:border-[#1c1c18] hover:shadow-md"
-                }`}
-              >
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
-                  selectedRole === "instructor" ? "bg-green-600" : "bg-green-50 group-hover:bg-green-100"
-                }`}>
-                  <Landmark className={`w-6 h-6 ${selectedRole === "instructor" ? "text-white" : "text-green-700"}`} />
-                </div>
-                <div className="text-center">
-                  <p className="text-sm font-bold text-[#1c1c18]">Instructor</p>
-                  <p className="text-[11px] text-[#8e8b80] mt-0.5 leading-relaxed">
-                    Manage subjects, upload references, grade batches
-                  </p>
-                </div>
-              </button>
-            </div>
-
-            <button
-              onClick={handleNext}
-              disabled={!selectedRole}
-              className="w-full flex items-center justify-center gap-2 bg-[#1c1c18] text-white py-3.5 px-4 rounded-xl font-bold text-sm hover:bg-[#2c2c28] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Continue
-              <ChevronRight className="w-4 h-4" />
-            </button>
+        <section className="p-5 sm:p-8">
+          <div className="mb-8">
+            <h2 className="text-xl font-bold text-[var(--color-ink)]">
+              {step === 1 ? "Select role" : "Complete profile"}
+            </h2>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--color-muted)]">
+              {step === 1
+                ? "This decides which workspace opens after sign-in."
+                : "These fields personalize the grading workspace and faculty records."}
+            </p>
           </div>
-        )}
 
-        {step === 2 && (
-          <form onSubmit={handleSubmit} className="space-y-4 bg-white p-6 rounded-2xl border border-[#eae7e1] shadow-sm">
-            
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#1c1c18] uppercase tracking-wider flex items-center gap-1.5">
-                <User className="w-3.5 h-3.5 text-[#8e8b80]" /> Full Name
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.displayName}
-                onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
-                className="w-full bg-[#fbfaf7] border border-[#dfdbd3] rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all"
-                placeholder="Enter your full name"
-              />
-            </div>
+          {step === 1 && (
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {roleCards.map((card) => {
+                  const isSelected = selectedRole === card.role;
+                  return (
+                    <button
+                      key={card.role}
+                      onClick={() => setSelectedRole(card.role)}
+                      className={`flex min-h-[164px] flex-col items-start justify-between border p-5 text-left ${
+                        isSelected
+                          ? "border-[var(--color-accent)] bg-[oklch(94%_0.035_255)]"
+                          : "border-[var(--color-rule)] bg-[var(--color-paper)] hover:bg-[var(--color-paper-2)]"
+                      }`}
+                    >
+                      <div className="flex h-10 w-10 items-center justify-center border border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-accent)]">
+                        {card.icon}
+                      </div>
+                      <div>
+                        <p className="text-base font-bold text-[var(--color-ink)]">{card.title}</p>
+                        <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">{card.text}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#1c1c18] uppercase tracking-wider flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-[#8e8b80]" /> Institution / University
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.institution}
-                onChange={(e) => setFormData({ ...formData, institution: e.target.value })}
-                className="w-full bg-[#fbfaf7] border border-[#dfdbd3] rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all"
-                placeholder="e.g. Stanford University"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#1c1c18] uppercase tracking-wider flex items-center gap-1.5">
-                <BookOpen className="w-3.5 h-3.5 text-[#8e8b80]" /> Department / Major
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                className="w-full bg-[#fbfaf7] border border-[#dfdbd3] rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all"
-                placeholder="e.g. Computer Science"
-              />
-            </div>
-
-            <div className="pt-4 flex gap-3">
               <button
-                type="button"
-                onClick={handleBack}
-                disabled={loading}
-                className="flex items-center justify-center gap-1 bg-[#fbfaf7] border border-[#dfdbd3] text-[#1c1c18] py-3.5 px-4 rounded-xl font-bold text-sm hover:bg-[#f4f2eb] transition-colors disabled:opacity-50 flex-1"
+                onClick={() => selectedRole && setStep(2)}
+                disabled={!selectedRole}
+                className="inline-flex w-full items-center justify-center gap-2 border border-[var(--color-ink)] bg-[var(--color-ink)] px-5 py-3 text-sm font-bold text-[var(--color-paper)] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <ChevronLeft className="w-4 h-4" />
-                Back
-              </button>
-              <button
-                type="submit"
-                disabled={loading || !formData.displayName || !formData.institution || !formData.department}
-                className="flex items-center justify-center gap-2 bg-violet-600 text-white py-3.5 px-4 rounded-xl font-bold text-sm hover:bg-violet-700 transition-colors disabled:opacity-50 flex-2 w-full"
-              >
-                {loading ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
-                ) : (
-                  "Complete Setup"
-                )}
+                Continue
+                <ArrowRight className="w-4 h-4" />
               </button>
             </div>
-          </form>
-        )}
+          )}
 
-        {error && (
-          <div className="flex items-start gap-2 mt-4 p-3 rounded-xl bg-red-50 border border-red-200">
-            <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-            <p className="text-xs text-red-700">{error}</p>
-          </div>
-        )}
+          {step === 2 && (
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2 sm:col-span-2">
+                  <label className="flex items-center gap-2 text-xs font-bold text-[var(--color-ink)]">
+                    <User className="w-3.5 h-3.5 text-[var(--color-muted)]" />
+                    Full name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.displayName}
+                    onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
+                    className="w-full border border-[var(--color-rule)] bg-[var(--color-paper)] px-3.5 py-3 text-sm text-[var(--color-ink)]"
+                    placeholder="Ayesha Khan"
+                  />
+                </div>
 
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-xs font-bold text-[var(--color-ink)]">
+                    <Building2 className="w-3.5 h-3.5 text-[var(--color-muted)]" />
+                    Institution
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.institution}
+                    onChange={(e) => setFormData({ ...formData, institution: e.target.value })}
+                    className="w-full border border-[var(--color-rule)] bg-[var(--color-paper)] px-3.5 py-3 text-sm text-[var(--color-ink)]"
+                    placeholder="University / school"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-xs font-bold text-[var(--color-ink)]">
+                    <BookOpen className="w-3.5 h-3.5 text-[var(--color-muted)]" />
+                    Department
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.department}
+                    onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                    className="w-full border border-[var(--color-rule)] bg-[var(--color-paper)] px-3.5 py-3 text-sm text-[var(--color-ink)]"
+                    placeholder="Computer Science"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-[var(--color-rule)] pt-5 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  disabled={loading}
+                  className="inline-flex flex-1 items-center justify-center gap-2 border border-[var(--color-rule)] bg-[var(--color-surface)] px-5 py-3 text-sm font-bold text-[var(--color-ink)] disabled:opacity-50"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Back
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading || !formData.displayName || !formData.institution || !formData.department}
+                  className="inline-flex flex-1 items-center justify-center gap-2 border border-[var(--color-ink)] bg-[var(--color-ink)] px-5 py-3 text-sm font-bold text-[var(--color-paper)] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Saving
+                    </>
+                  ) : (
+                    "Complete setup"
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {error && (
+            <div className="mt-5 flex items-start gap-2 border border-[var(--color-error)] bg-red-50 p-3 text-xs text-[var(--color-error)]">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              {error}
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );

@@ -1,23 +1,34 @@
-import type { Metadata } from "next";
-import { Plus_Jakarta_Sans, Inter } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { IBM_Plex_Sans, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 
-const displayFont = Plus_Jakarta_Sans({
+const displayFont = Space_Grotesk({
   subsets: ["latin"],
-  variable: "--font-display",
-  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-display-face",
+  weight: ["500", "600", "700"],
 });
 
-const sansFont = Inter({
+const sansFont = IBM_Plex_Sans({
   subsets: ["latin"],
-  variable: "--font-sans",
+  variable: "--font-body-face",
+  weight: ["400", "500", "600", "700"],
+});
+
+const monoFont = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono-face",
+  weight: ["400", "500", "700"],
 });
 
 export const metadata: Metadata = {
-  title: "GradeWise | AI-Powered Student Evaluation Engine",
-  description: "Sophisticated multi-agent assignment grading pipeline, computer-vision handwritten OCR parsing, sandboxed code execution, and plagiarism vector similarity audits.",
-  viewport: "width=device-width, initial-scale=1",
+  title: "GradeWise | Academic Grading Workbench",
+  description: "A focused workbench for assignment submission, faculty batch review, rubric feedback, sandboxed code checks, OCR, and academic audit workflows.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
@@ -26,11 +37,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${displayFont.variable} ${sansFont.variable} h-full antialiased`}>
+    <html lang="en" className={`${displayFont.variable} ${sansFont.variable} ${monoFont.variable} h-full antialiased`}>
       <head>
         <link rel="icon" href="/favicon.ico" />
       </head>
-      <body className="min-h-full bg-[#fbfaf8] text-[#1e1e1a] flex flex-col font-sans transition-colors duration-300">
+      <body className="min-h-full bg-background text-foreground flex flex-col font-sans">
         <AuthProvider>
           {children}
         </AuthProvider>

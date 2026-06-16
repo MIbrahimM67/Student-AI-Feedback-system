@@ -5,7 +5,7 @@ Called by the Celery `index_reference_material` task.
 
 Steps per reference material:
   1. Download file from Firebase Storage
-  2. Extract text (PyMuPDF / python-docx / Tesseract)
+  2. Extract evidence (PyMuPDF / python-docx / vision model for visual files)
   3. Chunk text (token-aware, 512-token chunks with 64-token overlap)
   4. Extract concepts per chunk (Utility model)
   5. Embed all chunks in one batch (BGE-M3)

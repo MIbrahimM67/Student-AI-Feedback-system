@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
 
     await init_pool()
 
-    _redis = aioredis.from_url(os.environ["REDIS_URL"], decode_responses=True)
+    _redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
     _llm = build_llm_from_env()
 
     try:
@@ -106,8 +106,7 @@ async def health() -> dict:
     pg_ok = "fail"
     redis_ok = "fail"
     try:
-        pool = get_pool()
-        async with pool.acquire() as conn:
+        async with get_conn() as conn:
             await conn.execute("SELECT 1")
         pg_ok = "ok"
     except Exception:

@@ -187,13 +187,13 @@ export const StudentDashboard: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-0 flex-1 min-h-0">
+    <div className="grid flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[380px_minmax(0,1fr)_340px]">
 
       {/* ---- LEFT: Submission Form ---------------------------------------- */}
-      <div className="w-full lg:w-[400px] shrink-0 border-r border-[#eae7e1] p-6 overflow-y-auto">
-        <div className="mb-6">
-          <h2 className="text-base font-bold text-[#1c1c18] font-display">New Submission</h2>
-          <p className="text-xs text-[#8e8b80] mt-0.5">Submit your assignment for AI evaluation</p>
+      <div className="border-b border-[var(--color-rule)] bg-[var(--color-surface)] p-5 lg:border-b-0 lg:border-r overflow-y-auto">
+        <div className="mb-6 border-b border-[var(--color-rule)] pb-5">
+          <h2 className="text-lg font-bold text-[var(--color-ink)] font-display">New Submission</h2>
+          <p className="text-sm text-[var(--color-muted)] mt-1">Create a grading request from text, file, scan, or code.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -208,10 +208,10 @@ export const StudentDashboard: React.FC = () => {
                   key={opt.value}
                   type="button"
                   onClick={() => setType(opt.value)}
-                  className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border text-[10px] font-bold transition-all cursor-pointer
+                  className={`flex min-h-[76px] flex-col items-center justify-center gap-1.5 border px-2 py-3 text-[10px] font-bold transition-all cursor-pointer
                     ${type === opt.value
-                      ? "border-[#1c1c18] bg-[#1c1c18] text-white shadow-sm"
-                      : "border-[#dfdbd3] bg-white text-[#5e5c54] hover:border-[#1c1c18] hover:text-[#1c1c18]"
+                      ? "border-[var(--color-ink)] bg-[var(--color-ink)] text-[var(--color-paper)]"
+                      : "border-[var(--color-rule)] bg-[var(--color-paper)] text-[var(--color-muted)] hover:bg-[var(--color-paper-2)] hover:text-[var(--color-ink)]"
                     }`}
                 >
                   {opt.icon}
@@ -385,15 +385,15 @@ export const StudentDashboard: React.FC = () => {
       </div>
 
       {/* ---- RIGHT: Submission History ------------------------------------- */}
-      <div className="flex-1 p-6 overflow-y-auto">
-        <div className="flex items-center justify-between mb-5">
+      <div className="min-w-0 overflow-y-auto p-5">
+        <div className="mb-5 flex flex-col gap-3 border-b border-[var(--color-rule)] pb-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-base font-bold text-[#1c1c18] font-display">Submission History</h2>
-            <p className="text-xs text-[#8e8b80] mt-0.5">{history.length} total submissions</p>
+            <h2 className="text-lg font-bold text-[var(--color-ink)] font-display">Submission History</h2>
+            <p className="text-sm text-[var(--color-muted)] mt-1">{history.length} total submissions</p>
           </div>
           <button
             onClick={fetchHistory}
-            className="flex items-center gap-1.5 text-[10px] font-bold text-[#5e5c54] hover:text-[#1c1c18] border border-[#dfdbd3] py-1.5 px-3 rounded-lg cursor-pointer transition-colors"
+            className="flex items-center gap-1.5 border border-[var(--color-rule)] bg-[var(--color-surface)] px-3 py-2 text-xs font-bold text-[var(--color-muted)] hover:text-[var(--color-ink)] cursor-pointer transition-colors"
           >
             <RefreshCw className="w-3 h-3" />
             Refresh
@@ -474,8 +474,8 @@ export const StudentDashboard: React.FC = () => {
       </div>
 
       {/* ---- Apply for Instructor Panel ---- */}
-      <div className="bg-white rounded-2xl border border-[#eae7e1] overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#eae7e1]">
+      <div className="border-t border-[var(--color-rule)] bg-[var(--color-surface)] overflow-hidden lg:border-l lg:border-t-0">
+        <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-[var(--color-rule)]">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
               <Landmark className="w-4 h-4 text-amber-700" />

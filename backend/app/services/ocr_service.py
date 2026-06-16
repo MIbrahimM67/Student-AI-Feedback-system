@@ -1,82 +1,81 @@
 """
-GradeWise v3 — OCR service.
+GradeWise visual extraction service.
 
-Tier 1: PyMuPDF (typed PDFs) → pure text, no AI needed.
-Tier 2: Tesseract OCR (clear scans / printed handwriting).
-Tier 3: Vision model via Gradient (messy cursive — optional, set GRADIENT_VISION_OCR_MODEL).
+This intentionally does not use Tesseract. For this project, uploaded images are
+often diagrams, flowcharts, UI designs, architecture sketches, or other visual
+artifacts where OCR alone loses the grading signal.
 
-No simulation mode. No mock text. Real extraction only.
+Flow:
+  - Typed PDFs: extract embedded text with PyMuPDF, then optionally add visual
+    page descriptions for diagrams/screenshots.
+  - Images and scanned PDFs: send the rendered image/page to a vision model.
+  - DOCX/code/text: use deterministic text extraction.
 """
 from __future__ import annotations
 
+import base64
 import logging
 import os
 import tempfile
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp"}
+TEXT_EXTENSIONS = {".txt", ".py", ".java", ".cpp", ".c", ".js", ".ts", ".cs", ".go"}
+
 
 class OCRService:
-
     async def extract_text(self, file_path: str, filename: str) -> str:
         """
-        Extract text from a file. Returns clean UTF-8 text.
-        Raises ValueError if no readable text could be extracted.
+        Return grading-ready textual evidence from the uploaded file.
+
+        For visual files, this is a structured visual analysis from the vision
+        model, not OCR text.
         """
         ext = os.path.splitext(filename)[1].lower()
 
-        # ---- Tier 1: PyMuPDF — typed/digital PDFs ---------------------------
-        if ext == ".pdf":
-            text = self._pymupdf_extract(file_path)
-            if text.strip():
-                logger.info("PyMuPDF extracted %d chars from %s", len(text), filename)
-                return text
-            # PDF is scanned (no embedded text) — fall through to OCR
-
-        # ---- Plain text / code files ----------------------------------------
-        if ext in (".txt", ".py", ".java", ".cpp", ".c", ".js", ".ts", ".cs", ".go"):
+        if ext in TEXT_EXTENSIONS:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 return f.read()
 
-        # ---- DOCX -----------------------------------------------------------
         if ext in (".docx", ".doc"):
             return self._docx_extract(file_path)
 
-        # ---- Tier 2: Tesseract OCR (images + scanned PDFs) ------------------
-        text = await self._tesseract_extract(file_path, ext)
-        if text.strip():
-            return text
+        if ext in IMAGE_EXTENSIONS:
+            from app.config import settings
+            if not settings.VISUAL_EXTRACTION_ENABLED:
+                raise ValueError(
+                    "Image/diagram grading needs a running vision model. "
+                    "Configure GRADIENT_VISION_OCR_MODEL and set "
+                    "VISUAL_EXTRACTION_ENABLED=true."
+                )
+            return await self._vision_model_extract(file_path, filename)
 
-        # ---- Tier 3: Vision model (optional) --------------------------------
-        from app.config import settings
-        if settings.GRADIENT_VISION_OCR_MODEL:
-            text = await self._vision_model_extract(file_path, filename)
-            if text.strip():
-                return text
+        if ext == ".pdf":
+            return await self._pdf_extract(file_path, filename)
 
         raise ValueError(
-            f"Could not extract readable text from '{filename}'. "
-            "Try uploading a clearer scan or a typed PDF."
+            f"Could not extract readable grading evidence from '{filename}'. "
+            "Supported inputs: text/code, DOCX, PDF, and images."
         )
-
-    # ---- Tier 1: PyMuPDF ----------------------------------------------------
 
     def _pymupdf_extract(self, file_path: str) -> str:
         try:
-            import fitz  # PyMuPDF
+            import fitz
+
             doc = fitz.open(file_path)
             pages = [page.get_text() for page in doc]
             doc.close()
-            return "\n\n".join(pages)
+            return "\n\n".join(pages).strip()
         except Exception as e:
-            logger.warning("PyMuPDF failed: %s", e)
+            logger.warning("PyMuPDF text extraction failed: %s", e)
             return ""
-
-    # ---- DOCX ---------------------------------------------------------------
 
     def _docx_extract(self, file_path: str) -> str:
         try:
             from docx import Document
+
             doc = Document(file_path)
             paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
             return "\n\n".join(paragraphs)
@@ -84,81 +83,130 @@ class OCRService:
             logger.warning("python-docx extraction failed: %s", e)
             return ""
 
-    # ---- Tier 2: Tesseract --------------------------------------------------
+    async def _pdf_extract(self, file_path: str, filename: str) -> str:
+        from app.config import settings
 
-    async def _tesseract_extract(self, file_path: str, ext: str) -> str:
+        embedded_text = self._pymupdf_extract(file_path)
+        if not settings.VISUAL_EXTRACTION_ENABLED:
+            if embedded_text:
+                logger.info("PyMuPDF extracted %d chars from %s", len(embedded_text), filename)
+                return embedded_text
+            raise ValueError(f"PDF '{filename}' has no embedded text and visual extraction is disabled.")
+
+        visual_parts = await self._vision_extract_pdf_pages(file_path, filename)
+        if embedded_text and visual_parts:
+            return (
+                "=== EMBEDDED PDF TEXT ===\n"
+                f"{embedded_text}\n\n"
+                "=== VISUAL PAGE ANALYSIS ===\n"
+                f"{visual_parts}"
+            )
+        if visual_parts:
+            return visual_parts
+        if embedded_text:
+            return embedded_text
+
+        raise ValueError(f"Could not extract text or visual evidence from '{filename}'.")
+
+    async def _vision_extract_pdf_pages(self, file_path: str, filename: str) -> str:
+        from app.config import settings
+
         try:
-            import pytesseract
-            from PIL import Image
+            import fitz
 
-            if ext in (".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp"):
-                image = Image.open(file_path)
-                text = pytesseract.image_to_string(image)
-                logger.info("Tesseract extracted %d chars", len(text))
-                return text
+            doc = fitz.open(file_path)
+            total_pages = len(doc)
+            pages_to_process = min(total_pages, settings.VISUAL_EXTRACTION_MAX_PDF_PAGES)
+            parts: list[str] = []
 
-            if ext == ".pdf":
-                # Convert PDF pages to images then OCR
+            for idx in range(pages_to_process):
+                page = doc.load_page(idx)
+                pix = page.get_pixmap(matrix=fitz.Matrix(1.8, 1.8), alpha=False)
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                    tmp.write(pix.tobytes("png"))
+                    tmp_path = tmp.name
                 try:
-                    from pdf2image import convert_from_path
-                    images = convert_from_path(file_path)
-                    parts = [pytesseract.image_to_string(img) for img in images]
-                    return "\n\n".join(parts)
-                except ImportError:
-                    logger.warning("pdf2image not installed — cannot OCR scanned PDF pages")
-                    return ""
+                    analysis = await self._vision_model_extract(tmp_path, f"{filename} page {idx + 1}")
+                    if analysis.strip():
+                        parts.append(f"--- Page {idx + 1} visual analysis ---\n{analysis}")
+                finally:
+                    if os.path.exists(tmp_path):
+                        os.remove(tmp_path)
 
-        except ImportError:
-            logger.warning("pytesseract not installed")
+            doc.close()
+
+            if total_pages > pages_to_process:
+                parts.append(
+                    f"[Only the first {pages_to_process} of {total_pages} PDF pages were visually analyzed. "
+                    "Increase VISUAL_EXTRACTION_MAX_PDF_PAGES if needed.]"
+                )
+
+            return "\n\n".join(parts)
         except Exception as e:
-            logger.warning("Tesseract OCR failed: %s", e)
-        return ""
-
-    # ---- Tier 3: Vision model -----------------------------------------------
+            logger.warning("PDF visual extraction failed for %s: %s", filename, e)
+            return ""
 
     async def _vision_model_extract(self, file_path: str, filename: str) -> str:
         """
-        Call the DigitalOcean vision model to transcribe handwriting.
-        Only runs if GRADIENT_VISION_OCR_MODEL is set in config.
+        Ask a local/cloud vision model to describe grading-relevant visual evidence.
         """
-        try:
-            import base64
-            from app.config import settings
-            from app.services.llm_provider import build_llm_from_env, ChatMessage
+        from app.config import settings
+        from app.services.llm_provider import ChatMessage, build_vision_llm_from_env
 
-            with open(file_path, "rb") as f:
-                b64 = base64.b64encode(f.read()).decode()
-
-            llm = build_llm_from_env()
-            resp = await llm.chat(
-                messages=[
-                    ChatMessage(
-                        role="user",
-                        content=[
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
-                            },
-                            {
-                                "type": "text",
-                                "text": (
-                                    "Transcribe ALL handwritten text in this image exactly as written. "
-                                    "Preserve paragraph breaks. Output only the transcribed text."
-                                ),
-                            },
-                        ],
-                    )
-                ],
-                model=settings.GRADIENT_VISION_OCR_MODEL,
-                temperature=0.0,
-                max_tokens=4096,
+        llm = build_vision_llm_from_env()
+        model = settings.GRADIENT_VISION_OCR_MODEL
+        if not llm or not model:
+            raise ValueError(
+                "Visual extraction is enabled, but no vision model is configured. "
+                "Set GRADIENT_VISION_OCR_MODEL."
             )
-            logger.info("Vision model transcribed %d chars from %s", len(resp.text), filename)
-            return resp.text
-        except Exception as e:
-            logger.error("Vision model OCR failed: %s", e)
-            return ""
+
+        mime = self._mime_for_path(file_path)
+        with open(file_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode()
+
+        prompt = (
+            "Analyze this student submission image for grading. It may contain a diagram, flowchart, "
+            "UI design, architecture sketch, ERD, UML diagram, circuit, layout, or handwritten visual answer.\n\n"
+            "Do NOT just OCR it. Produce structured grading evidence:\n"
+            "1. Visible title/labels/text, if any.\n"
+            "2. Main components/nodes/screens/shapes.\n"
+            "3. Connections, arrows, hierarchy, sequence, or data flow.\n"
+            "4. Design/layout observations and missing/unclear parts.\n"
+            "5. Any assumptions you are making because the image is ambiguous.\n\n"
+            "Be concrete and faithful to the image. Do not invent unseen details."
+        )
+
+        resp = await llm.chat(
+            messages=[
+                ChatMessage(
+                    role="user",
+                    content=[
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime};base64,{b64}"},
+                        },
+                    ],
+                )
+            ],
+            model=model,
+            temperature=0.0,
+            max_tokens=2048,
+        )
+        logger.info("Vision model extracted %d chars of visual evidence from %s", len(resp.text), filename)
+        return resp.text.strip()
+
+    def _mime_for_path(self, file_path: str) -> str:
+        ext = Path(file_path).suffix.lower()
+        return {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+            ".bmp": "image/bmp",
+            ".tiff": "image/tiff",
+        }.get(ext, "image/png")
 
 
-# Global instance
 ocr_service = OCRService()

@@ -184,10 +184,10 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
             ext = os.path.splitext(sub.get("reference_file_name") or ".pdf")[1]
             with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
                 tmp.write(resp.content)
-                tmp_path = tmp.name
+                ref_tmp_path = tmp.name
 
-            reference_text = await ocr_service.extract_text(tmp_path, sub.get("reference_file_name") or "reference_file")
-            os.remove(tmp_path)
+            reference_text = await ocr_service.extract_text(ref_tmp_path, sub.get("reference_file_name") or "reference_file")
+            os.remove(ref_tmp_path)
         except Exception as e:
             logger.warning("Reference text extraction failed for submission %s: %s", submission_id, e)
 
@@ -303,26 +303,21 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
         ref_path_for_pipeline = None
         pipeline_cleanup = []
 
-        if "tmp_path" in locals() and tmp_path and os.path.exists(tmp_path):
+        if sub["type"] == "coding" and "tmp_path" in locals() and tmp_path and os.path.exists(tmp_path):
             sub_path_for_pipeline = tmp_path
         else:
-            # It's a text submission
+            # Text submissions and visual submissions both enter the agentic
+            # grader as text evidence. For visual files, extracted_text is the
+            # vision model's structured analysis of the diagram/design image.
             with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".txt", encoding='utf-8') as f:
                 f.write(extracted_text)
                 sub_path_for_pipeline = f.name
                 pipeline_cleanup.append(f.name)
 
-        if sub.get("reference_file_url"):
-            # Download reference file for the pipeline
-            import httpx
-            async with httpx.AsyncClient(timeout=60) as client:
-                resp = await client.get(sub["reference_file_url"])
-                resp.raise_for_status()
-
-            ext = os.path.splitext(sub.get("reference_file_name") or ".pdf")[1]
-            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-                tmp.write(resp.content)
-                ref_path_for_pipeline = tmp.name
+        if reference_text:
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".txt", encoding='utf-8') as f:
+                f.write(reference_text)
+                ref_path_for_pipeline = f.name
                 pipeline_cleanup.append(ref_path_for_pipeline)
         else:
              # Create empty dummy text file if no reference provided
