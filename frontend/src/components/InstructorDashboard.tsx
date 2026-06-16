@@ -40,6 +40,8 @@ interface Assignment {
   rubric: string;
   minimum_marks?: number;
   total_marks?: number;
+  internal_similarity_enabled?: boolean;
+  internet_plagiarism_enabled?: boolean;
   use_subject_kb?: boolean;
   course_material_weight?: number;
   ai_expertise_weight?: number;
@@ -498,6 +500,8 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
   const [rubric, setRubric] = useState("");
   const [minimumMarks, setMinimumMarks] = useState(0);
   const [totalMarks, setTotalMarks] = useState(100);
+  const [internalSimilarityEnabled, setInternalSimilarityEnabled] = useState(true);
+  const [internetPlagiarismEnabled, setInternetPlagiarismEnabled] = useState(false);
   const [useSubjectKb, setUseSubjectKb] = useState(true);
   const [courseMaterialWeight, setCourseMaterialWeight] = useState(60);
 
@@ -544,6 +548,8 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
         rubric,
         minimum_marks: minimumMarks,
         total_marks: totalMarks,
+        internal_similarity_enabled: internalSimilarityEnabled,
+        internet_plagiarism_enabled: internetPlagiarismEnabled,
         use_subject_kb: useSubjectKb,
         course_material_weight: courseMaterialWeight,
       };
@@ -563,6 +569,8 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
     setRubric("");
     setMinimumMarks(0);
     setTotalMarks(100);
+    setInternalSimilarityEnabled(true);
+    setInternetPlagiarismEnabled(false);
     setUseSubjectKb(true);
     setCourseMaterialWeight(60);
     setEditingAssignment(null);
@@ -576,6 +584,8 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
     setRubric(assignment.rubric || "");
     setMinimumMarks(assignment.minimum_marks || 0);
     setTotalMarks(assignment.total_marks || 100);
+    setInternalSimilarityEnabled(assignment.internal_similarity_enabled ?? true);
+    setInternetPlagiarismEnabled(assignment.internet_plagiarism_enabled ?? false);
     setUseSubjectKb(assignment.use_subject_kb ?? true);
     setCourseMaterialWeight(assignment.course_material_weight ?? 60);
     setCreating(true);
@@ -728,6 +738,36 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
                     />
                   </div>
                 </div>
+                <div className="border border-slate-200 bg-slate-50 p-4 space-y-4">
+                  <div>
+                    <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Academic Integrity Checks</label>
+                    <p className="mt-1 text-[11px] font-semibold text-slate-500">Similarity flags are shown for instructor review and do not automatically deduct marks.</p>
+                  </div>
+                  <label className="flex items-start justify-between gap-4 border border-slate-200 bg-white p-3">
+                    <span>
+                      <span className="block text-xs font-black text-slate-700">Internal similarity check</span>
+                      <span className="mt-1 block text-[11px] font-semibold text-slate-500">Compare against classmates in the same batch and previous submissions.</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={internalSimilarityEnabled}
+                      onChange={e => setInternalSimilarityEnabled(e.target.checked)}
+                      className="mt-1 h-5 w-5 accent-indigo-600"
+                    />
+                  </label>
+                  <label className="flex items-start justify-between gap-4 border border-slate-200 bg-white p-3">
+                    <span>
+                      <span className="block text-xs font-black text-slate-700">Internet plagiarism check</span>
+                      <span className="mt-1 block text-[11px] font-semibold text-slate-500">Search online sources when a search provider is configured.</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={internetPlagiarismEnabled}
+                      onChange={e => setInternetPlagiarismEnabled(e.target.checked)}
+                      className="mt-1 h-5 w-5 accent-indigo-600"
+                    />
+                  </label>
+                </div>
                 <div className="flex justify-end gap-3 pt-2">
                   <button 
                     type="button" 
@@ -772,6 +812,12 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
                   </span>
                   <span className="border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-black text-emerald-700">
                     {assn.use_subject_kb === false ? "KB off" : `KB ${assn.course_material_weight ?? 60}%`}
+                  </span>
+                  <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-black text-slate-500">
+                    {assn.internal_similarity_enabled === false ? "Similarity off" : "Similarity on"}
+                  </span>
+                  <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-black text-slate-500">
+                    {assn.internet_plagiarism_enabled ? "Web plagiarism on" : "Web plagiarism off"}
                   </span>
                 </div>
               </div>
@@ -1132,7 +1178,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
   const activeStage = gradingProgress?.active_stage || "queued";
   const progressStages = [
     { label: "Evidence", aliases: ["queued", "extracting", "evidence_ready", "reference_extracting"] },
-    { label: "Checks", aliases: ["policy_scan", "code_checks", "context_building"] },
+    { label: "Checks", aliases: ["policy_scan", "integrity_checks", "code_checks", "context_building"] },
     { label: "Routing", aliases: ["ingesting_submission", "ingesting_reference", "decomposing_rubric", "routing"] },
     { label: "Review", aliases: ["chunk_review", "retrieving_reference", "specialist"] },
     { label: "Audit", aliases: ["judge"] },
@@ -1263,6 +1309,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                         <th className="p-4 uppercase tracking-wider">Student</th>
                         <th className="p-4 uppercase tracking-wider">AI Score</th>
                         <th className="p-4 uppercase tracking-wider">Confidence</th>
+                        <th className="p-4 uppercase tracking-wider">Integrity</th>
                         <th className="p-4 uppercase tracking-wider">Status</th>
                         <th className="p-4 uppercase tracking-wider text-right">Action</th>
                      </tr>
@@ -1316,6 +1363,19 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                                  )}
                               </td>
                               <td className="p-4">
+                                {report.plagiarism_similarity_score !== null && report.plagiarism_similarity_score !== undefined ? (
+                                  <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-wider border ${
+                                    Number(report.plagiarism_similarity_score) >= 70 ? "bg-rose-50 text-rose-600 border-rose-200" :
+                                    Number(report.plagiarism_similarity_score) >= 35 ? "bg-amber-50 text-amber-700 border-amber-200" :
+                                    "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  }`}>
+                                    {Number(report.plagiarism_similarity_score).toFixed(1)}%
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-slate-400">Pending</span>
+                                )}
+                              </td>
+                              <td className="p-4">
                                  <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-md border ${
                                    report.submission_status === 'failed' ? "bg-rose-50 text-rose-600 border-rose-200" :
                                    report.published_at ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
@@ -1340,7 +1400,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                             </tr>
                             {isExpanded && (
                               <tr key={`${report.submission_id}-detail`} className="bg-indigo-50/50 border-b border-indigo-100">
-                                <td colSpan={5} className="px-6 py-5">
+                                <td colSpan={6} className="px-6 py-5">
                                   {!detail ? (
                                     <div className="text-xs text-slate-400 animate-pulse">Loading feedback...</div>
                                   ) : (
@@ -1366,6 +1426,24 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                                               </div>
                                             ))}
                                           </div>
+                                        </div>
+                                      )}
+                                      {(detail.plagiarism_similarity_score !== null && detail.plagiarism_similarity_score !== undefined) && (
+                                        <div className="bg-white rounded-xl border border-slate-200 p-4">
+                                          <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-3">Academic Integrity</div>
+                                          <div className="text-sm font-black text-slate-800">{Number(detail.plagiarism_similarity_score).toFixed(1)}% similarity</div>
+                                          {Array.isArray(detail.plagiarism_matches) && detail.plagiarism_matches.length > 0 && (
+                                            <div className="mt-3 space-y-2">
+                                              {detail.plagiarism_matches.slice(0, 5).map((match: any, i: number) => (
+                                                <div key={i} className="border border-slate-100 bg-slate-50 p-3 text-xs">
+                                                  <div className="font-black text-slate-700">{match.sourceName || match.type || "Similarity source"}</div>
+                                                  <div className="mt-1 text-[11px] font-semibold text-slate-500">{match.scope || match.status || match.type} · {Number(match.similarity || 0).toFixed(1)}%</div>
+                                                  {match.sourceUrl && <div className="mt-1 break-all text-[11px] text-indigo-600">{match.sourceUrl}</div>}
+                                                  {match.matchedText && <p className="mt-2 text-[11px] leading-relaxed text-slate-600">{match.matchedText}</p>}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
                                         </div>
                                       )}
                                       {/* Sandbox Logs */}

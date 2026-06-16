@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     # visually relevant pages, rather than blindly taking the first N pages.
     VISUAL_EXTRACTION_MAX_PDF_PAGES: int = 20
     VISUAL_EXTRACTION_PAGE_DELAY_SECONDS: float = 6.0
+    DIGITALOCEAN_WEB_SEARCH_AGENT_URL: Optional[str] = None
+    DIGITALOCEAN_WEB_SEARCH_AGENT_KEY: Optional[str] = None
+    INTERNET_PLAGIARISM_SEARCH_URL: Optional[str] = None
+    INTERNET_PLAGIARISM_SEARCH_KEY: Optional[str] = None
 
     # Firebase (Auth + Storage ONLY)
     FIREBASE_PROJECT_ID: str = ""

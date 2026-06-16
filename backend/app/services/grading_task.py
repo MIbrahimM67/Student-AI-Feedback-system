@@ -8,14 +8,17 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
+import re
 import tempfile
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 
 from app.config import settings
 from app.db.postgres import get_conn
-from app.db.vectors import upsert_submission_chunks
+from app.db.vectors import internal_similarity_search, upsert_submission_chunks
 from app.services.llm_provider import build_llm_from_env
 from app.services.ocr_service import ocr_service
 from app.services.retrieval_service import retrieve_and_rerank
@@ -93,6 +96,7 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
     student_name = student["display_name"] if student else (sub["student_name"] or "Student")
     subject_id = str(sub["subject_id"]) if sub["subject_id"] else None
     batch_id = str(sub["batch_id"]) if sub["batch_id"] else None
+    assignment_settings = dict(assignment) if assignment else {}
 
     async def progress(stage: str, percent: int, message: str) -> None:
         await _set_progress(org_id, submission_id, stage, percent, message)
@@ -219,6 +223,24 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
                 "UPDATE submissions SET status = 'failed' WHERE id = $1", submission_id
             )
         return
+
+    integrity_report = None
+    if assignment_settings and (
+        assignment_settings.get("internal_similarity_enabled", True)
+        or assignment_settings.get("internet_plagiarism_enabled", False)
+    ):
+        await progress("integrity_checks", 39, "Checking internal similarity and plagiarism settings.")
+        integrity_report = await _run_integrity_checks(
+            llm=llm,
+            org_id=org_id,
+            submission_id=submission_id,
+            batch_id=batch_id,
+            assignment_id=str(sub["assignment_id"]) if sub["assignment_id"] else None,
+            subject_id=subject_id,
+            submission_text=extracted_text,
+            internal_enabled=bool(assignment_settings.get("internal_similarity_enabled", True)),
+            internet_enabled=bool(assignment_settings.get("internet_plagiarism_enabled", False)),
+        )
 
     # ---- Code sandbox -------------------------------------------------------
     code_execution_result = None
@@ -424,7 +446,8 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
         "latency_ms": report.latency_ms,
         "est_cost_usd": report.est_cost_usd,
         "code_execution_result": code_execution_result,
-        "sandbox_logs": code_execution_result
+        "sandbox_logs": code_execution_result,
+        "integrity_report": integrity_report,
     }
     
     # The new pipeline doesn't output confidence (which was mostly fake anyway) or status directly.
@@ -514,6 +537,330 @@ async def _set_progress(
             )
     except Exception as e:  # noqa: BLE001
         logger.warning("Could not update grading progress for %s: %s", submission_id, e)
+
+
+async def _run_integrity_checks(
+    *,
+    llm,
+    org_id: str,
+    submission_id: str,
+    batch_id: str | None,
+    assignment_id: str | None,
+    subject_id: str | None,
+    submission_text: str,
+    internal_enabled: bool,
+    internet_enabled: bool,
+) -> dict:
+    matches: list[dict] = []
+    internal_score = 0.0
+    internet_score = 0.0
+
+    if internal_enabled:
+        internal_matches = await _run_internal_similarity_check(
+            llm=llm,
+            org_id=org_id,
+            submission_id=submission_id,
+            batch_id=batch_id,
+            assignment_id=assignment_id,
+            subject_id=subject_id,
+            submission_text=submission_text,
+        )
+        matches.extend(internal_matches)
+        internal_score = max((float(m.get("similarity", 0.0)) for m in internal_matches), default=0.0)
+
+    if internet_enabled:
+        internet_matches = await _run_internet_plagiarism_check(submission_text)
+        matches.extend(internet_matches)
+        internet_score = max((float(m.get("similarity", 0.0)) for m in internet_matches), default=0.0)
+
+    similarity_score = round(max(internal_score, internet_score), 2)
+    result = {
+        "similarity_score": similarity_score,
+        "internal_similarity_enabled": internal_enabled,
+        "internet_plagiarism_enabled": internet_enabled,
+        "matches": matches[:10],
+    }
+
+    async with get_conn(org_id) as conn:
+        await conn.execute(
+            """
+            INSERT INTO plagiarism_reports
+              (id, org_id, submission_id, batch_id, similarity_score, matches, created_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7)
+            """,
+            str(uuid.uuid4()),
+            org_id,
+            submission_id,
+            batch_id,
+            similarity_score,
+            json.dumps(result["matches"]),
+            datetime.now(timezone.utc),
+        )
+
+    return result
+
+
+async def _run_internal_similarity_check(
+    *,
+    llm,
+    org_id: str,
+    submission_id: str,
+    batch_id: str | None,
+    assignment_id: str | None,
+    subject_id: str | None,
+    submission_text: str,
+) -> list[dict]:
+    chunks = _chunk_for_similarity(submission_text)
+    if not chunks:
+        return []
+
+    embeddings = await llm.embed(texts=chunks, model=settings.GRADIENT_EMBED_MODEL)
+    await upsert_submission_chunks(
+        org_id=org_id,
+        submission_id=submission_id,
+        batch_id=batch_id,
+        chunks=[
+            {"chunk_index": idx, "text": text, "embedding": embeddings[idx]}
+            for idx, text in enumerate(chunks)
+        ],
+    )
+
+    best_by_submission: dict[str, dict] = {}
+    for idx, embedding in enumerate(embeddings):
+        rows = await internal_similarity_search(
+            org_id=org_id,
+            submission_id=submission_id,
+            query_embedding=embedding,
+            batch_id=batch_id,
+            assignment_id=assignment_id,
+            subject_id=subject_id,
+            top_k=6,
+        )
+        for row in rows:
+            score = float(row.get("score") or 0.0)
+            if score < 0.78:
+                continue
+            other_id = str(row["submission_id"])
+            score_percent = round(score * 100, 2)
+            if other_id not in best_by_submission or score_percent > best_by_submission[other_id]["similarity"]:
+                best_by_submission[other_id] = {
+                    "type": "internal_similarity",
+                    "sourceSubmissionId": other_id,
+                    "sourceName": f"{row.get('student_name') or 'Unknown student'} ({row.get('file_name') or 'submission'})",
+                    "matchedText": _overlap_snippet(chunks[idx], str(row.get("text") or "")),
+                    "similarity": score_percent,
+                    "scope": _match_scope(row, batch_id, assignment_id, subject_id),
+                }
+
+    return sorted(best_by_submission.values(), key=lambda item: item["similarity"], reverse=True)[:5]
+
+
+async def _run_internet_plagiarism_check(submission_text: str) -> list[dict]:
+    if settings.DIGITALOCEAN_WEB_SEARCH_AGENT_URL and settings.DIGITALOCEAN_WEB_SEARCH_AGENT_KEY:
+        return await _run_digitalocean_web_plagiarism_agent(submission_text)
+
+    if not settings.INTERNET_PLAGIARISM_SEARCH_URL or not settings.INTERNET_PLAGIARISM_SEARCH_KEY:
+        return [{
+            "type": "internet_plagiarism",
+            "status": "not_configured",
+            "sourceName": "Internet plagiarism search is disabled",
+            "matchedText": (
+                "Configure DIGITALOCEAN_WEB_SEARCH_AGENT_URL and DIGITALOCEAN_WEB_SEARCH_AGENT_KEY "
+                "to enable DigitalOcean-powered web plagiarism search."
+            ),
+            "similarity": 0.0,
+        }]
+
+    import httpx
+
+    passages = _select_search_passages(submission_text)
+    matches: list[dict] = []
+    headers = {
+        "X-API-KEY": settings.INTERNET_PLAGIARISM_SEARCH_KEY,
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        for passage in passages:
+            try:
+                resp = await client.post(
+                    settings.INTERNET_PLAGIARISM_SEARCH_URL,
+                    headers=headers,
+                    json={"q": f'"{passage[:220]}"', "num": 5},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception as e:
+                logger.warning("Internet plagiarism search failed: %s", e)
+                continue
+
+            for item in data.get("organic", [])[:5]:
+                haystack = " ".join([
+                    str(item.get("title", "")),
+                    str(item.get("snippet", "")),
+                ])
+                score = _lexical_similarity(passage, haystack)
+                if score < 0.22:
+                    continue
+                matches.append({
+                    "type": "internet_plagiarism",
+                    "sourceUrl": item.get("link"),
+                    "sourceName": item.get("title") or item.get("link") or "Web source",
+                    "matchedText": item.get("snippet") or passage[:280],
+                    "similarity": round(score * 100, 2),
+                })
+
+    deduped: dict[str, dict] = {}
+    for match in matches:
+        key = str(match.get("sourceUrl") or match.get("sourceName"))
+        if key not in deduped or match["similarity"] > deduped[key]["similarity"]:
+            deduped[key] = match
+    return sorted(deduped.values(), key=lambda item: item["similarity"], reverse=True)[:5]
+
+
+async def _run_digitalocean_web_plagiarism_agent(submission_text: str) -> list[dict]:
+    import httpx
+
+    passages = _select_search_passages(submission_text)
+    if not passages:
+        return []
+
+    prompt = (
+        "You are an internet plagiarism search agent. Search the public web for the provided "
+        "student-submission passages. Return ONLY valid JSON in this shape:\n"
+        '{"matches":[{"sourceUrl":"https://...","sourceName":"page title","matchedText":"snippet",'
+        '"similarity":42.5}]}\n'
+        "Use similarity as a 0-100 percentage. Include only sources that show meaningful textual overlap. "
+        "Do not accuse plagiarism; report evidence for instructor review.\n\n"
+        "Passages to search:\n"
+        + "\n\n".join(f"{idx + 1}. {passage}" for idx, passage in enumerate(passages))
+    )
+    headers = {
+        "Authorization": f"Bearer {settings.DIGITALOCEAN_WEB_SEARCH_AGENT_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "messages": [
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            resp = await client.post(
+                settings.DIGITALOCEAN_WEB_SEARCH_AGENT_URL,
+                headers=headers,
+                json=payload,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as e:
+        logger.warning("DigitalOcean web plagiarism agent failed: %s", e)
+        return [{
+            "type": "internet_plagiarism",
+            "status": "search_failed",
+            "sourceName": "DigitalOcean web search agent",
+            "matchedText": str(e),
+            "similarity": 0.0,
+        }]
+
+    text = _agent_response_text(data)
+    parsed = _extract_json_object(text) if text else data
+    matches = parsed.get("matches", []) if isinstance(parsed, dict) else []
+    normalised = []
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
+        normalised.append({
+            "type": "internet_plagiarism",
+            "sourceUrl": match.get("sourceUrl") or match.get("url"),
+            "sourceName": match.get("sourceName") or match.get("title") or "Web source",
+            "matchedText": match.get("matchedText") or match.get("snippet") or "",
+            "similarity": round(float(match.get("similarity") or 0.0), 2),
+        })
+    return sorted(normalised, key=lambda item: item["similarity"], reverse=True)[:5]
+
+
+def _chunk_for_similarity(text: str, chunk_size: int = 1_600, overlap: int = 250) -> list[str]:
+    cleaned = re.sub(r"\s+", " ", text or "").strip()
+    if not cleaned:
+        return []
+    chunks = []
+    start = 0
+    while start < len(cleaned):
+        part = cleaned[start:start + chunk_size].strip()
+        if len(part) > 120:
+            chunks.append(part)
+        start += max(1, chunk_size - overlap)
+    return chunks[:24]
+
+
+def _select_search_passages(text: str) -> list[str]:
+    sentences = re.split(r"(?<=[.!?])\s+", re.sub(r"\s+", " ", text or "").strip())
+    candidates = [
+        sentence.strip()
+        for sentence in sentences
+        if 80 <= len(sentence.strip()) <= 260
+    ]
+    candidates.sort(key=lambda s: (len(set(re.findall(r"\w+", s.lower()))), len(s)), reverse=True)
+    return candidates[:4]
+
+
+def _agent_response_text(data: dict) -> str:
+    try:
+        return str(data["choices"][0]["message"]["content"])
+    except Exception:
+        pass
+    for key in ("answer", "output", "response", "content", "text"):
+        if key in data:
+            return str(data[key])
+    return json.dumps(data)
+
+
+def _extract_json_object(text: str) -> dict:
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(text or ""):
+        if char != "{":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(text, index)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            continue
+    return {}
+
+
+def _lexical_similarity(text_a: str, text_b: str) -> float:
+    words_a = re.findall(r"\w+", (text_a or "").lower())
+    words_b = re.findall(r"\w+", (text_b or "").lower())
+    if not words_a or not words_b:
+        return 0.0
+    vec_a = Counter(words_a)
+    vec_b = Counter(words_b)
+    common = set(vec_a) & set(vec_b)
+    dot = sum(vec_a[word] * vec_b[word] for word in common)
+    mag_a = math.sqrt(sum(value * value for value in vec_a.values()))
+    mag_b = math.sqrt(sum(value * value for value in vec_b.values()))
+    return dot / (mag_a * mag_b) if mag_a and mag_b else 0.0
+
+
+def _overlap_snippet(text_a: str, text_b: str) -> str:
+    words_b = set(re.findall(r"\w+", (text_b or "").lower()))
+    words = (text_a or "").split()
+    overlap = [word for word in words if word.lower().strip(".,;:()[]{}") in words_b]
+    if len(overlap) >= 8:
+        return "... " + " ".join(overlap[:40]) + " ..."
+    return (text_a or "")[:300]
+
+
+def _match_scope(row: dict, batch_id: str | None, assignment_id: str | None, subject_id: str | None) -> str:
+    if batch_id and str(row.get("batch_id")) == batch_id:
+        return "same_batch"
+    if assignment_id and str(row.get("assignment_id")) == assignment_id:
+        return "same_assignment"
+    if subject_id and str(row.get("subject_id")) == subject_id:
+        return "same_subject"
+    return "unknown"
 
 
 async def _retrieve_subject_kb_context(

@@ -232,6 +232,8 @@ class CreateAssignmentRequest(BaseModel):
     minimum_marks: Optional[int] = 0
     total_marks: Optional[int] = 100
     plagiarism_enabled: Optional[bool] = False
+    internal_similarity_enabled: Optional[bool] = True
+    internet_plagiarism_enabled: Optional[bool] = False
     use_subject_kb: Optional[bool] = True
     course_material_weight: Optional[int] = 60
 
@@ -242,6 +244,8 @@ class UpdateAssignmentRequest(BaseModel):
     rubric: Optional[str] = ""
     minimum_marks: Optional[int] = 0
     total_marks: Optional[int] = 100
+    internal_similarity_enabled: Optional[bool] = True
+    internet_plagiarism_enabled: Optional[bool] = False
     use_subject_kb: Optional[bool] = True
     course_material_weight: Optional[int] = 60
 
@@ -258,7 +262,9 @@ async def create_assignment(
     title = body.title
     prompt = body.prompt
     rubric = (body.rubric or "").strip()
-    plagiarism = body.plagiarism_enabled
+    plagiarism = bool(body.plagiarism_enabled or body.internal_similarity_enabled or body.internet_plagiarism_enabled)
+    internal_similarity = bool(body.internal_similarity_enabled)
+    internet_plagiarism = bool(body.internet_plagiarism_enabled)
     use_subject_kb = bool(body.use_subject_kb)
     course_weight = max(0, min(100, int(body.course_material_weight or 0)))
     ai_weight = 100 - course_weight
@@ -272,14 +278,17 @@ async def create_assignment(
         assignment_row = await conn.fetchrow(
             """
             INSERT INTO assignments (
-              org_id, subject_id, title, plagiarism_enabled, minimum_marks, total_marks,
+              org_id, subject_id, title, plagiarism_enabled,
+              internal_similarity_enabled, internet_plagiarism_enabled,
+              minimum_marks, total_marks,
               use_subject_kb, course_material_weight, ai_expertise_weight,
               created_at
             )
-            VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10)
+            VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             RETURNING id
             """,
             org_id, subject_id, title, plagiarism,
+            internal_similarity, internet_plagiarism,
             minimum_marks, total_marks, use_subject_kb, course_weight, ai_weight,
             now,
         )
@@ -334,6 +343,9 @@ async def update_assignment(
     rubric = (body.rubric or "").strip()
     total_marks = max(1, int(body.total_marks or 100))
     minimum_marks = max(0, min(total_marks, int(body.minimum_marks or 0)))
+    internal_similarity = bool(body.internal_similarity_enabled)
+    internet_plagiarism = bool(body.internet_plagiarism_enabled)
+    plagiarism = internal_similarity or internet_plagiarism
     use_subject_kb = bool(body.use_subject_kb)
     course_weight = max(0, min(100, int(body.course_material_weight or 0)))
     ai_weight = 100 - course_weight
@@ -354,15 +366,21 @@ async def update_assignment(
             """
             UPDATE assignments
             SET title = $1,
-                minimum_marks = $2,
-                total_marks = $3,
-                use_subject_kb = $4,
-                course_material_weight = $5,
-                ai_expertise_weight = $6,
+                plagiarism_enabled = $2,
+                internal_similarity_enabled = $3,
+                internet_plagiarism_enabled = $4,
+                minimum_marks = $5,
+                total_marks = $6,
+                use_subject_kb = $7,
+                course_material_weight = $8,
+                ai_expertise_weight = $9,
                 version = version + 1
-            WHERE id = $7::uuid AND org_id = $8
+            WHERE id = $10::uuid AND org_id = $11
             """,
             title,
+            plagiarism,
+            internal_similarity,
+            internet_plagiarism,
             minimum_marks,
             total_marks,
             use_subject_kb,
@@ -835,9 +853,18 @@ async def list_batch_reports(batch_id: str, user: dict = Depends(_get_instructor
                    s.progress_stage, s.progress_percent, s.progress_message, s.progress_updated_at,
                    fr.id as report_id, fr.ai_overall_score, fr.ai_max_score, fr.ai_status,
                    fr.ai_overall_confidence, fr.final_status,
-                   fr.approved_at, fr.published_at, fr.was_edited
+                   fr.approved_at, fr.published_at, fr.was_edited,
+                   pr.similarity_score as plagiarism_similarity_score,
+                   pr.matches as plagiarism_matches
             FROM submissions s
             LEFT JOIN feedback_reports fr ON s.id = fr.submission_id
+            LEFT JOIN LATERAL (
+              SELECT similarity_score, matches
+              FROM plagiarism_reports
+              WHERE submission_id = s.id
+              ORDER BY created_at DESC
+              LIMIT 1
+            ) pr ON true
             WHERE s.batch_id = $1
             ORDER BY s.student_name ASC
             """,
@@ -859,7 +886,21 @@ async def get_report_detail(
     import json
     async with get_conn(user["org_id"]) as conn:
         report = await conn.fetchrow(
-            "SELECT id, submission_id, batch_id, ai_overall_score, ai_max_score, ai_payload, final_payload FROM feedback_reports WHERE id = $1",
+            """
+            SELECT fr.id, fr.submission_id, fr.batch_id, fr.ai_overall_score, fr.ai_max_score,
+                   fr.ai_payload, fr.final_payload,
+                   pr.similarity_score as plagiarism_similarity_score,
+                   pr.matches as plagiarism_matches
+            FROM feedback_reports fr
+            LEFT JOIN LATERAL (
+              SELECT similarity_score, matches
+              FROM plagiarism_reports
+              WHERE submission_id = fr.submission_id
+              ORDER BY created_at DESC
+              LIMIT 1
+            ) pr ON true
+            WHERE fr.id = $1
+            """,
             report_id
         )
         if not report:
@@ -870,6 +911,8 @@ async def get_report_detail(
             r_dict["ai_payload"] = json.loads(r_dict["ai_payload"])
         if isinstance(r_dict.get("final_payload"), str):
             r_dict["final_payload"] = json.loads(r_dict["final_payload"])
+        if isinstance(r_dict.get("plagiarism_matches"), str):
+            r_dict["plagiarism_matches"] = json.loads(r_dict["plagiarism_matches"])
             
     return r_dict
 

@@ -95,6 +95,10 @@ async def upsert_submission_chunks(
         return 0
 
     async with get_conn(org_id) as conn:
+        await conn.execute(
+            "DELETE FROM submission_chunks WHERE submission_id = $1",
+            submission_id,
+        )
         await conn.executemany(
             """
             INSERT INTO submission_chunks
@@ -143,5 +147,55 @@ async def internal_plagiarism_search(
             submission_id,
             json.dumps(query_embedding),
             top_k,
+        )
+    return [dict(r) for r in rows]
+
+
+async def internal_similarity_search(
+    org_id: str,
+    submission_id: str,
+    query_embedding: list[float],
+    *,
+    batch_id: str | None = None,
+    assignment_id: str | None = None,
+    subject_id: str | None = None,
+    top_k: int = 8,
+) -> list[dict]:
+    """
+    Find similar submission chunks across the same batch, assignment, or subject.
+    Excludes the current submission.
+    """
+    async with get_conn(org_id) as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+              sc.submission_id,
+              sc.chunk_index,
+              sc.text,
+              s.student_name,
+              s.file_name,
+              s.batch_id,
+              s.assignment_id,
+              s.subject_id,
+              1 - (sc.embedding <=> $3::vector) AS score
+            FROM submission_chunks sc
+            JOIN submissions s ON s.id = sc.submission_id
+            WHERE sc.org_id = $1
+              AND sc.submission_id != $2
+              AND (
+                ($5::uuid IS NOT NULL AND s.batch_id = $5::uuid)
+                OR ($6::uuid IS NOT NULL AND s.assignment_id = $6::uuid)
+                OR ($7::uuid IS NOT NULL AND s.subject_id = $7::uuid)
+              )
+            ORDER BY sc.embedding <=> $3::vector
+            LIMIT $4
+            """,
+            org_id,
+            submission_id,
+            json.dumps(query_embedding),
+            top_k,
+            batch_id,
+            assignment_id,
+            subject_id,
         )
     return [dict(r) for r in rows]
