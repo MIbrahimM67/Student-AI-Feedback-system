@@ -44,7 +44,9 @@ class Settings(BaseSettings):
     GRADIENT_RERANK_MODEL: str = "bge-reranker-v2-m3"
     GRADIENT_VISION_OCR_MODEL: Optional[str] = None  # cloud vision fallback
     VISUAL_EXTRACTION_ENABLED: bool = True
-    VISUAL_EXTRACTION_MAX_PDF_PAGES: int = 8
+    # 0 means no cap. Positive values scan the whole PDF and send the most
+    # visually relevant pages, rather than blindly taking the first N pages.
+    VISUAL_EXTRACTION_MAX_PDF_PAGES: int = 20
 
     # Firebase (Auth + Storage ONLY)
     FIREBASE_PROJECT_ID: str = ""

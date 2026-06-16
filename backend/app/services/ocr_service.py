@@ -116,10 +116,13 @@ class OCRService:
 
             doc = fitz.open(file_path)
             total_pages = len(doc)
-            pages_to_process = min(total_pages, settings.VISUAL_EXTRACTION_MAX_PDF_PAGES)
+            page_indices = self._select_pdf_pages_for_vision(
+                doc,
+                settings.VISUAL_EXTRACTION_MAX_PDF_PAGES,
+            )
             parts: list[str] = []
 
-            for idx in range(pages_to_process):
+            for idx in page_indices:
                 page = doc.load_page(idx)
                 pix = page.get_pixmap(matrix=fitz.Matrix(1.8, 1.8), alpha=False)
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
@@ -135,16 +138,78 @@ class OCRService:
 
             doc.close()
 
-            if total_pages > pages_to_process:
+            if 0 < settings.VISUAL_EXTRACTION_MAX_PDF_PAGES < total_pages and len(page_indices) < total_pages:
+                selected = ", ".join(str(idx + 1) for idx in page_indices)
                 parts.append(
-                    f"[Only the first {pages_to_process} of {total_pages} PDF pages were visually analyzed. "
-                    "Increase VISUAL_EXTRACTION_MAX_PDF_PAGES if needed.]"
+                    f"[Visual analysis scanned all {total_pages} PDF pages and selected pages "
+                    f"{selected or 'none'} for vision based on image/vector/scan signals. "
+                    "Set VISUAL_EXTRACTION_MAX_PDF_PAGES=0 to visually analyze every page.]"
                 )
 
             return "\n\n".join(parts)
         except Exception as e:
             logger.warning("PDF visual extraction failed for %s: %s", filename, e)
             return ""
+
+    def _select_pdf_pages_for_vision(self, doc, max_pages: int) -> list[int]:
+        total_pages = len(doc)
+        if total_pages == 0:
+            return []
+        if max_pages <= 0 or total_pages <= max_pages:
+            return list(range(total_pages))
+
+        scored_pages: list[tuple[float, int]] = []
+        for idx in range(total_pages):
+            page = doc.load_page(idx)
+            try:
+                text = page.get_text("text").strip()
+            except Exception:
+                text = ""
+            try:
+                image_count = len(page.get_images(full=True))
+            except Exception:
+                image_count = 0
+            try:
+                blocks = page.get_text("dict").get("blocks", [])
+                image_blocks = sum(1 for block in blocks if block.get("type") == 1)
+            except Exception:
+                image_blocks = 0
+            try:
+                drawing_count = len(page.get_drawings())
+            except Exception:
+                drawing_count = 0
+
+            low_text_scan_signal = len(text) < 150
+            has_visual_signal = image_count > 0 or image_blocks > 0 or drawing_count >= 5 or low_text_scan_signal
+            if not has_visual_signal:
+                continue
+
+            score = (
+                image_count * 10.0
+                + image_blocks * 10.0
+                + min(drawing_count, 80) * 0.35
+                + (5.0 if low_text_scan_signal else 0.0)
+            )
+            scored_pages.append((score, idx))
+
+        if not scored_pages:
+            # If PyMuPDF cannot detect visual structure, sample across the whole
+            # document instead of falling back to the first pages only.
+            if max_pages == 1:
+                return [0]
+            sampled = sorted({
+                min(total_pages - 1, round(i * (total_pages - 1) / (max_pages - 1)))
+                for i in range(max_pages)
+            })
+            return sampled[:max_pages]
+
+        selected = sorted(idx for _, idx in sorted(scored_pages, reverse=True)[:max_pages])
+        logger.info(
+            "Selected PDF pages for vision: %s of %d total pages",
+            [idx + 1 for idx in selected],
+            total_pages,
+        )
+        return selected
 
     async def _vision_model_extract(self, file_path: str, filename: str) -> str:
         """
