@@ -140,7 +140,8 @@ async def grade(
     reference_pages: list[PageImage],
     criteria: list[Criterion],
     tier: Tier,
-    reference_sections_used: list[str] | None = None
+    reference_sections_used: list[str] | None = None,
+    prefer_dedicated: bool = False,
 ) -> GradingResult:
     """
     Three-stage agentic grading pipeline: Specialist → Judge → Senior.
@@ -150,8 +151,9 @@ async def grade(
     t_start = time.time()
     reference_sections_used = reference_sections_used or []
 
-    # Select LLM — prefer Groq (dedicated) if configured, fall back to serverless
-    dedicated = build_dedicated_llm_from_env()
+    # Select LLM. Groq/dedicated is reserved for routes that actually need the
+    # larger context window; normal Tier 0 work stays on DigitalOcean serverless.
+    dedicated = build_dedicated_llm_from_env() if prefer_dedicated else None
     if dedicated:
         llm = dedicated
         logger.info("3-Stage pipeline using dedicated LLM (Groq)")

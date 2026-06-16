@@ -10,6 +10,7 @@ import logging
 
 from app.grading.types import Tier, DocumentPayload, Criterion, GradingResult
 from app.grading.grader import grade
+from app.router.router import TIER0_BUDGET, _dedicated_available
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +27,14 @@ async def grade_tier0(
 
     # In Tier 0, the "sections used" is the entire reference document
     sections_used = ["Full Document"]
+    combined_tokens = submission.est_tokens + reference_payload.est_tokens
+    prefer_dedicated = _dedicated_available() and combined_tokens > TIER0_BUDGET
     
     return await grade(
         submission=submission,
         reference_pages=reference_payload.pages,
         criteria=criteria,
         tier=Tier.CONTEXT,
-        reference_sections_used=sections_used
+        reference_sections_used=sections_used,
+        prefer_dedicated=prefer_dedicated,
     )

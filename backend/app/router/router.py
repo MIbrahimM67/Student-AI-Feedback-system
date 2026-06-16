@@ -14,8 +14,8 @@ from app.grading import config
 logger = logging.getLogger(__name__)
 
 
-SERVERLESS_INPUT_CAP = 8192 
-TIER0_BUDGET = int(SERVERLESS_INPUT_CAP * 0.8)  # 6553 tokens — serverless safe limit
+SERVERLESS_INPUT_CAP = 2_000
+TIER0_BUDGET = SERVERLESS_INPUT_CAP  # DigitalOcean serverless ceiling for grading calls
 DEDICATED_CONTEXT_CAP = 120_000  # Groq/Llama-3.3-70B: 128k window, leave headroom
 
 
