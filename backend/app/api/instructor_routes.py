@@ -229,7 +229,21 @@ class CreateAssignmentRequest(BaseModel):
     title: str
     prompt: Optional[str] = ""
     rubric: Optional[str] = ""
+    minimum_marks: Optional[int] = 0
+    total_marks: Optional[int] = 100
     plagiarism_enabled: Optional[bool] = False
+    use_subject_kb: Optional[bool] = True
+    course_material_weight: Optional[int] = 60
+
+
+class UpdateAssignmentRequest(BaseModel):
+    title: str
+    prompt: Optional[str] = ""
+    rubric: Optional[str] = ""
+    minimum_marks: Optional[int] = 0
+    total_marks: Optional[int] = 100
+    use_subject_kb: Optional[bool] = True
+    course_material_weight: Optional[int] = 60
 
 @router.post("/subjects/{subject_id}/assignments", status_code=201)
 async def create_assignment(
@@ -243,8 +257,13 @@ async def create_assignment(
     org_id = user["org_id"]
     title = body.title
     prompt = body.prompt
-    rubric = body.rubric
+    rubric = (body.rubric or "").strip()
     plagiarism = body.plagiarism_enabled
+    use_subject_kb = bool(body.use_subject_kb)
+    course_weight = max(0, min(100, int(body.course_material_weight or 0)))
+    ai_weight = 100 - course_weight
+    total_marks = max(1, int(body.total_marks or 100))
+    minimum_marks = max(0, min(total_marks, int(body.minimum_marks or 0)))
     
     now = datetime.now(timezone.utc)
 
@@ -252,11 +271,17 @@ async def create_assignment(
         # Create assignment
         assignment_row = await conn.fetchrow(
             """
-            INSERT INTO assignments (org_id, subject_id, title, plagiarism_enabled, created_at)
-            VALUES ($1, $2::uuid, $3, $4, $5)
+            INSERT INTO assignments (
+              org_id, subject_id, title, plagiarism_enabled, minimum_marks, total_marks,
+              use_subject_kb, course_material_weight, ai_expertise_weight,
+              created_at
+            )
+            VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING id
             """,
-            org_id, subject_id, title, plagiarism, now,
+            org_id, subject_id, title, plagiarism,
+            minimum_marks, total_marks, use_subject_kb, course_weight, ai_weight,
+            now,
         )
         assignment_id = assignment_row["id"]
         
@@ -265,20 +290,25 @@ async def create_assignment(
             await conn.execute(
                 """
                 INSERT INTO questions (org_id, assignment_id, text, max_marks, display_order)
-                VALUES ($1, $2, $3, 100, 0)
+                VALUES ($1, $2, $3, $4, 0)
                 """,
-                org_id, assignment_id, prompt
+                org_id, assignment_id, prompt, total_marks
             )
             
-        # Save rubric as a single criterion
-        if rubric:
-            await conn.execute(
-                """
-                INSERT INTO rubric_criteria (org_id, assignment_id, name, max_score, description)
-                VALUES ($1, $2, 'General Rubric', 100, $3)
-                """,
-                org_id, assignment_id, rubric
-            )
+        if not rubric:
+            rubric = await _generate_default_rubric(title=title, prompt=prompt or "")
+
+        await conn.execute(
+            """
+            INSERT INTO rubric_criteria (org_id, assignment_id, name, max_score, description)
+            VALUES ($1, $2, $3, $4, $5)
+            """,
+            org_id,
+            assignment_id,
+            "Instructor Rubric" if body.rubric else "AI Generated Rubric",
+            total_marks,
+            rubric,
+        )
             
         # Update assignment count
         await conn.execute(
@@ -287,6 +317,127 @@ async def create_assignment(
         )
 
     return {"id": str(assignment_id), "message": "Assignment created successfully."}
+
+
+@router.patch("/assignments/{assignment_id}")
+async def update_assignment(
+    assignment_id: str,
+    body: UpdateAssignmentRequest,
+    user: dict = Depends(_get_instructor),
+):
+    org_id = user["org_id"]
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(400, "Assignment title is required.")
+
+    prompt = (body.prompt or "").strip()
+    rubric = (body.rubric or "").strip()
+    total_marks = max(1, int(body.total_marks or 100))
+    minimum_marks = max(0, min(total_marks, int(body.minimum_marks or 0)))
+    use_subject_kb = bool(body.use_subject_kb)
+    course_weight = max(0, min(100, int(body.course_material_weight or 0)))
+    ai_weight = 100 - course_weight
+
+    if not rubric:
+        rubric = await _generate_default_rubric(title=title, prompt=prompt)
+
+    async with get_conn(org_id) as conn:
+        row = await conn.fetchrow(
+            "SELECT id FROM assignments WHERE id = $1::uuid AND org_id = $2",
+            assignment_id,
+            org_id,
+        )
+        if not row:
+            raise HTTPException(404, "Assignment not found.")
+
+        await conn.execute(
+            """
+            UPDATE assignments
+            SET title = $1,
+                minimum_marks = $2,
+                total_marks = $3,
+                use_subject_kb = $4,
+                course_material_weight = $5,
+                ai_expertise_weight = $6,
+                version = version + 1
+            WHERE id = $7::uuid AND org_id = $8
+            """,
+            title,
+            minimum_marks,
+            total_marks,
+            use_subject_kb,
+            course_weight,
+            ai_weight,
+            assignment_id,
+            org_id,
+        )
+
+        await conn.execute("DELETE FROM questions WHERE assignment_id = $1::uuid", assignment_id)
+        await conn.execute("DELETE FROM rubric_criteria WHERE assignment_id = $1::uuid", assignment_id)
+
+        if prompt:
+            await conn.execute(
+                """
+                INSERT INTO questions (org_id, assignment_id, text, max_marks, display_order)
+                VALUES ($1, $2::uuid, $3, $4, 0)
+                """,
+                org_id,
+                assignment_id,
+                prompt,
+                total_marks,
+            )
+
+        await conn.execute(
+            """
+            INSERT INTO rubric_criteria (org_id, assignment_id, name, max_score, description)
+            VALUES ($1, $2::uuid, $3, $4, $5)
+            """,
+            org_id,
+            assignment_id,
+            "Instructor Rubric" if body.rubric else "AI Generated Rubric",
+            total_marks,
+            rubric,
+        )
+
+    return {"id": assignment_id, "message": "Assignment updated successfully."}
+
+
+async def _generate_default_rubric(title: str, prompt: str) -> str:
+    from app.services.llm_provider import ChatMessage, build_llm_from_env
+
+    fallback = (
+        "Evaluate the submission using: 40% correctness and coverage of the task, "
+        "25% depth and technical accuracy, 20% organization and clarity, "
+        "15% examples, justification, and completeness."
+    )
+    try:
+        llm = build_llm_from_env()
+        resp = await llm.chat(
+            messages=[
+                ChatMessage(
+                    role="system",
+                    content=(
+                        "You create concise academic grading rubrics. "
+                        "Return only the rubric text, with weighted criteria that sum to 100%."
+                    ),
+                ),
+                ChatMessage(
+                    role="user",
+                    content=(
+                        f"Assignment title: {title}\n"
+                        f"Assignment prompt: {prompt or 'No prompt provided.'}\n\n"
+                        "Create a fair grading rubric/evaluation criteria for this assignment."
+                    ),
+                ),
+            ],
+            model=settings.GRADIENT_MODEL_UTILITY,
+            temperature=0.2,
+            max_tokens=500,
+        )
+        return resp.text.strip() or fallback
+    except Exception as e:
+        logger.warning("Default rubric generation failed: %s", e)
+        return fallback
 
 
 @router.get("/subjects/{subject_id}/assignments")

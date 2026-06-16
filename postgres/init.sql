@@ -165,6 +165,11 @@ CREATE TABLE assignments (
   subject_id UUID NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   plagiarism_enabled BOOLEAN NOT NULL DEFAULT false,
+  minimum_marks INT NOT NULL DEFAULT 0 CHECK (minimum_marks >= 0),
+  total_marks INT NOT NULL DEFAULT 100 CHECK (total_marks > 0),
+  use_subject_kb BOOLEAN NOT NULL DEFAULT true,
+  course_material_weight INT NOT NULL DEFAULT 60 CHECK (course_material_weight >= 0 AND course_material_weight <= 100),
+  ai_expertise_weight INT NOT NULL DEFAULT 40 CHECK (ai_expertise_weight >= 0 AND ai_expertise_weight <= 100),
   -- Bumped when questions/rubric change; used by the result cache so an
   -- edited assignment forces re-grading.
   version INT NOT NULL DEFAULT 1,

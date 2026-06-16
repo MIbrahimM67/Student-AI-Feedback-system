@@ -18,6 +18,7 @@ from app.db.postgres import get_conn
 from app.db.vectors import upsert_submission_chunks
 from app.services.llm_provider import build_llm_from_env
 from app.services.ocr_service import ocr_service
+from app.services.retrieval_service import retrieve_and_rerank
 from app.services.warning_service import warning_service
 from app.utils.prompt_templates import utility_title_generator_user
 from app.grading.pipeline import grade_submission as route_and_grade
@@ -308,10 +309,48 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
     try:
         # Get raw rubric text from criteria list or fallback
         raw_rubric = (
-            "\n".join([f"{c['name']}: {c['description']}" for c in rubric_criteria])
+            "\n".join([f"{c['name']} ({c.get('max_score', 100)} pts): {c['description']}" for c in rubric_criteria])
             if rubric_criteria
             else (sub.get("rubric_text") or None)
         ) or "Evaluate the overall quality, correctness, and completeness of the submission."
+
+        assignment_dict = dict(assignment) if assignment else {}
+        if assignment_dict:
+            raw_rubric = (
+                f"Total/highest marks: {assignment_dict.get('total_marks', 100)}.\n"
+                f"Lowest allowed marks: {assignment_dict.get('minimum_marks', 0)}.\n"
+                f"{raw_rubric}"
+            )
+        if subject_id and assignment_dict.get("use_subject_kb", True):
+            course_weight = int(assignment_dict.get("course_material_weight") or 60)
+            ai_weight = int(assignment_dict.get("ai_expertise_weight") or (100 - course_weight))
+            await progress(
+                "retrieving_reference",
+                48,
+                f"Retrieving subject knowledge base context ({course_weight}% course material / {ai_weight}% AI expertise).",
+            )
+            kb_context = await _retrieve_subject_kb_context(
+                llm=llm,
+                org_id=org_id,
+                subject_id=subject_id,
+                assignment_prompt=questions[0]["text"] if questions else "",
+                raw_rubric=raw_rubric,
+                submission_text=extracted_text,
+                course_weight=course_weight,
+                ai_weight=ai_weight,
+            )
+            if kb_context:
+                reference_text = (
+                    f"{reference_text}\n\n{kb_context}"
+                    if reference_text
+                    else kb_context
+                )
+                raw_rubric = (
+                    f"{raw_rubric}\n\n"
+                    f"Grounding policy: rubric criteria are mandatory. Use retrieved course material "
+                    f"as {course_weight}% of the domain grounding and AI expertise as {ai_weight}%. "
+                    "If retrieved chunks are irrelevant or missing, do not invent course facts."
+                )
         
         # We need physical paths for the new ingestion pipeline (PyMuPDF needs files)
         # We already downloaded the submission to tmp_path if it was a file, else we need a temp text file.
@@ -367,6 +406,12 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
     # ---- Persist feedback_report --------------------------------------------
     await progress("finalizing", 96, "Saving the final feedback report for instructor review.")
     now = datetime.now(timezone.utc)
+    assignment_limits = dict(assignment) if assignment else {}
+    minimum_marks = float(assignment_limits.get("minimum_marks") or 0)
+    total_marks = float(assignment_limits.get("total_marks") or report.max_score or 100)
+    if total_marks > 0:
+        report.score = round(min(max(float(report.score), minimum_marks), total_marks), 2)
+        report.max_score = total_marks
     
     # GradingResult doesn't have a model_dump(), so we serialize to dict manually
     report_dict = {
@@ -469,6 +514,59 @@ async def _set_progress(
             )
     except Exception as e:  # noqa: BLE001
         logger.warning("Could not update grading progress for %s: %s", submission_id, e)
+
+
+async def _retrieve_subject_kb_context(
+    *,
+    llm,
+    org_id: str,
+    subject_id: str,
+    assignment_prompt: str,
+    raw_rubric: str,
+    submission_text: str,
+    course_weight: int,
+    ai_weight: int,
+) -> str:
+    query = "\n\n".join([
+        "Assignment prompt:",
+        assignment_prompt[:2_000] or "No assignment prompt provided.",
+        "Rubric / evaluation criteria:",
+        raw_rubric[:2_000],
+        "Student submission preview:",
+        submission_text[:3_000],
+    ])
+    try:
+        chunks = await retrieve_and_rerank(
+            llm=llm,
+            org_id=org_id,
+            subject_id=subject_id,
+            query_text=query,
+            top_k=8,
+            candidate_limit=30,
+        )
+    except Exception as e:
+        logger.warning("Subject KB retrieval failed for subject %s: %s", subject_id, e)
+        return ""
+
+    if not chunks:
+        return (
+            "=== SUBJECT KNOWLEDGE BASE CONTEXT ===\n"
+            "No relevant subject KB chunks were retrieved. Grade using the rubric and general AI expertise."
+        )
+
+    parts = [
+        "=== SUBJECT KNOWLEDGE BASE CONTEXT ===",
+        f"Grounding weights selected by instructor: {course_weight}% retrieved course material, {ai_weight}% AI expertise.",
+        "Rubric/evaluation criteria remain mandatory and override both sources.",
+        "Use these retrieved chunks for course-specific facts. If a chunk is irrelevant, ignore it.",
+    ]
+    for i, chunk in enumerate(chunks, start=1):
+        parts.append(
+            f"\n--- Retrieved KB chunk {i} | id={chunk.get('id')} | relevance={float(chunk.get('score', 0.0)):.3f} ---"
+        )
+        parts.append(str(chunk.get("text", ""))[:1_600])
+
+    return "\n".join(parts)
 
 
 async def _mark_failed(org_id: str, submission_id: str, batch_id: str | None) -> None:

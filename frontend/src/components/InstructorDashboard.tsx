@@ -38,6 +38,11 @@ interface Assignment {
   title: string;
   prompt: string;
   rubric: string;
+  minimum_marks?: number;
+  total_marks?: number;
+  use_subject_kb?: boolean;
+  course_material_weight?: number;
+  ai_expertise_weight?: number;
 }
 
 interface StagedStudent {
@@ -487,9 +492,14 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
   // Assignment state
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [creating, setCreating] = useState(false);
+  const [editingAssignment, setEditingAssignment] = useState<Assignment|null>(null);
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
   const [rubric, setRubric] = useState("");
+  const [minimumMarks, setMinimumMarks] = useState(0);
+  const [totalMarks, setTotalMarks] = useState(100);
+  const [useSubjectKb, setUseSubjectKb] = useState(true);
+  const [courseMaterialWeight, setCourseMaterialWeight] = useState(60);
 
   // Refs state
   const [refFile, setRefFile] = useState<File|null>(null);
@@ -528,10 +538,48 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
     e.preventDefault();
     if(!title) return;
     try {
-      await api.post(`/api/instructor/subjects/${subject.id}/assignments`, { title, prompt, rubric });
-      setTitle(""); setPrompt(""); setRubric(""); setCreating(false);
+      const payload = {
+        title,
+        prompt,
+        rubric,
+        minimum_marks: minimumMarks,
+        total_marks: totalMarks,
+        use_subject_kb: useSubjectKb,
+        course_material_weight: courseMaterialWeight,
+      };
+      if (editingAssignment) {
+        await api.patch(`/api/instructor/assignments/${editingAssignment.id}`, payload);
+      } else {
+        await api.post(`/api/instructor/subjects/${subject.id}/assignments`, payload);
+      }
+      resetAssignmentForm();
       fetchAssignments();
     } catch (err) { console.error(err); }
+  };
+
+  const resetAssignmentForm = () => {
+    setTitle("");
+    setPrompt("");
+    setRubric("");
+    setMinimumMarks(0);
+    setTotalMarks(100);
+    setUseSubjectKb(true);
+    setCourseMaterialWeight(60);
+    setEditingAssignment(null);
+    setCreating(false);
+  };
+
+  const startEditAssignment = (assignment: Assignment) => {
+    setEditingAssignment(assignment);
+    setTitle(assignment.title || "");
+    setPrompt(assignment.prompt || "");
+    setRubric(assignment.rubric || "");
+    setMinimumMarks(assignment.minimum_marks || 0);
+    setTotalMarks(assignment.total_marks || 100);
+    setUseSubjectKb(assignment.use_subject_kb ?? true);
+    setCourseMaterialWeight(assignment.course_material_weight ?? 60);
+    setCreating(true);
+    setTab("assignments");
   };
 
   const handleUploadRef = async (e: React.FormEvent) => {
@@ -579,7 +627,7 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
       {tab === "assignments" && (
         <div className="space-y-6">
           <div className="flex justify-end">
-            <button onClick={()=>setCreating(!creating)} className="bg-[var(--color-ink)] hover:bg-[var(--color-ink-2)] text-[var(--color-paper)] px-4 py-2 text-xs font-bold inline-flex items-center gap-2">
+            <button onClick={()=> creating ? resetAssignmentForm() : setCreating(true)} className="bg-[var(--color-ink)] hover:bg-[var(--color-ink-2)] text-[var(--color-paper)] px-4 py-2 text-xs font-bold inline-flex items-center gap-2">
               <Plus className="w-4 h-4"/> Create Assignment
             </button>
           </div>
@@ -587,8 +635,8 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
           {creating && (
             <div className="glass-panel p-6 border border-[var(--color-rule)] bg-[var(--color-surface)] shadow-[var(--shadow-panel)] mb-8 relative overflow-hidden">
               <div className="mb-6">
-                <h4 className="text-xl font-bold text-[var(--color-ink)]">Create Assignment</h4>
-                <p className="text-xs text-[var(--color-muted)] mt-1">Specify the prompt and rubric criteria for evaluation.</p>
+                <h4 className="text-xl font-bold text-[var(--color-ink)]">{editingAssignment ? "Edit Assignment" : "Create Assignment"}</h4>
+                <p className="text-xs text-[var(--color-muted)] mt-1">Specify the prompt, rubric, mark limits, and course-material grounding.</p>
               </div>
               <form onSubmit={handleCreateAssignment} className="space-y-5">
                 <div className="space-y-1.5">
@@ -611,20 +659,79 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
                     className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:font-medium placeholder:text-slate-400" 
                   />
                 </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Lowest Marks Limit</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={totalMarks}
+                      value={minimumMarks}
+                      onChange={e => setMinimumMarks(Math.max(0, Math.min(totalMarks, Number(e.target.value))))}
+                      className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Highest / Total Marks</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={totalMarks}
+                      onChange={e => {
+                        const nextTotal = Math.max(1, Number(e.target.value));
+                        setTotalMarks(nextTotal);
+                        setMinimumMarks(current => Math.min(current, nextTotal));
+                      }}
+                      className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                    />
+                  </div>
+                </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Rubric / Grading Criteria</label>
+                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Rubric / Grading Criteria <span className="font-semibold normal-case text-slate-400">(optional)</span></label>
                   <textarea 
                     rows={2} 
-                    placeholder="e.g. 50% technical accuracy, 30% clarity, 20% grammar." 
+                    placeholder="e.g. 50% technical accuracy, 30% clarity, 20% grammar. Leave blank to auto-generate." 
                     value={rubric} 
                     onChange={e=>setRubric(e.target.value)} 
                     className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:font-medium placeholder:text-slate-400" 
                   />
                 </div>
+                <div className="border border-slate-200 bg-slate-50 p-4 space-y-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Use Subject Knowledge Base</label>
+                      <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                        {subject.reference_count > 0 ? `${subject.reference_count} indexed reference${subject.reference_count === 1 ? "" : "s"} available.` : "No references uploaded yet. The assignment will fall back to rubric + AI expertise."}
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={useSubjectKb}
+                      onChange={e => setUseSubjectKb(e.target.checked)}
+                      className="h-5 w-5 accent-indigo-600"
+                    />
+                  </div>
+                  <div className={`space-y-2 ${!useSubjectKb ? "opacity-50" : ""}`}>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Course Material Influence</label>
+                      <span className="text-xs font-black text-slate-700">{courseMaterialWeight}% KB / {100 - courseMaterialWeight}% AI</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={10}
+                      disabled={!useSubjectKb}
+                      value={courseMaterialWeight}
+                      onChange={e => setCourseMaterialWeight(Number(e.target.value))}
+                      className="w-full accent-indigo-600"
+                    />
+                  </div>
+                </div>
                 <div className="flex justify-end gap-3 pt-2">
                   <button 
                     type="button" 
-                    onClick={() => setCreating(false)} 
+                    onClick={resetAssignmentForm} 
                     className="px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-500 text-xs font-bold hover:bg-slate-50 transition-all"
                   >
                     Cancel
@@ -633,7 +740,7 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
                     type="submit" 
                     className="px-6 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 shadow-md shadow-emerald-600/20 active:scale-95 transition-all"
                   >
-                    Save Assignment
+                    {editingAssignment ? "Update Assignment" : "Save Assignment"}
                   </button>
                 </div>
               </form>
@@ -643,11 +750,30 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {assignments.map(assn => (
               <div key={assn.id} onClick={() => onSelectAssignment(assn)} className="glass-panel p-5 border border-[var(--color-rule)] hover:border-[var(--color-accent)] hover:shadow-[var(--shadow-panel)] cursor-pointer transition-all bg-[var(--color-surface)]">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl"><FileText className="w-5 h-5"/></div>
-                  <h4 className="text-base font-bold text-[var(--color-ink)]">{assn.title}</h4>
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl"><FileText className="w-5 h-5"/></div>
+                    <h4 className="text-base font-bold text-[var(--color-ink)]">{assn.title}</h4>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      startEditAssignment(assn);
+                    }}
+                    className="border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
+                  >
+                    Edit
+                  </button>
                 </div>
                 <p className="text-xs text-slate-500 line-clamp-2">{assn.prompt || "No prompt provided."}</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-black text-slate-500">
+                    Marks {assn.minimum_marks ?? 0}-{assn.total_marks ?? 100}
+                  </span>
+                  <span className="border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-black text-emerald-700">
+                    {assn.use_subject_kb === false ? "KB off" : `KB ${assn.course_material_weight ?? 60}%`}
+                  </span>
+                </div>
               </div>
             ))}
             {assignments.length === 0 && !creating && (
