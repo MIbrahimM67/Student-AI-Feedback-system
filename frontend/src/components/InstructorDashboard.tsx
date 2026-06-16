@@ -784,6 +784,18 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
   const [expandedReportId, setExpandedReportId] = useState<string|null>(null);
   const [reportDetails, setReportDetails] = useState<Record<string, any>>({});
 
+  const showQueuedProgress = (id: string, totalFiles = 1, message = "Submission uploaded. Waiting for the grading worker to start.") => {
+    setGradingProgress({
+      id,
+      total_files: totalFiles,
+      processed_files: 0,
+      needs_review_count: 0,
+      progress_percent: 3,
+      active_stage: "queued",
+      progress_message: message,
+    });
+  };
+
   const handleSingleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if(!studentName || !singleFile) return setError("Name and file required.");
@@ -816,7 +828,14 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
       setSuccessMsg(`Submission for ${studentName} queued for grading!`);
       if (resData.batch_id) {
         setBatchId(resData.batch_id);
+        showQueuedProgress(
+          resData.batch_id,
+          1,
+          `Submission for ${studentName} is queued. The AI pipeline will start shortly.`
+        );
         startPollingProgress(resData.batch_id);
+      } else {
+        setError("Upload succeeded, but the backend did not return a progress batch id. Restart the API/worker with the latest deployment.");
       }
       setStudentName(""); setSingleFile(null);
     } catch(err: any) {
@@ -855,6 +874,11 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
       const resData = await res.json();
       setBatchId(resData.batch_id);
       setSuccessMsg(resData.message);
+      showQueuedProgress(
+        resData.batch_id,
+        resData.total_files || 1,
+        `Batch queued with ${resData.total_files || 1} submission${(resData.total_files || 1) === 1 ? "" : "s"}.`
+      );
       setBatchFile(null); setBatchName("");
       setStagedStudents([]);
       startPollingProgress(resData.batch_id);
@@ -873,6 +897,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
       
       setSuccessMsg("Bulk grading started!");
       setStagedStudents([]); setBatchFile(null);
+      showQueuedProgress(batchId, stagedStudents.length || 1, "Bulk grading started. Waiting for live worker updates.");
       startPollingProgress(batchId);
     } catch(err:any) { setError(err.message); }
     finally { setLoading(false); }
@@ -890,7 +915,12 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
           setPollIntervalId(null);
           return true;
         }
-      } catch (err) {}
+      } catch (err) {
+        setGradingProgress((current: any) => current ? {
+          ...current,
+          progress_message: "Progress panel is waiting for the backend status endpoint. Grading may still be running.",
+        } : current);
+      }
       return false;
     };
     poll();
