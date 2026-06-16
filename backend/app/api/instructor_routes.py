@@ -411,6 +411,7 @@ async def single_upload(
     
     return {
         "submission_id": sub_id,
+        "batch_id": batch_id,
         "status": "pending",
         "message": f"Submission for {student_name} uploaded. Grading started."
     }
@@ -587,9 +588,53 @@ async def get_batch(batch_id: str, user: dict = Depends(_get_instructor)):
             "SELECT * FROM batches WHERE id = $1 AND instructor_id = $2",
             batch_id, user["uid"],
         )
+        stats = await conn.fetchrow(
+            """
+            SELECT
+              COUNT(*)::int AS submission_count,
+              COUNT(*) FILTER (WHERE status = 'uploaded')::int AS queued_count,
+              COUNT(*) FILTER (WHERE status = 'processing')::int AS active_count,
+              COUNT(*) FILTER (WHERE status IN ('graded','approved','published'))::int AS graded_count,
+              COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_count,
+              COALESCE(ROUND(AVG(
+                CASE
+                  WHEN status IN ('graded','approved','published','failed') THEN 100
+                  ELSE COALESCE(progress_percent, 0)
+                END
+              )), 0)::int AS progress_percent
+            FROM submissions
+            WHERE batch_id = $1
+            """,
+            batch_id,
+        )
+        active = await conn.fetchrow(
+            """
+            SELECT progress_stage, progress_message, progress_updated_at
+            FROM submissions
+            WHERE batch_id = $1 AND status IN ('uploaded','processing')
+            ORDER BY progress_updated_at DESC NULLS LAST, created_at ASC
+            LIMIT 1
+            """,
+            batch_id,
+        )
     if not row:
         raise HTTPException(404, "Batch not found.")
-    return dict(row)
+
+    data = dict(row)
+    if stats:
+        data.update(dict(stats))
+    if active:
+        data["active_stage"] = active["progress_stage"] or "queued"
+        data["progress_message"] = active["progress_message"] or "Waiting for the grading worker to start."
+        data["progress_updated_at"] = active["progress_updated_at"]
+    elif data.get("total_files"):
+        data["active_stage"] = "completed"
+        data["progress_message"] = "All submissions have completed AI processing."
+        data["progress_percent"] = 100
+    else:
+        data["active_stage"] = "uploaded"
+        data["progress_message"] = "Batch uploaded."
+    return data
 
 
 class RenameBatchPayload(BaseModel):
@@ -636,6 +681,7 @@ async def list_batch_reports(batch_id: str, user: dict = Depends(_get_instructor
         rows = await conn.fetch(
             """
             SELECT s.id as submission_id, s.file_name, s.student_name, s.status as submission_status,
+                   s.progress_stage, s.progress_percent, s.progress_message, s.progress_updated_at,
                    fr.id as report_id, fr.ai_overall_score, fr.ai_max_score, fr.ai_status,
                    fr.ai_overall_confidence, fr.final_status,
                    fr.approved_at, fr.published_at, fr.was_edited

@@ -93,6 +93,11 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
     subject_id = str(sub["subject_id"]) if sub["subject_id"] else None
     batch_id = str(sub["batch_id"]) if sub["batch_id"] else None
 
+    async def progress(stage: str, percent: int, message: str) -> None:
+        await _set_progress(org_id, submission_id, stage, percent, message)
+
+    await progress("queued", 5, f"{student_name}'s submission is queued for AI grading.")
+
     # ---- Extract text -------------------------------------------------------
     extracted_text = sub["input_text"] or ""
     detected_lang = None
@@ -101,6 +106,11 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
 
     if sub["file_url"] and not extracted_text.strip():
         try:
+            await progress(
+                "extracting",
+                15,
+                "Extracting text, diagrams, charts, tables, and visual evidence from the file.",
+            )
             from app.services.local_storage import get_local_path
             local_path = get_local_path(sub["file_url"])
             
@@ -154,6 +164,8 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
         await _mark_failed(org_id, submission_id, batch_id)
         return
 
+    await progress("evidence_ready", 28, "Submission evidence is ready for policy and grading checks.")
+
     # ---- Generate Title (if text submission) --------------------------------
     if not sub["file_url"] and sub["question_text"] and not sub["file_name"]:
         try:
@@ -176,6 +188,7 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
     reference_text = None
     if sub.get("reference_file_url"):
         try:
+            await progress("reference_extracting", 32, "Extracting reference material for comparison.")
             import httpx
             async with httpx.AsyncClient(timeout=60) as client:
                 resp = await client.get(sub["reference_file_url"])
@@ -192,6 +205,7 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
             logger.warning("Reference text extraction failed for submission %s: %s", submission_id, e)
 
     # ---- Policy scan --------------------------------------------------------
+    await progress("policy_scan", 36, "Checking the submission for blocked prompt-injection or policy issues.")
     is_violated, reason = await warning_service.scan_and_enforce(
         org_id=org_id,
         user_id=str(sub["user_id"]) if sub["user_id"] else "batch",
@@ -209,6 +223,7 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
     code_execution_result = None
     if sub["type"] == "coding":
         try:
+            await progress("code_checks", 40, "Generating and running code checks before grading.")
             from app.services.code_sandbox_service import code_sandbox_service
             from app.utils.prompt_templates import utility_test_case_generator_user
             from app.services.llm_provider import ChatMessage
@@ -271,6 +286,7 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
             logger.warning("Code sandbox failed: %s", e)
 
     # ---- Build pipeline inputs ----------------------------------------------
+    await progress("context_building", 44, "Building the grading context from the assignment, rubric, and evidence.")
     # If no assignment/questions, create a generic single-question wrapper
     if not questions:
         q_text = sub.get("question_text") or "Evaluate the overall quality of this submission."
@@ -331,7 +347,8 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
             reference_path=ref_path_for_pipeline,
             raw_rubric=raw_rubric,
             org_id=org_id,
-            subject_id=subject_id or str(uuid.uuid4())
+            subject_id=subject_id or str(uuid.uuid4()),
+            progress_callback=progress,
         )
     except Exception as e:
         logger.error("Pipeline failed for submission %s: %s", submission_id, e)
@@ -348,6 +365,7 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
         await redis.aclose()
 
     # ---- Persist feedback_report --------------------------------------------
+    await progress("finalizing", 96, "Saving the final feedback report for instructor review.")
     now = datetime.now(timezone.utc)
     
     # GradingResult doesn't have a model_dump(), so we serialize to dict manually
@@ -422,6 +440,36 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
                 f"UPDATE batches SET {col} = {col} + 1 WHERE id = $1", batch_id
             )
 
+    await progress("completed", 100, "AI grading complete. Report is ready for review.")
+
+
+async def _set_progress(
+    org_id: str,
+    submission_id: str,
+    stage: str,
+    percent: int,
+    message: str,
+) -> None:
+    percent = max(0, min(100, int(percent)))
+    try:
+        async with get_conn(org_id) as conn:
+            await conn.execute(
+                """
+                UPDATE submissions
+                SET progress_stage = $2,
+                    progress_percent = $3,
+                    progress_message = $4,
+                    progress_updated_at = now()
+                WHERE id = $1
+                """,
+                submission_id,
+                stage,
+                percent,
+                message,
+            )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Could not update grading progress for %s: %s", submission_id, e)
+
 
 async def _mark_failed(org_id: str, submission_id: str, batch_id: str | None) -> None:
     async with get_conn(org_id) as conn:
@@ -433,3 +481,10 @@ async def _mark_failed(org_id: str, submission_id: str, batch_id: str | None) ->
                 "UPDATE batches SET processed_files = processed_files + 1 WHERE id = $1",
                 batch_id,
             )
+    await _set_progress(
+        org_id,
+        submission_id,
+        "failed",
+        100,
+        "Grading failed before a report could be generated.",
+    )

@@ -307,6 +307,10 @@ CREATE TABLE submissions (
   file_url TEXT,
   file_name TEXT,
   status TEXT NOT NULL CHECK (status IN ('uploaded','processing','graded','approved','published','failed')) DEFAULT 'uploaded',
+  progress_stage TEXT,
+  progress_percent INT NOT NULL DEFAULT 0 CHECK (progress_percent >= 0 AND progress_percent <= 100),
+  progress_message TEXT,
+  progress_updated_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX ON submissions(org_id);

@@ -198,11 +198,13 @@ class ResilientLLM:
         self,
         primary: LLMProvider,
         failover: Sequence[LLMProvider] = (),
+        model_overrides: dict[str, str] | None = None,
         max_retries: int = 2,
         base_backoff_s: float = 0.5,
     ):
         self.primary = primary
         self.failover = list(failover)
+        self.model_overrides = model_overrides or {}
         self.max_retries = max_retries
         self.base_backoff_s = base_backoff_s
 
@@ -273,7 +275,13 @@ class ResilientLLM:
         raise last_exc
 
     async def chat(self, **kwargs) -> ChatResponse:
-        return await self._with_retries("chat", lambda p: p.chat(**kwargs))
+        async def call(provider: LLMProvider) -> ChatResponse:
+            call_kwargs = dict(kwargs)
+            if provider.name in self.model_overrides:
+                call_kwargs["model"] = self.model_overrides[provider.name]
+            return await provider.chat(**call_kwargs)
+
+        return await self._with_retries("chat", call)
 
     async def embed(self, **kwargs) -> list[list[float]]:
         return await self._with_retries("embed", lambda p: p.embed(**kwargs))
@@ -299,12 +307,35 @@ def build_dedicated_llm_from_env() -> ResilientLLM | None:
         name="dedicated",
     )
     failover: list[LLMProvider] = []
+    model_overrides: dict[str, str] = {}
+
+    if (
+        settings.DEDICATED_FALLBACK_BASE_URL
+        and settings.DEDICATED_FALLBACK_TOKEN
+        and settings.DEDICATED_FALLBACK_MODEL
+    ):
+        failover.append(OpenAICompatibleProvider(
+            api_key=settings.DEDICATED_FALLBACK_TOKEN,
+            base_url=settings.DEDICATED_FALLBACK_BASE_URL,
+            timeout=120.0,
+            name="dedicated-fallback",
+        ))
+        model_overrides["dedicated-fallback"] = settings.DEDICATED_FALLBACK_MODEL
+
     if settings.GRADIENT_API_KEY:
         failover.append(GradientProvider(
             api_key=settings.GRADIENT_API_KEY,
             base_url=settings.GRADIENT_BASE_URL,
         ))
-    return ResilientLLM(primary=dedicated, failover=failover, max_retries=3, base_backoff_s=2.0)
+        model_overrides["gradient"] = settings.GRADIENT_MODEL_SPECIALIST
+
+    return ResilientLLM(
+        primary=dedicated,
+        failover=failover,
+        model_overrides=model_overrides,
+        max_retries=1,
+        base_backoff_s=2.0,
+    )
 
 
 def build_llm_from_env() -> ResilientLLM:
@@ -323,6 +354,17 @@ def build_vision_llm_from_env() -> ResilientLLM | None:
     """Build the vision-capable provider for diagrams, flowcharts, and design images."""
     from app.config import settings
 
+    failover: list[LLMProvider] = []
+    model_overrides: dict[str, str] = {}
+
+    if settings.GRADIENT_VISION_OCR_MODEL and settings.GRADIENT_API_KEY:
+        failover.append(GradientProvider(
+            api_key=settings.GRADIENT_API_KEY,
+            base_url=settings.GRADIENT_BASE_URL,
+            timeout=180.0,
+        ))
+        model_overrides["gradient"] = settings.GRADIENT_VISION_OCR_MODEL
+
     if settings.DEDICATED_VISION_MODEL:
         base_url = settings.DEDICATED_VISION_BASE_URL or settings.DEDICATED_INFERENCE_BASE_URL
         token = settings.DEDICATED_VISION_TOKEN or settings.DEDICATED_INFERENCE_TOKEN
@@ -333,14 +375,21 @@ def build_vision_llm_from_env() -> ResilientLLM | None:
                 timeout=180.0,
                 name="dedicated-vision",
             )
-            return ResilientLLM(primary=provider, failover=[], max_retries=3, base_backoff_s=2.0)
+            return ResilientLLM(
+                primary=provider,
+                failover=failover,
+                model_overrides=model_overrides,
+                max_retries=1,
+                base_backoff_s=2.0,
+            )
 
-    if settings.GRADIENT_VISION_OCR_MODEL and settings.GRADIENT_API_KEY:
-        provider = GradientProvider(
-            api_key=settings.GRADIENT_API_KEY,
-            base_url=settings.GRADIENT_BASE_URL,
-            timeout=180.0,
+    if failover:
+        return ResilientLLM(
+            primary=failover[0],
+            failover=failover[1:],
+            model_overrides=model_overrides,
+            max_retries=2,
+            base_backoff_s=1.0,
         )
-        return ResilientLLM(primary=provider, failover=[], max_retries=2, base_backoff_s=1.0)
 
     return None

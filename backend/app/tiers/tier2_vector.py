@@ -14,7 +14,7 @@ import logging
 from app.services.retrieval_service import retrieve_and_rerank
 from app.services.llm_provider import build_llm_from_env
 from app.grading.types import Tier, DocumentPayload, Criterion, GradingResult, PageImage
-from app.grading.grader import grade
+from app.grading.grader import ProgressCallback, grade
 from app.grading import config
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,8 @@ async def grade_tier2(
     reference_payload: DocumentPayload,
     criteria: list[Criterion],
     org_id: str,
-    subject_id: str
+    subject_id: str,
+    progress_callback: ProgressCallback | None = None,
 ) -> GradingResult:
     """
     Grade by running vector retrieval *anchored to the rubric criteria*.
@@ -48,6 +49,12 @@ async def grade_tier2(
         query = f"{c.description}"
         
         try:
+            if progress_callback:
+                await progress_callback(
+                    "retrieving_reference",
+                    58,
+                    f"Retrieving reference evidence for {c.id}.",
+                )
             chunks = await retrieve_and_rerank(
                 llm=llm,
                 org_id=org_id,
@@ -83,5 +90,6 @@ async def grade_tier2(
         reference_pages=[],  # See decision above
         criteria=criteria,
         tier=Tier.VECTOR,
-        reference_sections_used=sections_used
+        reference_sections_used=sections_used,
+        progress_callback=progress_callback,
     )

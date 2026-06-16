@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from app.services.llm_provider import build_llm_from_env, build_dedicated_llm_from_env, ChatMessage
 from app.grading.types import Tier, DocumentPayload, PageImage, Criterion, GradingResult
@@ -21,6 +21,8 @@ from app.grading import config
 from app.grading.rubric import _extract_json
 
 logger = logging.getLogger(__name__)
+
+ProgressCallback = Callable[[str, int, str], Awaitable[None]]
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +144,7 @@ async def grade(
     tier: Tier,
     reference_sections_used: list[str] | None = None,
     prefer_dedicated: bool = False,
+    progress_callback: ProgressCallback | None = None,
 ) -> GradingResult:
     """
     Three-stage agentic grading pipeline: Specialist → Judge → Senior.
@@ -173,6 +176,12 @@ async def grade(
         # Stage 1 — Specialist
         # Purpose: Deep analytical evidence-based scoring
         # ------------------------------------------------------------------
+        if progress_callback:
+            await progress_callback(
+                "specialist",
+                62,
+                "Specialist agent is matching evidence to each rubric criterion.",
+            )
         logger.info("Stage 1/3 — Specialist: performing evidence-based assessment")
         specialist_resp = await llm.chat(
             messages=[
@@ -192,6 +201,12 @@ async def grade(
         # Stage 2 — Judge
         # Purpose: Audit for fairness, consistency, hallucination detection
         # ------------------------------------------------------------------
+        if progress_callback:
+            await progress_callback(
+                "judge",
+                76,
+                "Judge agent is auditing the score for fairness and unsupported claims.",
+            )
         logger.info("Stage 2/3 — Judge: auditing Specialist assessment")
         judge_user = (
             f"{doc_context}\n\n"
@@ -220,6 +235,12 @@ async def grade(
         # Stage 3 — Senior
         # Purpose: Synthesize final polished student-friendly report
         # ------------------------------------------------------------------
+        if progress_callback:
+            await progress_callback(
+                "senior",
+                88,
+                "Senior agent is synthesizing the final grade and feedback.",
+            )
         logger.info("Stage 3/3 — Senior: synthesizing final report")
         senior_user = (
             f"=== GRADING CRITERIA ===\n"

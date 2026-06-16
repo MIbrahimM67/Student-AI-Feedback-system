@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.grading import config
-from app.grading.grader import grade
+from app.grading.grader import ProgressCallback, grade
 from app.grading.rubric import _extract_json
 from app.grading.types import Criterion, DocumentPayload, GradingResult, Tier
 from app.router.router import _dedicated_available
@@ -69,6 +69,7 @@ async def grade_tier3(
     submission: DocumentPayload,
     reference_payload: DocumentPayload,
     criteria: list[Criterion],
+    progress_callback: ProgressCallback | None = None,
 ) -> GradingResult:
     """
     Review chunks for evidence, then run one final agentic grade.
@@ -85,6 +86,13 @@ async def grade_tier3(
     total_cost = 0.0
 
     for idx, chunk in enumerate(chunks):
+        if progress_callback:
+            chunk_percent = 58 + int(((idx + 1) / max(1, len(chunks))) * 18)
+            await progress_callback(
+                "chunk_review",
+                min(chunk_percent, 74),
+                f"Reviewing chunk {idx + 1} of {len(chunks)} for evidence and missing sections.",
+            )
         review = await _review_chunk(
             chunk=chunk,
             reference_payload=reference_payload,
@@ -118,6 +126,8 @@ async def grade_tier3(
         criteria=criteria,
         tier=Tier.MAP_REDUCE,
         reference_sections_used=[review.chunk_label for review in reviews],
+        prefer_dedicated=_dedicated_available(),
+        progress_callback=progress_callback,
     )
 
     final_result.latency_ms = int((time.time() - t_start) * 1000)

@@ -17,6 +17,7 @@ from app.tiers.tier0_context import grade_tier0
 from app.tiers.tier1_tree import grade_tier1
 from app.tiers.tier2_vector import grade_tier2
 from app.tiers.tier3_map_reduce import grade_tier3
+from app.grading.grader import ProgressCallback
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,8 @@ async def grade_submission(
     reference_path: str,
     raw_rubric: str,
     org_id: str,
-    subject_id: str
+    subject_id: str,
+    progress_callback: ProgressCallback | None = None,
 ) -> GradingResult:
     """
     End-to-end grading pipeline.
@@ -36,14 +38,20 @@ async def grade_submission(
 
     # 1. Ingest submission and reference
     logger.info("Ingesting submission...")
+    if progress_callback:
+        await progress_callback("ingesting_submission", 42, "Preparing the submission for routing.")
     sub_payload = ingest(submission_path)
     
     logger.info("Ingesting reference...")
+    if progress_callback:
+        await progress_callback("ingesting_reference", 46, "Preparing reference material and rubric context.")
     ref_payload = ingest(reference_path)
 
     # 2. Decompose Rubric
     # Note: In a production setting, this should be cached per assignment_id.
     logger.info("Decomposing rubric...")
+    if progress_callback:
+        await progress_callback("decomposing_rubric", 50, "Breaking the rubric into measurable criteria.")
     criteria = await decompose(raw_rubric)
     if not criteria:
         raise ValueError("Failed to decompose rubric into criteria.")
@@ -54,23 +62,30 @@ async def grade_submission(
     # We pass the combined est_tokens to the router for Tier 0 checks, but 
     # check has_structure on the reference.
     tier = route(sub_payload, ref_payload)
+    if progress_callback:
+        await progress_callback(
+            "routing",
+            56,
+            f"Selected {tier.value} grading route based on document size and structure.",
+        )
 
     # 4. Dispatch
     try:
         if tier == Tier.CONTEXT:
-            result = await grade_tier0(sub_payload, ref_payload, criteria)
+            result = await grade_tier0(sub_payload, ref_payload, criteria, progress_callback=progress_callback)
         elif tier == Tier.TREE:
-            result = await grade_tier1(sub_payload, ref_payload, criteria)
+            result = await grade_tier1(sub_payload, ref_payload, criteria, progress_callback=progress_callback)
         elif tier == Tier.VECTOR:
             result = await grade_tier2(
                 submission=sub_payload,
                 reference_payload=ref_payload,
                 criteria=criteria,
                 org_id=org_id,
-                subject_id=subject_id
+                subject_id=subject_id,
+                progress_callback=progress_callback,
             )
         elif tier == Tier.MAP_REDUCE:
-            result = await grade_tier3(sub_payload, ref_payload, criteria)
+            result = await grade_tier3(sub_payload, ref_payload, criteria, progress_callback=progress_callback)
         else:
             raise ValueError(f"Unknown tier selected: {tier}")
             

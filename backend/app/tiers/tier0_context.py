@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 
 from app.grading.types import Tier, DocumentPayload, Criterion, GradingResult
-from app.grading.grader import grade
+from app.grading.grader import ProgressCallback, grade
 from app.router.router import TIER0_BUDGET, _dedicated_available
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,8 @@ logger = logging.getLogger(__name__)
 async def grade_tier0(
     submission: DocumentPayload,
     reference_payload: DocumentPayload,
-    criteria: list[Criterion]
+    criteria: list[Criterion],
+    progress_callback: ProgressCallback | None = None,
 ) -> GradingResult:
     """
     Grade a submission by stuffing the entire reference document into the LLM context.
@@ -37,4 +38,5 @@ async def grade_tier0(
         tier=Tier.CONTEXT,
         reference_sections_used=sections_used,
         prefer_dedicated=prefer_dedicated,
+        progress_callback=progress_callback,
     )

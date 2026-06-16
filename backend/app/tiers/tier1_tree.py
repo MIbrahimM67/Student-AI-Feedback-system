@@ -16,7 +16,7 @@ import fitz  # PyMuPDF
 
 from app.services.llm_provider import build_llm_from_env, ChatMessage
 from app.grading.types import Tier, DocumentPayload, Criterion, GradingResult, PageImage
-from app.grading.grader import grade
+from app.grading.grader import ProgressCallback, grade
 from app.grading import config
 from app.grading.rubric import _extract_json
 
@@ -136,7 +136,8 @@ async def navigate(index: list[TreeIndexItem], criterion: Criterion) -> list[int
 async def grade_tier1(
     submission: DocumentPayload,
     reference_payload: DocumentPayload,
-    criteria: list[Criterion]
+    criteria: list[Criterion],
+    progress_callback: ProgressCallback | None = None,
 ) -> GradingResult:
     """
     Grade by navigating the reference document's tree index to load specific sections.
@@ -151,7 +152,8 @@ async def grade_tier1(
             reference_pages=reference_payload.pages,
             criteria=criteria,
             tier=Tier.TREE,
-            reference_sections_used=["Fallback to Full Document"]
+            reference_sections_used=["Fallback to Full Document"],
+            progress_callback=progress_callback,
         )
 
     # 1. Navigate to find relevant pages per criterion
@@ -185,5 +187,6 @@ async def grade_tier1(
         reference_pages=selected_page_images,
         criteria=criteria,
         tier=Tier.TREE,
-        reference_sections_used=sections_used
+        reference_sections_used=sections_used,
+        progress_callback=progress_callback,
     )

@@ -812,7 +812,12 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
         throw new Error(errorData.detail || "Failed to upload.");
       }
 
+      const resData = await res.json();
       setSuccessMsg(`Submission for ${studentName} queued for grading!`);
+      if (resData.batch_id) {
+        setBatchId(resData.batch_id);
+        startPollingProgress(resData.batch_id);
+      }
       setStudentName(""); setSingleFile(null);
     } catch(err: any) {
       setError(err.message || "Failed to upload.");
@@ -875,15 +880,23 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
 
   const startPollingProgress = (id: string) => {
     if (pollIntervalId) clearInterval(pollIntervalId);
-    const interval = setInterval(async () => {
+    const poll = async () => {
       try {
         const res = await api.get(`/api/instructor/batch/${id}`);
         setGradingProgress(res.data);
         const processed = (res.data.processed_files || 0) + (res.data.needs_review_count || 0);
         if (processed >= (res.data.total_files || 0) && res.data.total_files > 0) {
-          clearInterval(interval); setPollIntervalId(null);
+          if (pollIntervalId) clearInterval(pollIntervalId);
+          setPollIntervalId(null);
+          return true;
         }
       } catch (err) {}
+      return false;
+    };
+    poll();
+    const interval = setInterval(async () => {
+      const done = await poll();
+      if (done) clearInterval(interval);
     }, 3000);
     setPollIntervalId(interval);
   };
@@ -956,6 +969,21 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
     }
   }, [uploadMode]);
 
+  const progressPercent = Math.max(0, Math.min(100, Math.round(
+    gradingProgress?.progress_percent ??
+    (((gradingProgress?.processed_files || 0) + (gradingProgress?.needs_review_count || 0)) / Math.max(1, gradingProgress?.total_files || 1)) * 100
+  )));
+  const activeStage = gradingProgress?.active_stage || "queued";
+  const progressStages = [
+    { label: "Evidence", aliases: ["queued", "extracting", "evidence_ready", "reference_extracting"] },
+    { label: "Checks", aliases: ["policy_scan", "code_checks", "context_building"] },
+    { label: "Routing", aliases: ["ingesting_submission", "ingesting_reference", "decomposing_rubric", "routing"] },
+    { label: "Review", aliases: ["chunk_review", "retrieving_reference", "specialist"] },
+    { label: "Audit", aliases: ["judge"] },
+    { label: "Report", aliases: ["senior", "finalizing", "completed"] },
+  ];
+  const activeStageIndex = Math.max(0, progressStages.findIndex(stage => stage.aliases.includes(activeStage)));
+
   return (
     <div className="space-y-6">
       
@@ -987,11 +1015,47 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
 
       {gradingProgress && !reviewingReports && (
          <div className="glass-panel p-6 border border-[var(--color-rule)] shadow-[var(--shadow-panel)] space-y-6 bg-[var(--color-surface)]">
-            <h3 className="text-lg font-black text-slate-800">
-               Batch Grading Progress: {((gradingProgress.processed_files + gradingProgress.needs_review_count) >= gradingProgress.total_files) ? "Completed" : "Processing"}
-            </h3>
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--color-muted)]">Live AI Pipeline</p>
+                <h3 className="mt-1 text-lg font-black text-slate-800">
+                  {((gradingProgress.processed_files + gradingProgress.needs_review_count) >= gradingProgress.total_files) ? "Grading complete" : "Grading in progress"}
+                </h3>
+                <p className="mt-2 max-w-2xl text-xs font-semibold leading-relaxed text-slate-500">
+                  {gradingProgress.progress_message || "Preparing the grading worker."}
+                </p>
+              </div>
+              <div className="min-w-[140px] text-left lg:text-right">
+                <div className="text-3xl font-black text-slate-900">{progressPercent}%</div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  {(gradingProgress.processed_files || 0) + (gradingProgress.needs_review_count || 0)} of {gradingProgress.total_files || 0} ready
+                </div>
+              </div>
+            </div>
+
             <div className="w-full bg-slate-100 h-3.5 rounded-full overflow-hidden border border-slate-200">
-               <div className="bg-[var(--color-accent)] h-full transition-all" style={{width: `${((gradingProgress.processed_files + gradingProgress.needs_review_count) / Math.max(1, gradingProgress.total_files)) * 100}%`}} />
+               <div className="bg-[var(--color-accent)] h-full transition-all duration-700" style={{width: `${progressPercent}%`}} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+              {progressStages.map((stage, index) => {
+                const isDone = progressPercent >= 100 || index < activeStageIndex;
+                const isActive = index === activeStageIndex && progressPercent < 100;
+                return (
+                  <div key={stage.label} className={`border px-3 py-3 ${isActive ? "border-[var(--color-accent)] bg-blue-50" : isDone ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-slate-50"}`}>
+                    <div className="flex items-center gap-2">
+                      {isDone ? (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                      ) : isActive ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-[var(--color-accent)]" />
+                      ) : (
+                        <span className="h-4 w-4 rounded-full border border-slate-300" />
+                      )}
+                      <span className={`text-[11px] font-black ${isActive ? "text-[var(--color-accent)]" : isDone ? "text-emerald-700" : "text-slate-400"}`}>{stage.label}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
             
             {((gradingProgress.processed_files + gradingProgress.needs_review_count) >= gradingProgress.total_files) && (
@@ -1072,6 +1136,13 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                               <td className="p-4">
                                  {report.submission_status === 'failed' ? (
                                    <div className="text-xs font-bold text-rose-500">Processing Failed</div>
+                                 ) : !report.report_id ? (
+                                   <div>
+                                     <div className="text-xs font-black text-slate-700">{report.progress_percent || 0}%</div>
+                                     <div className="mt-1 h-1.5 w-20 overflow-hidden rounded-full bg-slate-200">
+                                       <div className="h-full bg-[var(--color-accent)]" style={{ width: `${report.progress_percent || 0}%` }} />
+                                     </div>
+                                   </div>
                                  ) : (
                                    <div className="text-xl font-black text-slate-800">{report.final_status ? report.final_status === 'pass' ? report.final_overall_score || report.ai_overall_score : report.ai_overall_score : report.ai_overall_score}<span className="text-xs text-slate-400 font-medium">/{report.ai_max_score}</span></div>
                                  )}
@@ -1100,6 +1171,8 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                               <td className="p-4 text-right" onClick={e => e.stopPropagation()}>
                                  {report.submission_status === 'failed' ? (
                                    <span className="text-xs font-bold text-rose-400">Error</span>
+                                 ) : !report.report_id ? (
+                                   <span className="text-xs font-bold text-slate-400">Working</span>
                                  ) : !report.published_at ? (
                                    <button onClick={() => handleApproveReport(report.report_id, report.ai_overall_score)} className="bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors">
                                      Approve
