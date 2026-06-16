@@ -54,3 +54,12 @@ class GradingResult:
     reference_sections_used: list[str]    # for explainability/logging
     latency_ms: int = 0
     est_cost_usd: float = 0.0
+    instructor_brief: str = ""
+    student_feedback: str = ""
+    verdict: str = ""
+    score_rationale: str = ""
+    strengths: list[str] = field(default_factory=list)
+    weaknesses: list[str] = field(default_factory=list)
+    suggestions: list[str] = field(default_factory=list)
+    priority_actions: list[str] = field(default_factory=list)
+    criteria_notes: dict[str, dict[str, str]] = field(default_factory=dict)

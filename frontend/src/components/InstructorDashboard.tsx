@@ -9,7 +9,7 @@ import {
   FileSpreadsheet, FileArchive, Upload, Table as TableIcon, 
   CheckCircle2, BadgeCheck, Loader2, Play, Plus, RefreshCw, 
   ClipboardList, HelpCircle, BookOpen, Layers, ArrowLeft,
-  FileText, Settings, Terminal
+  FileText, Settings, Terminal, AlertTriangle, Target
 } from "lucide-react";
 import { BatchUploadTutorialModal } from "./BatchUploadTutorialModal";
 
@@ -1185,6 +1185,24 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
     { label: "Report", aliases: ["senior", "finalizing", "completed"] },
   ];
   const activeStageIndex = Math.max(0, progressStages.findIndex(stage => stage.aliases.includes(activeStage)));
+  const asList = (value: any): string[] => Array.isArray(value)
+    ? value.map((item) => String(item).trim()).filter(Boolean)
+    : [];
+  const formatVerdict = (value: any, scorePercent: number) => {
+    const raw = String(value || "").trim();
+    if (raw) return raw.replace(/_/g, " ");
+    if (scorePercent >= 85) return "excellent";
+    if (scorePercent >= 70) return "good";
+    if (scorePercent >= 55) return "satisfactory";
+    return "needs improvement";
+  };
+  const verdictTone = (verdict: string) => {
+    const lower = verdict.toLowerCase();
+    if (lower.includes("excellent") || lower.includes("good")) return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    if (lower.includes("high") || lower.includes("risk") || lower.includes("improvement")) return "bg-rose-50 text-rose-700 border-rose-200";
+    return "bg-amber-50 text-amber-700 border-amber-200";
+  };
+  const criterionScore = (value: any) => typeof value === "object" && value !== null ? value.score : value;
 
   return (
     <div className="space-y-6">
@@ -1405,29 +1423,112 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                                     <div className="text-xs text-slate-400 animate-pulse">Loading feedback...</div>
                                   ) : (
                                     <div className="space-y-4">
-                                      {/* AI Feedback */}
-                                      <div className="bg-white rounded-xl border border-slate-200 p-4">
-                                        <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-2">AI Feedback</div>
-                                        <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">{detail.ai_payload?.feedback || 'No feedback available.'}</p>
-                                      </div>
-                                      {/* Per-Criterion Breakdown */}
-                                      {detail.ai_payload?.per_criterion && Object.keys(detail.ai_payload.per_criterion).length > 0 && (
-                                        <div className="bg-white rounded-xl border border-slate-200 p-4">
-                                          <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-3">Criteria Breakdown</div>
-                                          <div className="space-y-2">
-                                            {Object.entries(detail.ai_payload.per_criterion).map(([criterionId, score]: [string, any]) => (
-                                              <div key={criterionId} className="flex items-center justify-between text-xs">
-                                                <span className="font-medium text-slate-600 capitalize">{criterionId.replace(/_/g, ' ')}</span>
-                                                <span className={`font-bold px-2 py-0.5 rounded-md ${
-                                                  Number(score) === 0 ? 'bg-rose-50 text-rose-600' :
-                                                  Number(score) >= 4 ? 'bg-emerald-50 text-emerald-600' :
-                                                  'bg-amber-50 text-amber-600'
-                                                }`}>{score} pts</span>
+                                      {(() => {
+                                        const payload = detail.ai_payload || {};
+                                        const rawScore = Number(payload.score ?? detail.ai_overall_score ?? report.ai_overall_score ?? 0);
+                                        const rawMax = Number(payload.max_score ?? detail.ai_max_score ?? report.ai_max_score ?? 100) || 100;
+                                        const scorePercent = Math.max(0, Math.min(100, Math.round((rawScore / rawMax) * 100)));
+                                        const verdict = formatVerdict(payload.verdict, scorePercent);
+                                        const strengths = asList(payload.strengths);
+                                        const weaknesses = asList(payload.weaknesses);
+                                        const priorityActions = asList(payload.priority_actions);
+                                        const suggestions = asList(payload.suggestions);
+                                        const instructorBrief = payload.instructor_brief || payload.score_rationale || payload.student_feedback || payload.feedback || "No feedback available.";
+                                        const listSections = [
+                                          { title: "Strengths", items: strengths, icon: CheckCircle2, tone: "text-emerald-600 bg-emerald-50 border-emerald-100" },
+                                          { title: "Needs Attention", items: weaknesses, icon: AlertTriangle, tone: "text-rose-600 bg-rose-50 border-rose-100" },
+                                          { title: "Priority Actions", items: priorityActions.length ? priorityActions : suggestions.slice(0, 3), icon: Target, tone: "text-indigo-600 bg-indigo-50 border-indigo-100" },
+                                        ];
+
+                                        return (
+                                          <>
+                                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                                                <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Final Score</div>
+                                                <div className="mt-2 text-2xl font-black text-slate-900">{rawScore}<span className="text-sm text-slate-400">/{rawMax}</span></div>
+                                                <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                                                  <div className="h-full bg-indigo-600" style={{ width: `${scorePercent}%` }} />
+                                                </div>
                                               </div>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      )}
+                                              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                                                <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Verdict</div>
+                                                <span className={`mt-3 inline-flex px-2.5 py-1 rounded-md border text-[10px] font-black uppercase tracking-wider ${verdictTone(verdict)}`}>
+                                                  {verdict}
+                                                </span>
+                                              </div>
+                                              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                                                <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Integrity</div>
+                                                <div className="mt-2 text-xl font-black text-slate-900">
+                                                  {detail.plagiarism_similarity_score !== null && detail.plagiarism_similarity_score !== undefined
+                                                    ? `${Number(detail.plagiarism_similarity_score).toFixed(1)}%`
+                                                    : "Pending"}
+                                                </div>
+                                                <div className="mt-1 text-[10px] font-bold text-slate-400 uppercase">Similarity</div>
+                                              </div>
+                                              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                                                <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Pipeline</div>
+                                                <div className="mt-2 text-sm font-black text-slate-800 capitalize">{String(payload.tier_used || "agentic").replace(/_/g, " ")}</div>
+                                                <div className="mt-1 text-[10px] font-bold text-slate-400 uppercase">{payload.latency_ms ? `${Math.round(payload.latency_ms / 1000)}s` : "Completed"}</div>
+                                              </div>
+                                            </div>
+
+                                            <div className="bg-white rounded-xl border border-slate-200 p-4">
+                                              <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-2">Instructor Brief</div>
+                                              <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{instructorBrief}</p>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                                              {listSections.map((section) => {
+                                                const Icon = section.icon;
+                                                return (
+                                                  <div key={section.title} className={`rounded-xl border p-4 ${section.tone}`}>
+                                                    <div className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-wider">
+                                                      <Icon className="w-3.5 h-3.5" /> {section.title}
+                                                    </div>
+                                                    {section.items.length > 0 ? (
+                                                      <ul className="mt-3 space-y-2">
+                                                        {section.items.slice(0, 4).map((item, index) => (
+                                                          <li key={index} className="text-xs leading-relaxed text-slate-700">{item}</li>
+                                                        ))}
+                                                      </ul>
+                                                    ) : (
+                                                      <p className="mt-3 text-xs text-slate-500">No major item flagged.</p>
+                                                    )}
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+
+                                            {payload.per_criterion && Object.keys(payload.per_criterion).length > 0 && (
+                                              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                                                <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-3">Criteria Breakdown</div>
+                                                <div className="space-y-3">
+                                                  {Object.entries(payload.per_criterion).map(([criterionId, rawCriterion]: [string, any]) => {
+                                                    const score = criterionScore(rawCriterion);
+                                                    const notes = payload.criteria_notes?.[criterionId] || (typeof rawCriterion === "object" && rawCriterion !== null ? rawCriterion : {});
+                                                    return (
+                                                      <div key={criterionId} className="border border-slate-100 bg-slate-50 p-3">
+                                                        <div className="flex items-start justify-between gap-3">
+                                                          <div className="font-black text-xs text-slate-700 capitalize">{criterionId.replace(/_/g, " ")}</div>
+                                                          <span className={`shrink-0 font-bold px-2 py-0.5 rounded-md text-xs ${
+                                                            Number(score) === 0 ? "bg-rose-50 text-rose-600" :
+                                                            Number(score) >= 4 ? "bg-emerald-50 text-emerald-600" :
+                                                            "bg-amber-50 text-amber-600"
+                                                          }`}>{score} pts</span>
+                                                        </div>
+                                                        {notes.note && <p className="mt-2 text-xs leading-relaxed text-slate-700">{notes.note}</p>}
+                                                        {notes.evidence && <p className="mt-2 text-[11px] leading-relaxed text-slate-500"><span className="font-black text-slate-600">Evidence:</span> {notes.evidence}</p>}
+                                                        {notes.action && <p className="mt-1 text-[11px] leading-relaxed text-indigo-700"><span className="font-black">Action:</span> {notes.action}</p>}
+                                                      </div>
+                                                    );
+                                                  })}
+                                                </div>
+                                              </div>
+                                            )}
+                                          </>
+                                        );
+                                      })()}
+
                                       {(detail.plagiarism_similarity_score !== null && detail.plagiarism_similarity_score !== undefined) && (
                                         <div className="bg-white rounded-xl border border-slate-200 p-4">
                                           <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-3">Academic Integrity</div>

@@ -118,19 +118,37 @@ SENIOR_SYSTEM = """You are a Senior academic feedback synthesizer — the final 
 
 You receive the Specialist's detailed analysis and the Judge's corrections. Your role is to:
 1. Apply the Judge's corrections to produce final scores.
-2. Write polished, student-friendly feedback (encouraging but honest).
-3. Generate actionable suggestions for improvement.
-4. Produce the final structured report.
+2. Produce a concise instructor-facing report that can be understood in one look.
+3. Write polished, student-friendly feedback (encouraging but honest).
+4. Generate actionable suggestions for improvement.
+5. Preserve the evidence chain so an instructor can quickly see why the grade was assigned.
 
 Output ONLY valid JSON matching this exact schema:
 {
-  "per_criterion": { "<criterion_id>": <final_score_float> },
-  "feedback": "<2-3 paragraph student-friendly overall feedback>",
+  "instructor_brief": "<3-5 sentence executive summary for the instructor: performance level, main evidence, biggest risk, and grading confidence>",
+  "verdict": "excellent | good | satisfactory | needs_improvement | high_risk",
+  "score_rationale": "<short explanation of why the final score is fair>",
+  "per_criterion": {
+    "<criterion_id>": {
+      "score": <final_score_float>,
+      "note": "<one-sentence grading note>",
+      "evidence": "<specific evidence or observation from the submission>",
+      "action": "<one concrete improvement for this criterion>"
+    }
+  },
+  "student_feedback": "<2-3 paragraph student-friendly overall feedback>",
   "strengths": ["<specific strength worth highlighting>"],
   "weaknesses": ["<specific area needing improvement>"],
+  "priority_actions": ["<highest-impact next step for the student>"],
   "suggestions": ["<concrete, actionable suggestion for improvement>"],
   "final_comments": "<one encouraging closing sentence>"
 }"""
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
 
 
 # ---------------------------------------------------------------------------
@@ -268,30 +286,52 @@ async def grade(
 
         # Normalise scores — Senior may return ints or floats
         per_criterion: dict[str, float] = {}
+        criteria_notes: dict[str, dict[str, str]] = {}
         for c in criteria:
             raw = per_criterion_raw.get(c.id, 0.0)
+            note_payload: dict[str, str] = {}
+            if isinstance(raw, dict):
+                note_payload = {
+                    "note": str(raw.get("note", "")).strip(),
+                    "evidence": str(raw.get("evidence", "")).strip(),
+                    "action": str(raw.get("action", "")).strip(),
+                }
+                raw = raw.get("score", 0.0)
             try:
                 score = float(raw)
             except (TypeError, ValueError):
                 score = 0.0
             # Clamp to valid range
             per_criterion[c.id] = round(min(max(score, 0.0), c.max_points), 1)
+            note_payload = {k: v for k, v in note_payload.items() if v}
+            if note_payload:
+                criteria_notes[c.id] = note_payload
 
         total_score = sum(per_criterion.values())
         max_score = sum(c.max_points for c in criteria)
 
         # Build rich feedback string from Senior's structured output
-        strengths = senior_data.get("strengths", [])
-        weaknesses = senior_data.get("weaknesses", [])
-        suggestions = senior_data.get("suggestions", [])
-        final_comments = senior_data.get("final_comments", "")
-        feedback_body = senior_data.get("feedback", "No feedback provided.")
+        instructor_brief = str(senior_data.get("instructor_brief", "")).strip()
+        verdict = str(senior_data.get("verdict", "")).strip()
+        score_rationale = str(senior_data.get("score_rationale", "")).strip()
+        strengths = _string_list(senior_data.get("strengths", []))
+        weaknesses = _string_list(senior_data.get("weaknesses", []))
+        suggestions = _string_list(senior_data.get("suggestions", []))
+        priority_actions = _string_list(senior_data.get("priority_actions", []))
+        final_comments = str(senior_data.get("final_comments", "")).strip()
+        feedback_body = str(
+            senior_data.get("student_feedback")
+            or senior_data.get("feedback")
+            or "No feedback provided."
+        ).strip()
 
         rich_feedback = feedback_body
         if strengths:
             rich_feedback += "\n\n**Strengths:**\n" + "\n".join(f"- {s}" for s in strengths)
         if weaknesses:
             rich_feedback += "\n\n**Areas for Improvement:**\n" + "\n".join(f"- {w}" for w in weaknesses)
+        if priority_actions:
+            rich_feedback += "\n\n**Priority Actions:**\n" + "\n".join(f"- {a}" for a in priority_actions)
         if suggestions:
             rich_feedback += "\n\n**Suggestions:**\n" + "\n".join(f"- {s}" for s in suggestions)
         if final_comments:
@@ -316,6 +356,15 @@ async def grade(
             reference_sections_used=reference_sections_used,
             latency_ms=latency_ms,
             est_cost_usd=est_cost_usd,
+            instructor_brief=instructor_brief,
+            student_feedback=feedback_body,
+            verdict=verdict,
+            score_rationale=score_rationale,
+            strengths=strengths,
+            weaknesses=weaknesses,
+            suggestions=suggestions,
+            priority_actions=priority_actions,
+            criteria_notes=criteria_notes,
         )
 
     except Exception as e:
