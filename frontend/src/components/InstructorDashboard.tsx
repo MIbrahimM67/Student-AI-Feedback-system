@@ -1517,7 +1517,9 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                                                           }`}>{score} pts</span>
                                                         </div>
                                                         {notes.note && <p className="mt-2 text-xs leading-relaxed text-slate-700">{notes.note}</p>}
-                                                        {notes.evidence && <p className="mt-2 text-[11px] leading-relaxed text-slate-500"><span className="font-black text-slate-600">Evidence:</span> {notes.evidence}</p>}
+                                                        {notes.evidence && <p className="mt-2 text-[11px] leading-relaxed text-slate-500"><span className="font-black text-slate-600">Student evidence:</span> {notes.evidence}</p>}
+                                                        {notes.deduction_reason && <p className="mt-1 text-[11px] leading-relaxed text-rose-700"><span className="font-black">Why marks were cut:</span> {notes.deduction_reason}</p>}
+                                                        {notes.reference_support && <p className="mt-1 border-l-2 border-indigo-200 pl-2 text-[11px] leading-relaxed text-slate-600"><span className="font-black text-indigo-700">RAG/reference support:</span> {notes.reference_support}</p>}
                                                         {notes.action && <p className="mt-1 text-[11px] leading-relaxed text-indigo-700"><span className="font-black">Action:</span> {notes.action}</p>}
                                                       </div>
                                                     );

@@ -70,8 +70,11 @@ Your role is to perform a rigorous, evidence-based analysis of the student's sub
 
 For each criterion:
 - Assign a score (0 to max_points) backed by specific evidence quoted from the submission.
+- If marks are deducted, state exactly what was missing or incorrect.
+- Include a short quote or precise excerpt from the reference/RAG material that supports the deduction when available.
 - Identify concrete strengths and weaknesses.
 - Be thorough and analytical. Do not inflate scores.
+- Never invent quotes. If the reference material does not contain a direct supporting excerpt, write "No direct reference quote available."
 
 Output ONLY valid JSON matching this exact schema:
 {
@@ -79,6 +82,8 @@ Output ONLY valid JSON matching this exact schema:
     "<criterion_id>": {
       "score": <float>,
       "evidence": "<direct quote or specific observation from the submission>",
+      "deduction_reason": "<why marks were lost, or 'No deduction'>",
+      "reference_support": "<quote or precise excerpt from reference/RAG material that supports the grading decision>",
       "reasoning": "<why this score was assigned>"
     }
   },
@@ -123,6 +128,12 @@ You receive the Specialist's detailed analysis and the Judge's corrections. Your
 4. Generate actionable suggestions for improvement.
 5. Preserve the evidence chain so an instructor can quickly see why the grade was assigned.
 
+For every criterion where the score is below the maximum:
+- Explain why marks were deducted.
+- Include reference_support from the Specialist whenever it exists.
+- If no reliable reference/RAG quote exists, explicitly say "No direct reference quote available."
+- Do not fabricate quotes or cite reference material that was not provided.
+
 Output ONLY valid JSON matching this exact schema:
 {
   "instructor_brief": "<3-5 sentence executive summary for the instructor: performance level, main evidence, biggest risk, and grading confidence>",
@@ -133,6 +144,8 @@ Output ONLY valid JSON matching this exact schema:
       "score": <final_score_float>,
       "note": "<one-sentence grading note>",
       "evidence": "<specific evidence or observation from the submission>",
+      "deduction_reason": "<why marks were deducted, or 'No deduction'>",
+      "reference_support": "<quote or precise excerpt from reference/RAG material supporting the decision, or 'No direct reference quote available'>",
       "action": "<one concrete improvement for this criterion>"
     }
   },
@@ -294,6 +307,8 @@ async def grade(
                 note_payload = {
                     "note": str(raw.get("note", "")).strip(),
                     "evidence": str(raw.get("evidence", "")).strip(),
+                    "deduction_reason": str(raw.get("deduction_reason", "")).strip(),
+                    "reference_support": str(raw.get("reference_support", "")).strip(),
                     "action": str(raw.get("action", "")).strip(),
                 }
                 raw = raw.get("score", 0.0)
