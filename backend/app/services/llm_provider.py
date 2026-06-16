@@ -323,6 +323,18 @@ def build_vision_llm_from_env() -> ResilientLLM | None:
     """Build the vision-capable provider for diagrams, flowcharts, and design images."""
     from app.config import settings
 
+    if settings.DEDICATED_VISION_MODEL:
+        base_url = settings.DEDICATED_VISION_BASE_URL or settings.DEDICATED_INFERENCE_BASE_URL
+        token = settings.DEDICATED_VISION_TOKEN or settings.DEDICATED_INFERENCE_TOKEN
+        if base_url and token:
+            provider = OpenAICompatibleProvider(
+                api_key=token,
+                base_url=base_url,
+                timeout=180.0,
+                name="dedicated-vision",
+            )
+            return ResilientLLM(primary=provider, failover=[], max_retries=3, base_backoff_s=2.0)
+
     if settings.GRADIENT_VISION_OCR_MODEL and settings.GRADIENT_API_KEY:
         provider = GradientProvider(
             api_key=settings.GRADIENT_API_KEY,

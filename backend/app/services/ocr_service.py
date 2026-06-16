@@ -47,7 +47,7 @@ class OCRService:
             if not settings.VISUAL_EXTRACTION_ENABLED:
                 raise ValueError(
                     "Image/diagram grading needs a running vision model. "
-                    "Configure GRADIENT_VISION_OCR_MODEL and set "
+                    "Configure DEDICATED_VISION_MODEL or GRADIENT_VISION_OCR_MODEL and set "
                     "VISUAL_EXTRACTION_ENABLED=true."
                 )
             return await self._vision_model_extract(file_path, filename)
@@ -154,11 +154,11 @@ class OCRService:
         from app.services.llm_provider import ChatMessage, build_vision_llm_from_env
 
         llm = build_vision_llm_from_env()
-        model = settings.GRADIENT_VISION_OCR_MODEL
+        model = settings.DEDICATED_VISION_MODEL or settings.GRADIENT_VISION_OCR_MODEL
         if not llm or not model:
             raise ValueError(
                 "Visual extraction is enabled, but no vision model is configured. "
-                "Set GRADIENT_VISION_OCR_MODEL."
+                "Set DEDICATED_VISION_MODEL or GRADIENT_VISION_OCR_MODEL."
             )
 
         mime = self._mime_for_path(file_path)
@@ -167,13 +167,16 @@ class OCRService:
 
         prompt = (
             "Analyze this student submission image for grading. It may contain a diagram, flowchart, "
-            "UI design, architecture sketch, ERD, UML diagram, circuit, layout, or handwritten visual answer.\n\n"
+            "graph, chart, table, UI design, architecture sketch, ERD, UML diagram, circuit, layout, "
+            "screenshot, or handwritten visual answer.\n\n"
             "Do NOT just OCR it. Produce structured grading evidence:\n"
             "1. Visible title/labels/text, if any.\n"
-            "2. Main components/nodes/screens/shapes.\n"
+            "2. Main components/nodes/screens/shapes/rows/columns.\n"
             "3. Connections, arrows, hierarchy, sequence, or data flow.\n"
-            "4. Design/layout observations and missing/unclear parts.\n"
-            "5. Any assumptions you are making because the image is ambiguous.\n\n"
+            "4. For graphs/charts: axes, units, legend, trends, outliers, and approximate values.\n"
+            "5. For tables: headers, key rows/columns, totals, comparisons, and anomalies.\n"
+            "6. Design/layout observations and missing/unclear parts.\n"
+            "7. Any assumptions you are making because the image is ambiguous.\n\n"
             "Be concrete and faithful to the image. Do not invent unseen details."
         )
 

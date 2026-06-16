@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     DEDICATED_INFERENCE_BASE_URL: Optional[str] = None
     DEDICATED_INFERENCE_TOKEN: Optional[str] = None
     DEDICATED_MODEL: str = "llama-3.3-70b-versatile"  # Groq model name
+    DEDICATED_VISION_BASE_URL: Optional[str] = None
+    DEDICATED_VISION_TOKEN: Optional[str] = None
+    DEDICATED_VISION_MODEL: Optional[str] = None
 
     # Models
     GRADIENT_MODEL_SPECIALIST: str = "openai-gpt-oss-120b"
