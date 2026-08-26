@@ -2,10 +2,14 @@ import math
 import logging
 import re
 from collections import Counter
-from typing import Dict, Any, List, Tuple, Optional
-from backend.app.services.digitalocean_service import ai_service
-from backend.app.firebase import db
-from backend.app.config import settings
+try:
+    from app.services.digitalocean_service import ai_service
+    from app.firebase import db
+    from app.config import settings
+except ImportError:
+    from backend.app.services.digitalocean_service import ai_service
+    from backend.app.firebase import db
+    from backend.app.config import settings
 
 logger = logging.getLogger("plagiarism_service")
 

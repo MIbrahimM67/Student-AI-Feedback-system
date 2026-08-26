@@ -1,8 +1,10 @@
 import httpx
 import json
 import logging
-from typing import Dict, Any, List, Optional
-from backend.app.config import settings
+try:
+    from app.config import settings
+except ImportError:
+    from backend.app.config import settings
 
 logger = logging.getLogger("digitalocean_service")
 

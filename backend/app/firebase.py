@@ -3,8 +3,10 @@ import json
 import logging
 import uuid
 from typing import Dict, Any, List, Optional
-from datetime import datetime
-from backend.app.config import settings
+try:
+    from app.config import settings
+except ImportError:
+    from backend.app.config import settings
 
 logger = logging.getLogger("firebase")
 logging.basicConfig(level=logging.INFO)
