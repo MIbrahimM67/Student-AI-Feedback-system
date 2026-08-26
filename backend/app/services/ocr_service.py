@@ -27,12 +27,23 @@ TEXT_EXTENSIONS = {".txt", ".py", ".java", ".cpp", ".c", ".js", ".ts", ".cs", ".
 
 
 class OCRService:
-    async def extract_text(self, file_path: str, filename: str) -> str:
+    async def extract_text(
+        self,
+        file_path: str,
+        filename: str,
+        *,
+        skip_vision: bool = False,
+    ) -> str:
         """
         Return grading-ready textual evidence from the uploaded file.
 
         For visual files, this is a structured visual analysis from the vision
         model, not OCR text.
+
+        Args:
+            skip_vision: When True, bypass the vision model entirely and use
+                only embedded text extraction (PyMuPDF).  Pass True for coding
+                or plain-text submissions where vision adds no value.
         """
         ext = os.path.splitext(filename)[1].lower()
 
@@ -44,6 +55,11 @@ class OCRService:
             return self._docx_extract(file_path)
 
         if ext in IMAGE_EXTENSIONS:
+            if skip_vision:
+                raise ValueError(
+                    f"File '{filename}' is an image but vision extraction is disabled for "
+                    "this submission type. Re-submit as a PDF or enable visual extraction."
+                )
             from app.config import settings
             if not settings.VISUAL_EXTRACTION_ENABLED:
                 raise ValueError(
@@ -54,7 +70,7 @@ class OCRService:
             return await self._vision_model_extract(file_path, filename)
 
         if ext == ".pdf":
-            return await self._pdf_extract(file_path, filename)
+            return await self._pdf_extract(file_path, filename, skip_vision=skip_vision)
 
         raise ValueError(
             f"Could not extract readable grading evidence from '{filename}'. "
@@ -84,13 +100,22 @@ class OCRService:
             logger.warning("python-docx extraction failed: %s", e)
             return ""
 
-    async def _pdf_extract(self, file_path: str, filename: str) -> str:
+    async def _pdf_extract(
+        self, file_path: str, filename: str, *, skip_vision: bool = False
+    ) -> str:
         from app.config import settings
 
         embedded_text = self._pymupdf_extract(file_path)
-        if not settings.VISUAL_EXTRACTION_ENABLED:
+        if skip_vision or not settings.VISUAL_EXTRACTION_ENABLED:
             if embedded_text:
-                logger.info("PyMuPDF extracted %d chars from %s", len(embedded_text), filename)
+                if skip_vision:
+                    logger.info(
+                        "Vision skipped (coding/text submission) — PyMuPDF extracted %d chars from %s",
+                        len(embedded_text),
+                        filename,
+                    )
+                else:
+                    logger.info("PyMuPDF extracted %d chars from %s", len(embedded_text), filename)
                 return embedded_text
             raise ValueError(f"PDF '{filename}' has no embedded text and visual extraction is disabled.")
 

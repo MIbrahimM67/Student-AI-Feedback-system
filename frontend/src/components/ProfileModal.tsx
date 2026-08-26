@@ -6,7 +6,7 @@ import api from "@/lib/api";
 import {
   X, User, Building2, BookOpen, Briefcase, Layers,
   CheckCircle2, AlertTriangle, Loader2, Save, GraduationCap,
-  Shield, Landmark, ChevronDown,
+  Shield, Landmark, ChevronDown, Crown
 } from "lucide-react";
 
 interface FullProfile {
@@ -179,6 +179,26 @@ export const ProfileModal: React.FC<Props> = ({ open, onClose }) => {
                   {roleMeta.icon} {roleMeta.label}
                 </span>
               )}
+            </div>
+
+            {/* Subscription & Tier Banner */}
+            <div className="flex items-center justify-between p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+              <div className="flex items-center gap-2.5">
+                <Crown className="w-4 h-4 text-amber-600 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold text-slate-800">
+                    Tier: {profile?.pro_status === "active" ? "Pro Faculty Plan" : "Free Plan"}
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    {profile?.pro_status === "active" ? "Unlimited batch evaluations & deep vision enabled" : "5 single submissions / month"}
+                  </p>
+                </div>
+              </div>
+              <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border ${
+                profile?.pro_status === "active" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-600 border-slate-300"
+              }`}>
+                {profile?.pro_status === "active" ? "PRO ACTIVE" : "FREE"}
+              </span>
             </div>
 
             {/* Banners */}

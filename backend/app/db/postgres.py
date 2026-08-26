@@ -24,6 +24,20 @@ async def init_pool() -> None:
     raw_url = os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
     _pool = await asyncpg.create_pool(raw_url, min_size=2, max_size=20)
 
+    # Automatically ensure subscription & Stripe columns exist
+    try:
+        async with _pool.acquire() as conn:
+            await conn.execute("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS plan TEXT DEFAULT 'free';
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status TEXT DEFAULT 'inactive';
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS current_period_end TIMESTAMPTZ;
+            """)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("Schema auto-migration check notice: %s", e)
+
 
 async def close_pool() -> None:
     global _pool

@@ -42,6 +42,30 @@ export const StudentFeedbackDetails: React.FC<StudentFeedbackDetailsProps> = ({ 
   const [report, setReport] = useState<FeedbackReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    setDownloadingPdf(true);
+    try {
+      const res = await api.get(`/api/student/submissions/${submissionId}/pdf`, {
+        responseType: "blob",
+      });
+      const blob = new Blob([res.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Feedback_Report_${submissionId.slice(0, 8)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || "Failed to download PDF report.");
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
 
   useEffect(() => {
     const fetchReport = async () => {
@@ -112,17 +136,14 @@ export const StudentFeedbackDetails: React.FC<StudentFeedbackDetailsProps> = ({ 
             Claim: {report.status || "N/A"}
           </span>
 
-          {report.pdfUrl && (
-            <a
-              href={report.pdfUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 border border-[var(--color-ink)] bg-[var(--color-ink)] px-4 py-2 text-xs font-bold text-[var(--color-paper)] transition-all"
-            >
-              <FileText className="w-4 h-4" />
-              Export PDF Sheet
-            </a>
-          )}
+          <button
+            onClick={handleDownloadPdf}
+            disabled={downloadingPdf}
+            className="inline-flex items-center gap-2 border border-[var(--color-ink)] bg-[var(--color-ink)] px-4 py-2 text-xs font-bold text-[var(--color-paper)] hover:bg-[var(--color-ink-2)] transition-all cursor-pointer disabled:opacity-50"
+          >
+            {downloadingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+            {downloadingPdf ? "Generating PDF..." : "Export PDF Sheet"}
+          </button>
         </div>
       </div>
 

@@ -159,7 +159,14 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
                 if sum(lang_counts.values()) > 0:
                     detected_lang = max(lang_counts, key=lang_counts.get)
             else:
-                extracted_text = await ocr_service.extract_text(tmp_path, sub["file_name"] or "file")
+                extracted_text = await ocr_service.extract_text(
+                    tmp_path,
+                    sub["file_name"] or "file",
+                    skip_vision=(
+                        sub.get("type") == "coding"
+                        or ext in {".py", ".java", ".cpp", ".c", ".js", ".ts", ".txt"}
+                    ),
+                )
         except Exception as e:
             logger.error("Text extraction failed for submission %s: %s", submission_id, e)
             await _mark_failed(org_id, submission_id, batch_id)

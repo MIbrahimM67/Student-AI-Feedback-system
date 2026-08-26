@@ -33,6 +33,7 @@ postgres_data/
 redis_data/
 temp_firebase_credentials.json
 
-# Operating System Files
+# Operating System & Log Files
 .DS_Store
 Thumbs.db
+run_logs/

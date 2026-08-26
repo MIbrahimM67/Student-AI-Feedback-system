@@ -39,6 +39,9 @@ openpyxl==3.1.5
 # Chunking helpers
 tiktoken==0.8.0                # token counting for chunk sizing
 
+# Payment & Subscription
+stripe==11.4.1
+
 # Utilities
 python-jose[cryptography]==3.3.0
 python-dotenv==1.0.1

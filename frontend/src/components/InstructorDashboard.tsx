@@ -9,7 +9,8 @@ import {
   FileSpreadsheet, FileArchive, Upload, Table as TableIcon, 
   CheckCircle2, BadgeCheck, Loader2, Play, Plus, RefreshCw, 
   ClipboardList, HelpCircle, BookOpen, Layers, ArrowLeft,
-  FileText, Settings, Terminal, AlertTriangle, Target
+  FileText, Settings, Terminal, AlertTriangle, Target,
+  Edit2, Check, X, Download
 } from "lucide-react";
 import { BatchUploadTutorialModal } from "./BatchUploadTutorialModal";
 
@@ -948,6 +949,49 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
   const [batchReports, setBatchReports] = useState<any[]>([]);
   const [reviewingReports, setReviewingReports] = useState(false);
 
+  // Editing Student Name in Review Table & Single PDF Download
+  const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
+  const [editingStudentName, setEditingStudentName] = useState<string>("");
+  const [savingStudentName, setSavingStudentName] = useState(false);
+  const [downloadingReportId, setDownloadingReportId] = useState<string | null>(null);
+
+  const handleSaveStudentName = async (submissionId: string) => {
+    if (!editingStudentName.trim()) return;
+    setSavingStudentName(true);
+    try {
+      await api.patch(`/api/instructor/submissions/${submissionId}/student-name`, {
+        student_name: editingStudentName.trim()
+      });
+      setBatchReports(prev => prev.map(r => r.submission_id === submissionId ? { ...r, student_name: editingStudentName.trim() } : r));
+      setEditingStudentId(null);
+    } catch (err: any) {
+      alert(err?.message || "Failed to update student name.");
+    } finally {
+      setSavingStudentName(false);
+    }
+  };
+
+  const handleDownloadReportPdf = async (reportId: string, studentName: string) => {
+    setDownloadingReportId(reportId);
+    try {
+      const res = await api.get(`/api/instructor/reports/${reportId}/pdf`, { responseType: 'blob' });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const safeName = studentName.replace(/[^a-zA-Z0-9_\-]/g, '_');
+      a.download = `${safeName}_Feedback_Report.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(err?.message || "Failed to export PDF report.");
+    } finally {
+      setDownloadingReportId(null);
+    }
+  };
+
   // History State
   const [historyBatches, setHistoryBatches] = useState<any[]>([]);
   const [batchName, setBatchName] = useState("");
@@ -1046,14 +1090,17 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
       const resData = await res.json();
       setBatchId(resData.batch_id);
       setSuccessMsg(resData.message);
-      showQueuedProgress(
-        resData.batch_id,
-        resData.total_files || 1,
-        `Batch queued with ${resData.total_files || 1} submission${(resData.total_files || 1) === 1 ? "" : "s"}.`
-      );
+      if (resData.students && resData.students.length > 0) {
+        setStagedStudents(resData.students);
+      } else {
+        showQueuedProgress(
+          resData.batch_id,
+          resData.total_files || 1,
+          `Batch queued with ${resData.total_files || 1} submission${(resData.total_files || 1) === 1 ? "" : "s"}.`
+        );
+        startPollingProgress(resData.batch_id);
+      }
       setBatchFile(null); setBatchName("");
-      setStagedStudents([]);
-      startPollingProgress(resData.batch_id);
     } catch(err:any) {
       setError(err.message || "Batch staging failed.");
     } finally { setLoading(false); }
@@ -1314,7 +1361,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                        });
                    });
                  }} className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors">
-                   <FileArchive className="w-4 h-4"/> Export Summaries
+                   <FileArchive className="w-4 h-4"/> Export PDFs (ZIP)
                  </button>
                  <div className="w-px h-5 bg-slate-200 mx-1"></div>
                  <button onClick={() => setReviewingReports(false)} className="text-xs font-bold text-slate-400 hover:text-slate-600">Close Review</button>
@@ -1329,7 +1376,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                         <th className="p-4 uppercase tracking-wider">Confidence</th>
                         <th className="p-4 uppercase tracking-wider">Integrity</th>
                         <th className="p-4 uppercase tracking-wider">Status</th>
-                        <th className="p-4 uppercase tracking-wider text-right">Action</th>
+                        <th className="p-4 uppercase tracking-wider text-right">Actions</th>
                      </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1348,8 +1395,48 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                               <td className="p-4">
                                 <div className="flex items-center gap-2">
                                   <span className={`text-slate-400 transition-transform text-xs ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
-                                  <div>
-                                    <div className="font-bold text-slate-700 text-sm">{report.student_name}</div>
+                                  <div className="flex-1">
+                                    {editingStudentId === report.submission_id ? (
+                                      <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                                        <input
+                                          type="text"
+                                          value={editingStudentName}
+                                          onChange={e => setEditingStudentName(e.target.value)}
+                                          className="px-2 py-1 text-xs font-bold border border-indigo-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                          autoFocus
+                                        />
+                                        <button
+                                          onClick={() => handleSaveStudentName(report.submission_id)}
+                                          disabled={savingStudentName}
+                                          className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"
+                                          title="Save Name"
+                                        >
+                                          {savingStudentName ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                                        </button>
+                                        <button
+                                          onClick={() => setEditingStudentId(null)}
+                                          className="p-1 text-slate-400 hover:bg-slate-100 rounded"
+                                          title="Cancel"
+                                        >
+                                          <X className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-1.5 group">
+                                        <span className="font-bold text-slate-700 text-sm">{report.student_name}</span>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingStudentId(report.submission_id);
+                                            setEditingStudentName(report.student_name || "");
+                                          }}
+                                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-600 transition-opacity"
+                                          title="Edit Student Name"
+                                        >
+                                          <Edit2 className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    )}
                                     <div className="text-[10px] text-slate-400 font-mono mt-0.5">{report.file_name}</div>
                                   </div>
                                 </div>
@@ -1403,17 +1490,30 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                                  </span>
                               </td>
                               <td className="p-4 text-right" onClick={e => e.stopPropagation()}>
-                                 {report.submission_status === 'failed' ? (
-                                   <span className="text-xs font-bold text-rose-400">Error</span>
-                                 ) : !report.report_id ? (
-                                   <span className="text-xs font-bold text-slate-400">Working</span>
-                                 ) : !report.published_at ? (
-                                   <button onClick={() => handleApproveReport(report.report_id, report.ai_overall_score)} className="bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors">
-                                     Approve
-                                   </button>
-                                 ) : (
-                                   <span className="text-xs font-bold text-slate-400">Published</span>
-                                 )}
+                                 <div className="flex items-center justify-end gap-2">
+                                   {report.report_id && (
+                                     <button
+                                       onClick={() => handleDownloadReportPdf(report.report_id, report.student_name)}
+                                       disabled={downloadingReportId === report.report_id}
+                                       className="flex items-center gap-1 text-[11px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+                                       title="Download Student PDF Report"
+                                     >
+                                       {downloadingReportId === report.report_id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5 text-slate-500" />}
+                                       PDF
+                                     </button>
+                                   )}
+                                   {report.submission_status === 'failed' ? (
+                                     <span className="text-xs font-bold text-rose-400">Error</span>
+                                   ) : !report.report_id ? (
+                                     <span className="text-xs font-bold text-slate-400">Working</span>
+                                   ) : !report.published_at ? (
+                                     <button onClick={() => handleApproveReport(report.report_id, report.ai_overall_score)} className="bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors">
+                                       Approve
+                                     </button>
+                                   ) : (
+                                     <span className="text-xs font-bold text-emerald-600">Published</span>
+                                   )}
+                                 </div>
                               </td>
                             </tr>
                             {isExpanded && (

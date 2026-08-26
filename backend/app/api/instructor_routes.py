@@ -599,11 +599,11 @@ async def upload_batch(
     user: dict = Depends(_get_instructor),
 ):
     from app.config import settings
-
     org_id = user["org_id"]
     uid = user["uid"]
-
     import traceback
+    import zipfile
+    import shutil
 
     try:
         if not file.filename.lower().endswith(".zip"):
@@ -612,7 +612,7 @@ async def upload_batch(
         batch_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
 
-        # Create batch row
+        # Create batch row in 'uploaded' status
         async with get_conn(org_id) as conn:
             await conn.execute(
                 """
@@ -626,9 +626,6 @@ async def upload_batch(
                 plagiarism_enabled, now,
             )
 
-        total_size = 0
-        submission_ids = []
-
         content = await file.read()
         if len(content) > settings.INSTRUCTOR_BATCH_MAX_MB * 1024 * 1024:
             raise HTTPException(413, f"Batch exceeds {settings.INSTRUCTOR_BATCH_MAX_MB}MB limit.")
@@ -637,75 +634,124 @@ async def upload_batch(
             tmp.write(content)
             tmp_zip_path = tmp.name
 
+        staged_students = []
+
         try:
-            import zipfile
-            import shutil
             with tempfile.TemporaryDirectory() as extract_dir:
                 with zipfile.ZipFile(tmp_zip_path, 'r') as zip_ref:
                     zip_ref.extractall(extract_dir)
 
                 # Detect root dir if the zip wraps everything in one master folder
-                root_contents = os.listdir(extract_dir)
+                root_contents = [c for c in os.listdir(extract_dir) if not c.startswith('__MACOSX') and not c.startswith('.')]
                 if len(root_contents) == 1 and os.path.isdir(os.path.join(extract_dir, root_contents[0])):
                     base_dir = os.path.join(extract_dir, root_contents[0])
                 else:
                     base_dir = extract_dir
 
-                student_folders = [d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))]
-                
-                # If no folders found, maybe they zipped files directly instead of folders
-                if not student_folders:
-                    raise HTTPException(400, "No student folders found inside the ZIP.")
+                # Look for student folders or direct files
+                valid_entries = [
+                    e for e in os.listdir(base_dir)
+                    if not e.startswith('.') and not e.startswith('__MACOSX')
+                ]
+                student_folders = [d for d in valid_entries if os.path.isdir(os.path.join(base_dir, d))]
+                student_files = [
+                    f for f in valid_entries 
+                    if os.path.isfile(os.path.join(base_dir, f)) and f.lower().endswith(
+                        ('.pdf', '.docx', '.doc', '.txt', '.py', '.cpp', '.c', '.java', '.js', '.ts', '.html', '.zip')
+                    )
+                ]
 
-                if len(student_folders) > settings.INSTRUCTOR_BATCH_MAX_FILES:
-                     raise HTTPException(400, f"Maximum {settings.INSTRUCTOR_BATCH_MAX_FILES} student folders per batch.")
+                if not student_folders and not student_files:
+                    raise HTTPException(400, "No student folders or assignment files (.pdf, .docx, .txt, code) found inside the ZIP.")
 
-                # Update batch row with actual student count
+                # Case 1: Folder per student
+                if student_folders:
+                    if len(student_folders) > settings.INSTRUCTOR_BATCH_MAX_FILES:
+                        raise HTTPException(400, f"Maximum {settings.INSTRUCTOR_BATCH_MAX_FILES} student folders per batch.")
+
+                    for folder_name in student_folders:
+                        student_path = os.path.join(base_dir, folder_name)
+                        student_name = _clean_extracted_student_name(folder_name)
+                        
+                        student_zip_base = os.path.join(extract_dir, f"st_{folder_name}")
+                        shutil.make_archive(student_zip_base, 'zip', student_path)
+                        student_zip_path = f"{student_zip_base}.zip"
+
+                        sub_id = str(uuid.uuid4())
+                        blob_name = f"batches/{org_id}/{batch_id}/{sub_id}_{folder_name}.zip"
+
+                        with open(student_zip_path, "rb") as f:
+                            file_url = local_storage.save_file(f.read(), blob_name)
+
+                        async with get_conn(org_id) as conn:
+                            await conn.execute(
+                                """
+                                INSERT INTO submissions
+                                  (id, org_id, assignment_id, subject_id, batch_id,
+                                   type, mode, stdin_text, file_url, file_name, student_name, status, created_at)
+                                VALUES ($1,$2,$3,$4,$5,$6,'batch',$7,$8,$9,$10,'uploaded',$11)
+                                """,
+                                sub_id, org_id, assignment_id, subject_id, batch_id,
+                                type, stdin_text, file_url, f"{folder_name}.zip", student_name, now,
+                            )
+                        staged_students.append({
+                            "submissionId": sub_id,
+                            "fileName": f"{folder_name}/",
+                            "extractedName": student_name
+                        })
+
+                # Case 2: Individual files in zip
+                else:
+                    if len(student_files) > settings.INSTRUCTOR_BATCH_MAX_FILES:
+                        raise HTTPException(400, f"Maximum {settings.INSTRUCTOR_BATCH_MAX_FILES} files per batch.")
+
+                    for f_name in student_files:
+                        file_path = os.path.join(base_dir, f_name)
+                        student_name = _clean_extracted_student_name(f_name)
+
+                        sub_id = str(uuid.uuid4())
+                        blob_name = f"batches/{org_id}/{batch_id}/{sub_id}_{f_name}"
+
+                        with open(file_path, "rb") as f:
+                            file_url = local_storage.save_file(f.read(), blob_name)
+
+                        async with get_conn(org_id) as conn:
+                            await conn.execute(
+                                """
+                                INSERT INTO submissions
+                                  (id, org_id, assignment_id, subject_id, batch_id,
+                                   type, mode, stdin_text, file_url, file_name, student_name, status, created_at)
+                                VALUES ($1,$2,$3,$4,$5,$6,'batch',$7,$8,$9,$10,'uploaded',$11)
+                                """,
+                                sub_id, org_id, assignment_id, subject_id, batch_id,
+                                type, stdin_text, file_url, f_name, student_name, now,
+                            )
+                        staged_students.append({
+                            "submissionId": sub_id,
+                            "fileName": f_name,
+                            "extractedName": student_name
+                        })
+
+                # Update batch total_files
                 async with get_conn(org_id) as conn:
-                    await conn.execute("UPDATE batches SET total_files = $1 WHERE id = $2", len(student_folders), batch_id)
-
-                for student_name in student_folders:
-                    student_path = os.path.join(base_dir, student_name)
-                    student_zip_base = os.path.join(extract_dir, f"st_{student_name}")
-                    shutil.make_archive(student_zip_base, 'zip', student_path)
-                    student_zip_path = f"{student_zip_base}.zip"
-
-                    sub_id = str(uuid.uuid4())
-                    blob_name = f"batches/{org_id}/{batch_id}/{sub_id}_{student_name}.zip"
-
-                    with open(student_zip_path, "rb") as f:
-                        file_url = local_storage.save_file(f.read(), blob_name)
-
-                    async with get_conn(org_id) as conn:
-                        await conn.execute(
-                            """
-                            INSERT INTO submissions
-                              (id, org_id, assignment_id, subject_id, batch_id,
-                               type, mode, stdin_text, file_url, file_name, student_name, status, created_at)
-                            VALUES ($1,$2,$3,$4,$5,$6,'batch',$7,$8,$9,$10,'uploaded',$11)
-                            """,
-                            sub_id, org_id, assignment_id, subject_id, batch_id,
-                            type, stdin_text, file_url, f"{student_name}.zip", student_name, now,
-                        )
-                    submission_ids.append(sub_id)
+                    await conn.execute("UPDATE batches SET total_files = $1 WHERE id = $2", len(staged_students), batch_id)
 
         finally:
             if 'tmp_zip_path' in locals() and os.path.exists(tmp_zip_path):
                 os.remove(tmp_zip_path)
 
-        # Queue batch grading
-        celery_app.send_task("tasks.run_batch_grading", args=[batch_id, org_id])
-
+        # Do NOT auto-trigger grading — let instructor review and edit names first!
         return {
             "batch_id": batch_id,
-            "total_files": len(submission_ids),
-            "message": f"Batch uploaded successfully. Queued {len(submission_ids)} students for grading.",
+            "total_files": len(staged_students),
+            "students": staged_students,
+            "message": f"Successfully extracted {len(staged_students)} student submissions. Please verify or edit student names.",
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        error_msg = f"Batch processing failed: {str(e)}\n{traceback.format_exc()}"
+        error_msg = f"Batch upload failed: {str(e)}\n{traceback.format_exc()}"
         logger.error(error_msg)
         raise HTTPException(400, error_msg)
 
@@ -713,7 +759,7 @@ async def upload_batch(
 # ---- Batch name confirmation + processing trigger ---------------------------
 
 class ConfirmNamesPayload(BaseModel):
-    names: dict  # { submission_id: corrected_student_name }
+    names: Any  # Can be dict { submission_id: name } or list [{ submissionId, studentName }]
 
 @router.post("/batch/{batch_id}/confirm-names")
 async def confirm_batch_names(
@@ -723,14 +769,25 @@ async def confirm_batch_names(
 ):
     """Update student names in submissions after the instructor reviews them."""
     org_id = str(user["org_id"])
-    now = datetime.now(timezone.utc)
+    names_dict = {}
+
+    if isinstance(payload.names, dict):
+        names_dict = payload.names
+    elif isinstance(payload.names, list):
+        for item in payload.names:
+            if isinstance(item, dict):
+                sub_id = item.get("submissionId") or item.get("submission_id")
+                name = item.get("studentName") or item.get("student_name")
+                if sub_id and name:
+                    names_dict[str(sub_id)] = str(name).strip()
+
     async with get_conn(org_id) as conn:
-        for sub_id, name in payload.names.items():
+        for sub_id, name in names_dict.items():
             await conn.execute(
                 "UPDATE submissions SET student_name = $1 WHERE id = $2 AND batch_id = $3",
                 name, sub_id, batch_id,
             )
-    return {"status": "names_updated", "count": len(payload.names)}
+    return {"status": "names_updated", "count": len(names_dict)}
 
 
 @router.post("/batch/{batch_id}/process")
@@ -744,8 +801,35 @@ async def process_batch(batch_id: str, user: dict = Depends(_get_instructor)):
         )
     if not row:
         raise HTTPException(404, "Batch not found.")
+    
+    # Set status to processing
+    async with get_conn(org_id) as conn:
+        await conn.execute("UPDATE batches SET status = 'processing' WHERE id = $1", batch_id)
+
     celery_app.send_task("tasks.run_batch_grading", args=[batch_id, org_id])
     return {"status": "processing_started", "batch_id": batch_id}
+
+
+class UpdateStudentNamePayload(BaseModel):
+    student_name: str
+
+@router.patch("/submissions/{submission_id}/student-name")
+async def update_submission_student_name(
+    submission_id: str,
+    payload: UpdateStudentNamePayload,
+    user: dict = Depends(_get_instructor),
+):
+    """Allows instructors to edit a student's name on a submission at any time."""
+    org_id = str(user["org_id"])
+    new_name = payload.student_name.strip()
+    if not new_name:
+        raise HTTPException(400, "Student name cannot be empty.")
+    async with get_conn(org_id) as conn:
+        res = await conn.execute(
+            "UPDATE submissions SET student_name = $1 WHERE id = $2",
+            new_name, submission_id
+        )
+    return {"status": "success", "submission_id": submission_id, "student_name": new_name}
 
 
 # ---- Batch status & reports -------------------------------------------------
@@ -935,6 +1019,26 @@ async def approve_report(
     now = datetime.now(timezone.utc)
     org_id = user["org_id"]
 
+
+class ApprovePayload(BaseModel):
+    final_payload: Optional[dict] = None   # If None, use AI payload as-is
+
+
+@router.post("/batch/{batch_id}/reports/{report_id}/approve")
+async def approve_report(
+    batch_id: str,
+    report_id: str,
+    payload: ApprovePayload,
+    user: dict = Depends(_get_instructor),
+):
+    """
+    Instructor approves (and optionally edits) the AI grade.
+    Sets approved_at. Students can see the report only after published_at is set.
+    """
+    import json
+    now = datetime.now(timezone.utc)
+    org_id = user["org_id"]
+
     async with get_conn(org_id) as conn:
         existing = await conn.fetchrow(
             "SELECT * FROM feedback_reports WHERE id = $1 AND batch_id = $2",
@@ -952,13 +1056,15 @@ async def approve_report(
         final_payload = payload.final_payload or ai_payload
 
         # Compute final score from final_payload (Python does the math)
-        # Note: the new grading payload has "per_criterion" instead of "rubricScores"
         final_score = 0
         max_score = existing["ai_max_score"]
-        if "per_criterion" in final_payload:
-             final_score = sum(float(s) for s in final_payload["per_criterion"].values())
+        if "per_criterion" in final_payload and isinstance(final_payload["per_criterion"], dict):
+            final_score = sum(
+                float(s["score"] if isinstance(s, dict) else s)
+                for s in final_payload["per_criterion"].values()
+            )
         else:
-             final_score = existing["ai_overall_score"]
+            final_score = existing["ai_overall_score"] or 0
 
         await conn.execute(
             """
@@ -1048,28 +1154,43 @@ async def export_batch_zip(batch_id: str, user: dict = Depends(_get_instructor))
     import zipfile
     from fastapi.responses import StreamingResponse
     import json
+    from app.services.report_service import report_service
 
     async with get_conn(user["org_id"]) as conn:
-        batch = await conn.fetchrow("SELECT * FROM batches WHERE id = $1 AND instructor_id = $2", batch_id, user["uid"])
+        batch = await conn.fetchrow(
+            """
+            SELECT b.*, a.title as assignment_title 
+            FROM batches b 
+            LEFT JOIN assignments a ON a.id = b.assignment_id 
+            WHERE b.id = $1 AND b.instructor_id = $2
+            """, 
+            batch_id, user["uid"]
+        )
         if not batch:
             raise HTTPException(404, "Batch not found.")
             
-        reports = await conn.fetch("""
-            SELECT s.student_name, s.file_name,
+        reports = await conn.fetch(
+            """
+            SELECT s.id as submission_id, s.student_name, s.file_name, s.type as submission_type,
                    COALESCE(fr.final_overall_score, fr.ai_overall_score) as score,
-                   COALESCE(fr.final_payload, fr.ai_payload) as payload
+                   COALESCE(fr.final_max_score, fr.ai_max_score) as max_score,
+                   COALESCE(fr.final_status, fr.ai_status) as status,
+                   COALESCE(fr.final_payload, fr.ai_payload) as payload,
+                   pr.similarity_score as plagiarism_similarity_score
             FROM feedback_reports fr
             JOIN submissions s ON s.id = fr.submission_id
+            LEFT JOIN plagiarism_reports pr ON pr.submission_id = s.id
             WHERE fr.batch_id = $1
-        """, batch_id)
+            """, 
+            batch_id
+        )
 
     zip_stream = io.BytesIO()
+    excel_records = []
+
     with zipfile.ZipFile(zip_stream, "w", zipfile.ZIP_DEFLATED) as zf:
         for r in reports:
-            # For MVP, we generate text-based summaries instead of heavy PDF rendering
-            student_name = r["student_name"].replace(" ", "_")
             raw_payload = r["payload"]
-            
             payload = {}
             if isinstance(raw_payload, str):
                 try:
@@ -1078,32 +1199,122 @@ async def export_batch_zip(batch_id: str, user: dict = Depends(_get_instructor))
                     pass
             elif raw_payload:
                 payload = dict(raw_payload)
-        
-            # Build text summary
-            summary = f"Student: {r['student_name']}\nFile: {r['file_name']}\n"
-            summary += f"Final Score: {r['score'] or 0}\n\n"
-        
-            # Add feedback if available
-            if "feedback" in payload:
-                summary += f"Feedback:\n{payload['feedback']}\n\n"
-            
-            # Add criteria breakdown if available
-            if "per_criterion" in payload:
-                summary += "Criteria Breakdown:\n"
-                for crit, score in payload["per_criterion"].items():
-                    summary += f"- {crit}: {score} pts\n"
-                
-            # Add fallback info if nothing else is present
-            if not summary.strip() or ("feedback" not in payload and "per_criterion" not in payload):
-                 summary += f"Detailed feedback payload:\n{json.dumps(payload, indent=2)}"
-                
-            zf.writestr(f"{student_name}_feedback.txt", summary)
+
+            student_name = r["student_name"] or "Student"
+            safe_name = "".join(c for c in student_name if c.isalnum() or c in (' ', '_', '-')).strip().replace(' ', '_')
+            if not safe_name:
+                safe_name = f"Student_{str(r['submission_id'])[:8]}"
+
+            payload["score"] = r["score"] or 0
+            payload["max_score"] = r["max_score"] or 100
+            payload["status"] = r["status"] or "completed"
+            if r["plagiarism_similarity_score"] is not None:
+                payload["plagiarism_similarity_score"] = float(r["plagiarism_similarity_score"])
+
+            try:
+                pdf_bytes = report_service.generate_student_pdf_bytes(
+                    report_data=payload,
+                    student_name=student_name,
+                    assignment_type=r["submission_type"] or "text",
+                    file_name=r["file_name"] or "assignment",
+                    assignment_title=batch["assignment_title"] or batch["batch_name"] or "Assignment",
+                )
+                zf.writestr(f"{safe_name}_Feedback_Report.pdf", pdf_bytes)
+            except Exception as e:
+                logger.error("Failed to generate PDF for %s: %s", student_name, e)
+                md_text = f"# GradeWise Feedback: {student_name}\n\nScore: {r['score']}/{r['max_score']}\nStatus: {r['status']}\n\nSummary:\n{payload.get('summary', payload.get('student_feedback', ''))}"
+                zf.writestr(f"{safe_name}_Feedback_Report.md", md_text)
+
+            excel_records.append({
+                "student_name": student_name,
+                "file_name": r["file_name"] or "assignment",
+                "score": r["score"] or 0,
+                "max_score": r["max_score"] or 100,
+                "status": r["status"] or "completed",
+                "strengths": payload.get("strengths", []),
+                "weaknesses": payload.get("weaknesses", []),
+                "suggestions": payload.get("suggestions", []),
+                "plagiarism_similarity_score": r["plagiarism_similarity_score"] or 0.0,
+            })
+
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp_xlsx:
+                tmp_xlsx_path = tmp_xlsx.name
+            await report_service.generate_batch_excel(excel_records, tmp_xlsx_path)
+            with open(tmp_xlsx_path, "rb") as f:
+                zf.writestr("Batch_Grades_Overview.xlsx", f.read())
+            if os.path.exists(tmp_xlsx_path):
+                os.remove(tmp_xlsx_path)
+        except Exception as e:
+            logger.error("Failed to add Excel summary to zip: %s", e)
 
     zip_stream.seek(0)
+    batch_title = "".join(c for c in (batch["batch_name"] or f"Batch_{batch_id[:8]}") if c.isalnum() or c in (' ', '_', '-')).strip().replace(' ', '_')
     return StreamingResponse(
         zip_stream,
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename=Batch_Reports_{batch_id}.zip"}
+        headers={"Content-Disposition": f'attachment; filename="{batch_title}_PDF_Reports.zip"'}
+    )
+
+
+@router.get("/reports/{report_id}/pdf")
+async def export_report_pdf(report_id: str, user: dict = Depends(_get_instructor)):
+    from app.services.report_service import report_service
+    from fastapi.responses import Response
+    import json
+
+    org_id = user["org_id"]
+    async with get_conn(org_id) as conn:
+        r = await conn.fetchrow(
+            """
+            SELECT fr.*, s.student_name, s.file_name, s.type as submission_type,
+                   a.title as assignment_title,
+                   COALESCE(fr.final_overall_score, fr.ai_overall_score) as score,
+                   COALESCE(fr.final_max_score, fr.ai_max_score) as max_score,
+                   COALESCE(fr.final_status, fr.ai_status) as status,
+                   COALESCE(fr.final_payload, fr.ai_payload) as payload,
+                   pr.similarity_score as plagiarism_similarity_score
+            FROM feedback_reports fr
+            JOIN submissions s ON s.id = fr.submission_id
+            LEFT JOIN assignments a ON a.id = s.assignment_id
+            LEFT JOIN plagiarism_reports pr ON pr.submission_id = s.id
+            WHERE fr.id = $1
+            """, 
+            report_id
+        )
+        if not r:
+            raise HTTPException(404, "Report not found.")
+
+    raw_payload = r["payload"]
+    payload = {}
+    if isinstance(raw_payload, str):
+        try:
+            payload = json.loads(raw_payload)
+        except Exception:
+            pass
+    elif raw_payload:
+        payload = dict(raw_payload)
+
+    payload["score"] = r["score"] or 0
+    payload["max_score"] = r["max_score"] or 100
+    payload["status"] = r["status"] or "completed"
+    if r["plagiarism_similarity_score"] is not None:
+        payload["plagiarism_similarity_score"] = float(r["plagiarism_similarity_score"])
+
+    student_name = r["student_name"] or "Student"
+    pdf_bytes = report_service.generate_student_pdf_bytes(
+        report_data=payload,
+        student_name=student_name,
+        assignment_type=r["submission_type"] or "text",
+        file_name=r["file_name"] or "assignment",
+        assignment_title=r["assignment_title"] or "Assignment Submission",
+    )
+
+    safe_name = "".join(c for c in student_name if c.isalnum() or c in (' ', '_', '-')).strip().replace(' ', '_')
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}_Feedback_Report.pdf"'}
     )
 
 

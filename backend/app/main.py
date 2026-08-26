@@ -151,8 +151,10 @@ from app.api.auth_routes import router as auth_router
 from app.api.student_routes import router as student_router
 from app.api.instructor_routes import router as instructor_router
 from app.api.admin_routes import router as admin_router
+from app.api.billing_routes import router as billing_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(student_router, prefix="/api/student", tags=["student"])
 app.include_router(instructor_router, prefix="/api/instructor", tags=["instructor"])
 app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
+app.include_router(billing_router, prefix="/api/billing", tags=["billing"])

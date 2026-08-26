@@ -307,6 +307,76 @@ async def get_feedback(
     }
 
 
+@router.get("/submissions/{submission_id}/pdf")
+async def download_student_pdf(
+    submission_id: str,
+    user: dict = Depends(_get_student_profile),
+):
+    """
+    Downloads the student's graded feedback report as a well-formatted PDF.
+    """
+    from app.services.report_service import report_service
+    from fastapi.responses import Response
+    import json as _json
+
+    uid = user["uid"]
+    org_id = user["org_id"]
+
+    async with get_conn(org_id) as conn:
+        sub = await conn.fetchrow(
+            """
+            SELECT s.*, a.title as assignment_title,
+                   COALESCE(fr.final_overall_score, fr.ai_overall_score) as score,
+                   COALESCE(fr.final_max_score, fr.ai_max_score) as max_score,
+                   COALESCE(fr.final_status, fr.ai_status) as status,
+                   COALESCE(fr.final_payload, fr.ai_payload) as payload,
+                   pr.similarity_score as plagiarism_similarity_score
+            FROM submissions s
+            LEFT JOIN feedback_reports fr ON fr.submission_id = s.id
+            LEFT JOIN assignments a ON a.id = s.assignment_id
+            LEFT JOIN plagiarism_reports pr ON pr.submission_id = s.id
+            WHERE s.id = $1 AND s.user_id = $2
+            """,
+            submission_id, uid,
+        )
+        if not sub:
+            raise HTTPException(404, "Submission not found.")
+        if not sub["payload"]:
+            raise HTTPException(404, "Feedback report has not been published yet.")
+
+    raw_payload = sub["payload"]
+    payload = {}
+    if isinstance(raw_payload, str):
+        try:
+            payload = _json.loads(raw_payload)
+        except Exception:
+            pass
+    elif raw_payload:
+        payload = dict(raw_payload)
+
+    payload["score"] = sub["score"] or 0
+    payload["max_score"] = sub["max_score"] or 100
+    payload["status"] = sub["status"] or "completed"
+    if sub["plagiarism_similarity_score"] is not None:
+        payload["plagiarism_similarity_score"] = float(sub["plagiarism_similarity_score"])
+
+    student_name = sub["student_name"] or user.get("display_name") or "Student"
+    pdf_bytes = report_service.generate_student_pdf_bytes(
+        report_data=payload,
+        student_name=student_name,
+        assignment_type=sub["type"] or "text",
+        file_name=sub["file_name"] or "assignment",
+        assignment_title=sub["assignment_title"] or "Assignment Submission",
+    )
+
+    safe_name = "".join(c for c in student_name if c.isalnum() or c in (' ', '_', '-')).strip().replace(' ', '_')
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}_Feedback_Report.pdf"'}
+    )
+
+
 # ---- Faculty upgrade application ------------------------------------------------
 
 from pydantic import BaseModel

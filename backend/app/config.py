@@ -59,6 +59,14 @@ class Settings(BaseSettings):
     FIREBASE_PRIVATE_KEY: str = ""
     FIREBASE_STORAGE_BUCKET: str = ""
 
+    # Stripe Payments & Subscription
+    STRIPE_SECRET_KEY: Optional[str] = None
+    STRIPE_PUBLISHABLE_KEY: Optional[str] = None
+    STRIPE_WEBHOOK_SECRET: Optional[str] = None
+    STRIPE_PRO_PRICE_ID: Optional[str] = None
+    STRIPE_INSTITUTION_PRICE_ID: Optional[str] = None
+    FRONTEND_URL: str = "http://localhost:3000"
+
     # Limits
     STUDENT_MAX_FILE_MB: int = 10
     INSTRUCTOR_BATCH_MAX_FILES: int = 30
