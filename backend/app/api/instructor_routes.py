@@ -585,6 +585,26 @@ async def single_upload(
         "message": f"Submission for {student_name} uploaded. Grading started."
     }
 
+def _clean_extracted_student_name(raw_name: str) -> str:
+    """
+    Cleans raw folder or file names into a clean readable student name.
+    e.g. '21k-1234_John_Doe' -> 'John Doe'
+    'student_01_jane_doe.pdf' -> 'Jane Doe'
+    'CS101 - Alex Smith (Final)' -> 'Alex Smith'
+    """
+    import re
+    name = os.path.splitext(raw_name)[0]
+    # Strip common prefixes like rolls, IDs, student_
+    name = re.sub(r'^(student[_\-\s]*|\d+[_\-\s]*|[a-zA-Z]{1,4}\d+[_\-\s]*)', '', name, flags=re.IGNORECASE)
+    # Replace underscores and hyphens with spaces
+    name = re.sub(r'[_\-]+', ' ', name).strip()
+    # Strip parenthesized suffixes like (1), (Final)
+    name = re.sub(r'\s*\([^)]*\)$', '', name).strip()
+    # Title-case words
+    cleaned = ' '.join(word.capitalize() for word in name.split())
+    return cleaned if cleaned else raw_name
+
+
 # ---- Batch upload -----------------------------------------------------------
 
 @router.post("/batch", status_code=202)
