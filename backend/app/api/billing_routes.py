@@ -50,10 +50,31 @@ async def _get_current_user(token_payload: dict = Depends(verify_firebase_token)
 class CheckoutRequest(BaseModel):
     plan_id: Literal["pro", "institution"]
     billing_cycle: Literal["monthly", "yearly"] = "monthly"
+    promo_code: Optional[str] = None
+
+
+class RedeemCodeRequest(BaseModel):
+    code: str
+    plan_id: Literal["pro", "institution"] = "pro"
 
 
 class SandboxUpgradeRequest(BaseModel):
     plan_id: Literal["free", "pro", "institution"] = "pro"
+
+
+# ---- Helper -----------------------------------------------------------------
+
+def _check_faculty_eligibility(user: dict):
+    role = user.get("role")
+    faculty_status = user.get("faculty_status")
+    if role == "admin":
+        return
+    if role == "instructor" and faculty_status == "approved":
+        return
+    raise HTTPException(
+        status_code=403,
+        detail="Pro subscriptions are reserved for verified faculty members. Please ensure your faculty application has been approved by an administrator."
+    )
 
 
 # ---- Endpoints --------------------------------------------------------------
@@ -62,12 +83,17 @@ class SandboxUpgradeRequest(BaseModel):
 async def get_plans_and_status(user: dict = Depends(_get_current_user)):
     """Returns available pricing plans and current user's subscription metadata."""
     current_plan = user.get("plan") or ("pro" if user.get("pro_status") == "active" else "free")
+    is_eligible = user.get("role") == "admin" or (user.get("role") == "instructor" and user.get("faculty_status") == "approved")
     
     return {
         "plans": PLANS,
         "is_stripe_live": stripe_service.is_configured,
+        "is_faculty_approved": user.get("faculty_status") == "approved" or user.get("role") == "admin",
+        "is_eligible": is_eligible,
         "subscription": {
             "uid": user["uid"],
+            "role": user.get("role"),
+            "faculty_status": user.get("faculty_status"),
             "current_plan": current_plan,
             "pro_status": user.get("pro_status", "inactive"),
             "subscription_status": user.get("subscription_status", "inactive"),
@@ -75,6 +101,29 @@ async def get_plans_and_status(user: dict = Depends(_get_current_user)):
             "has_stripe_customer": bool(user.get("stripe_customer_id")),
         }
     }
+
+
+@router.post("/redeem-code")
+async def redeem_promo_code(
+    body: RedeemCodeRequest,
+    user: dict = Depends(_get_current_user),
+):
+    """
+    Validates a discount/promo code. The code 'testingphase' grants 100% discount,
+    skipping payment processing and activating Pro status immediately.
+    """
+    _check_faculty_eligibility(user)
+
+    code = body.code.strip().lower()
+    if code != "testingphase":
+        raise HTTPException(400, "Invalid or expired promo code.")
+
+    result = await stripe_service.sandbox_activate(
+        uid=user["uid"],
+        plan_id=body.plan_id
+    )
+    result["message"] = f"🎉 Promo code '{body.code.strip()}' applied! 100% discount granted — {body.plan_id.upper()} subscription is now active."
+    return result
 
 
 @router.post("/create-checkout-session")
@@ -85,10 +134,20 @@ async def create_checkout_session(
 ):
     """
     Creates a Stripe Checkout Session. Returns checkout URL to redirect the user to.
+    If promo code 'testingphase' is passed, skips payment and activates immediately.
     """
+    _check_faculty_eligibility(user)
+
+    if body.promo_code and body.promo_code.strip().lower() == "testingphase":
+        result = await stripe_service.sandbox_activate(uid=user["uid"], plan_id=body.plan_id)
+        return {
+            "url": f"{request.headers.get('origin', '')}/?billing=success",
+            "mode": "promo",
+            "message": "Promo code 'testingphase' applied. Pro status activated!"
+        }
+
     origin = request.headers.get("origin") or request.headers.get("referer")
     if origin:
-        # Strip path from referer
         from urllib.parse import urlparse
         parsed = urlparse(origin)
         origin = f"{parsed.scheme}://{parsed.netloc}"

@@ -18,6 +18,8 @@ import {
   Check,
   Flame,
   ExternalLink,
+  Tag,
+  AlertCircle,
 } from "lucide-react";
 
 interface Props {
@@ -33,6 +35,8 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
   const [subscriptionData, setSubscriptionData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [promoCode, setPromoCode] = useState<string>("");
+  const [applyingPromo, setApplyingPromo] = useState<boolean>(false);
 
   const fetchSubscriptionInfo = async () => {
     try {
@@ -51,6 +55,7 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
       fetchSubscriptionInfo();
       setError(null);
       setSuccessMsg(null);
+      setPromoCode("");
     }
   }, [open]);
 
@@ -58,6 +63,8 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
 
   const currentPlan = subscriptionData?.subscription?.current_plan || (user?.proStatus === "active" ? "pro" : "free");
   const isStripeLive = subscriptionData?.is_stripe_live;
+  const isFacultyApproved = subscriptionData?.is_faculty_approved ?? (user?.role === "admin" || user?.role === "instructor");
+  const isEligible = subscriptionData?.is_eligible ?? (user?.role === "admin" || user?.role === "instructor");
 
   const handleCheckout = async (planId: "pro" | "institution") => {
     setActionPlan(planId);
@@ -66,6 +73,7 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
       const res = await api.post("/api/billing/create-checkout-session", {
         plan_id: planId,
         billing_cycle: billingCycle,
+        promo_code: promoCode.trim() || undefined,
       });
 
       if (res.data?.url) {
@@ -74,6 +82,28 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
     } catch (err: any) {
       setError(err?.message || "Failed to initiate checkout session.");
       setActionPlan(null);
+    }
+  };
+
+  const handleApplyPromoCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!promoCode.trim()) return;
+    setApplyingPromo(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const res = await api.post("/api/billing/redeem-code", {
+        code: promoCode.trim(),
+        plan_id: "pro",
+      });
+      setSuccessMsg(res.data?.message || "🎉 Promo code applied! Pro status is now active.");
+      setPromoCode("");
+      await refreshProfile();
+      await fetchSubscriptionInfo();
+    } catch (err: any) {
+      setError(err?.message || "Invalid or expired promo code.");
+    } finally {
+      setApplyingPromo(false);
     }
   };
 
@@ -100,7 +130,7 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
       await refreshProfile();
       await fetchSubscriptionInfo();
     } catch (err: any) {
-      setError(err?.message || "Failed to update sandbox subscription.");
+      setError(err?.message || "Failed to update subscription.");
     } finally {
       setActionPlan(null);
     }
@@ -118,40 +148,92 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-black tracking-wide">GradeWise Subscriptions & Plans</h2>
+                <h2 className="text-base font-black tracking-wide">Faculty Pro Subscriptions & Plans</h2>
                 <span className="text-[10px] font-bold px-2 py-0.5 uppercase tracking-wider bg-[oklch(24%_0.014_82)] text-[var(--color-accent-2)] border border-[oklch(96%_0.012_92_/_0.2)]">
-                  Academic SaaS
+                  Approved Faculty Only
                 </span>
               </div>
               <p className="text-[11px] text-[oklch(78%_0.014_92)]">
-                Scale from individual submissions to departmental AI multi-modal evaluation
+                Upgrade verified faculty accounts for unlimited batch evaluations, Deep Vision OCR, and similarity checks
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center text-[oklch(78%_0.014_92)] hover:bg-[oklch(24%_0.014_82)] hover:text-white transition-colors"
+            className="flex h-8 w-8 items-center justify-center text-[oklch(78%_0.014_92)] hover:bg-[oklch(24%_0.014_82)] hover:text-white transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content Body */}
-        <div className="overflow-y-auto p-6 sm:p-8 space-y-8 flex-1">
+        <div className="overflow-y-auto p-6 sm:p-8 space-y-6 flex-1">
           
           {/* Notifications */}
           {error && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-bold flex items-center justify-between">
-              <span>{error}</span>
-              <button onClick={() => setError(null)} className="underline ml-4 text-[11px]">Dismiss</button>
+            <div className="p-3.5 bg-red-50 border border-red-200 text-red-700 text-xs font-bold flex items-center justify-between animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                <span>{error}</span>
+              </div>
+              <button onClick={() => setError(null)} className="underline ml-4 text-[11px] text-red-600 hover:text-red-800">Dismiss</button>
             </div>
           )}
           {successMsg && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-between">
-              <span>{successMsg}</span>
-              <button onClick={() => setSuccessMsg(null)} className="underline ml-4 text-[11px]">Dismiss</button>
+            <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-between animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{successMsg}</span>
+              </div>
+              <button onClick={() => setSuccessMsg(null)} className="underline ml-4 text-[11px] text-emerald-700 hover:text-emerald-900">Dismiss</button>
             </div>
           )}
+
+          {/* Faculty Approval Status Notice */}
+          {!isFacultyApproved && (
+            <div className="p-4 border border-amber-300 bg-amber-50 rounded-none text-xs text-amber-900 space-y-1">
+              <div className="font-bold flex items-center gap-2 text-amber-800">
+                <AlertCircle className="w-4 h-4 text-amber-600" />
+                Faculty Verification Required
+              </div>
+              <p className="text-[11px] leading-relaxed text-amber-700">
+                Pro plan upgrades are strictly reserved for approved faculty members. Please submit your faculty verification application on the Instructor Dashboard to have an administrator verify your academic credentials before purchasing a plan.
+              </p>
+            </div>
+          )}
+
+          {/* Discount / Promo Code Banner */}
+          <div className="p-4 border border-indigo-200 bg-indigo-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-600 text-white rounded-none">
+                <Tag className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-slate-800">Evaluation Discount Code</div>
+                <div className="text-[11px] text-slate-500">
+                  Have a trial or testing coupon? Enter code <code className="font-mono font-black text-indigo-700 bg-indigo-100 px-1.5 py-0.5 border border-indigo-200">testingphase</code> to activate Pro for free.
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleApplyPromoCode} className="flex items-center gap-2 w-full sm:w-auto">
+              <input
+                type="text"
+                value={promoCode}
+                onChange={(e) => setPromoCode(e.target.value)}
+                placeholder="Enter promo code"
+                disabled={applyingPromo || !isEligible}
+                className="py-1.5 px-3 border border-slate-300 bg-white text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-600 w-full sm:w-44"
+              />
+              <button
+                type="submit"
+                disabled={applyingPromo || !promoCode.trim() || !isEligible}
+                className="py-1.5 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer shrink-0"
+              >
+                {applyingPromo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Apply Code"}
+              </button>
+            </form>
+          </div>
 
           {/* Billing Cycle Switcher */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-[var(--color-rule)] pb-6">
@@ -163,7 +245,7 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
             <div className="inline-flex items-center p-1 border border-[var(--color-rule)] bg-[var(--color-paper-2)]">
               <button
                 onClick={() => setBillingCycle("monthly")}
-                className={`px-4 py-1.5 text-xs font-bold transition-all ${
+                className={`px-4 py-1.5 text-xs font-bold transition-all cursor-pointer ${
                   billingCycle === "monthly"
                     ? "bg-[var(--color-ink)] text-[var(--color-paper)] shadow-sm"
                     : "text-[var(--color-muted)] hover:text-[var(--color-ink)]"
@@ -173,7 +255,7 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
               </button>
               <button
                 onClick={() => setBillingCycle("yearly")}
-                className={`px-4 py-1.5 text-xs font-bold flex items-center gap-1.5 transition-all ${
+                className={`px-4 py-1.5 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                   billingCycle === "yearly"
                     ? "bg-[var(--color-ink)] text-[var(--color-paper)] shadow-sm"
                     : "text-[var(--color-muted)] hover:text-[var(--color-ink)]"
@@ -241,8 +323,8 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                 ) : (
                   <button
                     onClick={() => handleSandboxUpgrade("free")}
-                    disabled={actionPlan === "sandbox_free"}
-                    className="w-full py-2.5 text-xs font-bold border border-[var(--color-rule)] bg-white text-[var(--color-ink)] hover:bg-slate-50 transition-colors"
+                    disabled={actionPlan === "sandbox_free" || !isEligible}
+                    className="w-full py-2.5 text-xs font-bold border border-[var(--color-rule)] bg-white text-[var(--color-ink)] hover:bg-slate-50 transition-colors cursor-pointer"
                   >
                     Downgrade to Free
                   </button>
@@ -320,23 +402,11 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                 ) : (
                   <button
                     onClick={() => handleCheckout("pro")}
-                    disabled={actionPlan === "pro"}
-                    className="w-full py-3 text-xs font-black uppercase tracking-wider border border-[var(--color-ink)] bg-[var(--color-ink)] text-[var(--color-paper)] hover:bg-[var(--color-accent)] hover:border-[var(--color-accent)] transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer"
+                    disabled={actionPlan === "pro" || !isEligible}
+                    className="w-full py-3 text-xs font-black uppercase tracking-wider border border-[var(--color-ink)] bg-[var(--color-ink)] text-[var(--color-paper)] hover:bg-[var(--color-accent)] hover:border-[var(--color-accent)] disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer"
                   >
                     {actionPlan === "pro" ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
                     {isStripeLive ? "Subscribe with Stripe" : "Activate Pro Plan"}
-                  </button>
-                )}
-
-                {/* Instant Sandbox Switcher */}
-                {!isStripeLive && currentPlan !== "pro" && (
-                  <button
-                    onClick={() => handleSandboxUpgrade("pro")}
-                    disabled={actionPlan === "sandbox_pro"}
-                    className="w-full py-1.5 text-[11px] font-bold text-[var(--color-accent)] hover:underline flex items-center justify-center gap-1"
-                  >
-                    {actionPlan === "sandbox_pro" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
-                    Instant Demo Activation (Free Sandbox)
                   </button>
                 )}
               </div>
@@ -397,29 +467,18 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                   <button
                     onClick={handleOpenPortal}
                     disabled={actionPlan === "portal"}
-                    className="w-full py-2.5 text-xs font-bold border border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800 transition-colors flex items-center justify-center gap-2"
+                    className="w-full py-2.5 text-xs font-bold border border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800 transition-colors flex items-center justify-center gap-2 cursor-pointer"
                   >
                     Manage Organization Billing
                   </button>
                 ) : (
                   <button
                     onClick={() => handleCheckout("institution")}
-                    disabled={actionPlan === "institution"}
-                    className="w-full py-2.5 text-xs font-bold border border-[var(--color-rule)] bg-white text-[var(--color-ink)] hover:bg-slate-50 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                    disabled={actionPlan === "institution" || !isEligible}
+                    className="w-full py-2.5 text-xs font-bold border border-[var(--color-rule)] bg-white text-[var(--color-ink)] hover:bg-slate-50 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 cursor-pointer"
                   >
                     {actionPlan === "institution" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Building2 className="w-4 h-4" />}
                     Upgrade to Institution
-                  </button>
-                )}
-
-                {!isStripeLive && currentPlan !== "institution" && (
-                  <button
-                    onClick={() => handleSandboxUpgrade("institution")}
-                    disabled={actionPlan === "sandbox_institution"}
-                    className="w-full py-1.5 text-[11px] font-bold text-emerald-700 hover:underline flex items-center justify-center gap-1"
-                  >
-                    {actionPlan === "sandbox_institution" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
-                    Demo Institution Mode
                   </button>
                 )}
               </div>
@@ -434,7 +493,7 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
               <span>Payments encrypted with 256-bit SSL via Stripe. No credit card details stored on GradeWise servers.</span>
             </div>
             <div className="flex items-center gap-4 text-[11px]">
-              <span className="font-mono">Stripe v2024-12</span>
+              <span className="font-mono">Stripe API Live</span>
               <span>•</span>
               <span>Cancel Anytime</span>
             </div>
