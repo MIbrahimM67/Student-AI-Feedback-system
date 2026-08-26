@@ -21,12 +21,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: >
-      redis-server
-      --maxmemory 256mb
-      --maxmemory-policy allkeys-lru
-      --save ""
-      --appendonly no
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save "" --appendonly no
     volumes:
       - redis_data:/data
     ports:
