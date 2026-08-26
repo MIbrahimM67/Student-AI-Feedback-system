@@ -76,10 +76,8 @@ services:
       DEDICATED_VISION_TOKEN: ${DEDICATED_VISION_TOKEN:-}
       DEDICATED_VISION_MODEL: ${DEDICATED_VISION_MODEL:-}
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - postgres
+      - redis
     restart: unless-stopped
 
   worker:
@@ -122,10 +120,8 @@ services:
       DEDICATED_VISION_TOKEN: ${DEDICATED_VISION_TOKEN:-}
       DEDICATED_VISION_MODEL: ${DEDICATED_VISION_MODEL:-}
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - postgres
+      - redis
     restart: unless-stopped
 
   beat:
@@ -138,8 +134,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       # Provide API keys so beat can configure settings if needed, though mostly it just pushes tasks to Redis
     depends_on:
-      redis:
-        condition: service_healthy
+      - redis
     restart: unless-stopped
 
 volumes:
