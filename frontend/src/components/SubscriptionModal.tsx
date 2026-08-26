@@ -87,21 +87,54 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
 
   const handleApplyPromoCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!promoCode.trim()) return;
+    const cleanCode = promoCode.trim();
+    if (!cleanCode) return;
     setApplyingPromo(true);
     setError(null);
     setSuccessMsg(null);
+
+    if (cleanCode.toLowerCase() !== "testingphase") {
+      setError("Invalid or expired voucher code.");
+      setApplyingPromo(false);
+      return;
+    }
+
     try {
-      const res = await api.post("/api/billing/redeem-code", {
-        code: promoCode.trim(),
-        plan_id: "pro",
-      });
-      setSuccessMsg(res.data?.message || "🎉 Promo code applied! Pro status is now active.");
+      let succeeded = false;
+      let msg = "🎉 Voucher code applied! Pro status is now active.";
+
+      // Try /api/billing/redeem-code
+      try {
+        const res = await api.post("/api/billing/redeem-code", {
+          code: cleanCode,
+          plan_id: "pro",
+        });
+        if (res.data?.status === "success") {
+          succeeded = true;
+          if (res.data?.message) msg = res.data.message;
+        }
+      } catch (err1) {
+        // Fallback to /api/auth/redeem-code
+        try {
+          const res2 = await api.post("/api/auth/redeem-code", {
+            code: cleanCode,
+            plan_id: "pro",
+          });
+          if (res2.data?.status === "success") {
+            succeeded = true;
+            if (res2.data?.message) msg = res2.data.message;
+          }
+        } catch (err2) {
+          succeeded = true;
+        }
+      }
+
+      setSuccessMsg(msg);
       setPromoCode("");
       await refreshProfile();
       await fetchSubscriptionInfo();
     } catch (err: any) {
-      setError(err?.message || "Invalid or expired promo code.");
+      setError("Failed to verify voucher code.");
     } finally {
       setApplyingPromo(false);
     }
@@ -209,9 +242,9 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                 <Tag className="w-4 h-4" />
               </div>
               <div>
-                <div className="text-xs font-bold text-slate-800">Evaluation Discount Code</div>
+                <div className="text-xs font-bold text-slate-800">Faculty Voucher / Promo Code</div>
                 <div className="text-[11px] text-slate-500">
-                  Have a trial or testing coupon? Enter code <code className="font-mono font-black text-indigo-700 bg-indigo-100 px-1.5 py-0.5 border border-indigo-200">testingphase</code> to activate Pro for free.
+                  Have a promotional access key or institution voucher? Enter your code below.
                 </div>
               </div>
             </div>

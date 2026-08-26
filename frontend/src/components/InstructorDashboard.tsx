@@ -1092,6 +1092,32 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
       setSuccessMsg(resData.message);
       if (resData.students && resData.students.length > 0) {
         setStagedStudents(resData.students);
+      } else if (resData.batch_id && resData.status === "uploaded") {
+        try {
+          const subsRes = await api.get(`/api/instructor/batch/${resData.batch_id}/reports`);
+          if (subsRes.data && subsRes.data.length > 0) {
+            const mapped = subsRes.data.map((r: any) => ({
+              submissionId: r.submission_id,
+              fileName: r.file_name || r.student_name,
+              extractedName: r.student_name || "Student"
+            }));
+            setStagedStudents(mapped);
+          } else {
+            showQueuedProgress(
+              resData.batch_id,
+              resData.total_files || 1,
+              `Batch queued with ${resData.total_files || 1} submission${(resData.total_files || 1) === 1 ? "" : "s"}.`
+            );
+            startPollingProgress(resData.batch_id);
+          }
+        } catch {
+          showQueuedProgress(
+            resData.batch_id,
+            resData.total_files || 1,
+            `Batch queued with ${resData.total_files || 1} submission${(resData.total_files || 1) === 1 ? "" : "s"}.`
+          );
+          startPollingProgress(resData.batch_id);
+        }
       } else {
         showQueuedProgress(
           resData.batch_id,

@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Header
+from pydantic import BaseModel
 import asyncpg
 
 from app.auth.firebase import verify_id_token
@@ -334,4 +335,44 @@ async def update_profile(
                 result.update(dict(p))
 
     return {"profile": result, "message": "Profile updated successfully."}
+
+
+class RedeemCodeBody(BaseModel):
+    code: str
+    plan_id: str = "pro"
+
+
+@router.post("/redeem-code")
+async def auth_redeem_code(
+    body: RedeemCodeBody,
+    uid: Annotated[str, Depends(_get_verified_uid)],
+):
+    code = body.code.strip().lower()
+    if code != "testingphase":
+        raise HTTPException(400, "Invalid or expired promo code.")
+
+    now = datetime.now(timezone.utc)
+    async with get_conn() as conn:
+        user_row = await conn.fetchrow("SELECT role, faculty_status FROM users WHERE uid = $1", uid)
+        if not user_row:
+            raise HTTPException(404, "User not found.")
+        if user_row["role"] != "admin" and user_row["faculty_status"] != "approved":
+            raise HTTPException(403, "Only approved faculty members can activate Pro.")
+
+        await conn.execute(
+            """
+            UPDATE users SET
+              pro_status = 'active',
+              plan = 'pro',
+              subscription_status = 'active',
+              updated_at = $1
+            WHERE uid = $2
+            """,
+            now, uid
+        )
+    return {
+        "status": "success",
+        "message": "🎉 Promo code applied! Pro status is now active.",
+        "pro_status": "active"
+    }
 
