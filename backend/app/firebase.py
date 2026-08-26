@@ -181,7 +181,8 @@ class MockBlob:
 
     def generate_signed_url(self, **kwargs) -> str:
         # Returns a mock local server URL or a file link
-        return f"file:///{self._filepath.replace('\\', '/')}"
+        clean_path = self._filepath.replace("\\", "/")
+        return f"file:///{clean_path}"
 
 
 class MockBucket:
