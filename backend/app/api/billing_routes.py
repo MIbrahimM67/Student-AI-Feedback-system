@@ -11,11 +11,11 @@ Endpoints:
 from __future__ import annotations
 
 import logging
-from typing import Optional, Literal
+from typing import Optional, Literal, Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from pydantic import BaseModel
 
-from app.firebase import verify_firebase_token
+from app.auth.firebase import verify_id_token
 from app.db.postgres import get_conn
 from app.services.stripe_service import stripe_service, PLANS
 
@@ -25,11 +25,17 @@ logger = logging.getLogger(__name__)
 
 # ---- Dependency helpers -----------------------------------------------------
 
-async def _get_current_user(token_payload: dict = Depends(verify_firebase_token)) -> dict:
-    uid = token_payload.get("uid")
-    if not uid:
-        raise HTTPException(401, "Invalid authentication token.")
-    
+async def _get_verified_uid(authorization: Annotated[str, Header()]) -> str:
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Missing Bearer token")
+    token = authorization.removeprefix("Bearer ")
+    try:
+        return verify_id_token(token)["uid"]
+    except Exception as e:
+        raise HTTPException(401, f"Invalid token: {e}") from e
+
+
+async def _get_current_user(uid: Annotated[str, Depends(_get_verified_uid)]) -> dict:
     async with get_conn() as conn:
         row = await conn.fetchrow(
             """

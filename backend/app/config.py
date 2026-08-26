@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     FIREBASE_CLIENT_EMAIL: str = ""
     FIREBASE_PRIVATE_KEY: str = ""
     FIREBASE_STORAGE_BUCKET: str = ""
+    FIREBASE_SERVICE_ACCOUNT_PATH: Optional[str] = None
+    FIREBASE_SERVICE_ACCOUNT_JSON: Optional[str] = None
+    USE_MOCKS: bool = False
 
     # Stripe Payments & Subscription
     STRIPE_SECRET_KEY: Optional[str] = None
