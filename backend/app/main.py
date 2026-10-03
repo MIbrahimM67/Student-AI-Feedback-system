@@ -19,7 +19,7 @@ import os
 from contextlib import asynccontextmanager
 
 import redis.asyncio as aioredis
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -82,8 +82,8 @@ async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled Exception: {error_details}")
     return JSONResponse(
         status_code=500,
-        content={"message": str(exc), "details": error_details},
-        headers={"Access-Control-Allow-Origin": "*"}
+        content=({"message": str(exc), "details": error_details}
+                 if settings.DEBUG else {"message": "Internal server error"}),
     )
 
 
@@ -119,7 +119,10 @@ async def health() -> dict:
         pass
 
     overall = "ok" if pg_ok == "ok" and redis_ok == "ok" else "degraded"
-    return {"status": overall, "postgres": pg_ok, "redis": redis_ok}
+    result = {"status": overall, "postgres": pg_ok, "redis": redis_ok}
+    if overall != "ok":
+        return JSONResponse(status_code=503, content=result)
+    return result
 
 
 # ---- /_debug/embed (Phase 0 acceptance check) --------------------------------
@@ -131,6 +134,8 @@ class EmbedRequest(BaseModel):
 @app.post("/_debug/embed", tags=["ops"])
 async def debug_embed(req: EmbedRequest) -> dict:
     """Embed a string via Gradient — proves the LLM abstraction works end-to-end."""
+    if not settings.DEBUG:
+        raise HTTPException(status_code=404, detail="Not found")
     llm = get_llm()
     vectors = await llm.embed(
         texts=[req.text],
