@@ -1,0 +1,11 @@
+{
+    email {$TLS_EMAIL}
+}
+
+{$API_DOMAIN} {
+    encode gzip
+    request_body {
+        max_size 110MB
+    }
+    reverse_proxy api:8000
+}

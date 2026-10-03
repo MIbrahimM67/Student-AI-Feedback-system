@@ -92,7 +92,7 @@ class CodeSandboxService:
                 image = "gcc:latest"
                 cmd = f"sh -c 'find /sandbox -name \"*.cpp\" -o -name \"*.c\" | xargs g++ -o /sandbox/run && /sandbox/run{stdin_cmd}'"
             else: # java
-                image = "openjdk:17-slim"
+                image = "eclipse-temurin:17-jdk"
                 cmd = f"sh -c 'find /sandbox -name \"*.java\" > /sandbox/sources.txt && javac @/sandbox/sources.txt && java -cp /sandbox Main{stdin_cmd}'"
 
             # Mount temp folder inside container
