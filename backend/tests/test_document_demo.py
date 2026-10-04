@@ -91,6 +91,53 @@ async def test_demo_auth_requires_allowed_verified_uid(monkeypatch):
         firebase.verify_id_token("uninvited")
 
 
+@pytest.mark.asyncio
+async def test_small_demo_grades_and_decomposes_rubric_without_gradient(monkeypatch):
+    import json
+    from app.grading.rubric import decompose
+    from app.grading.types import DocumentPayload
+    from app.tiers.tier0_context import grade_tier0
+    from app.services import llm_provider
+
+    monkeypatch.setattr(settings, "DEDICATED_INFERENCE_BASE_URL", "https://api.groq.com/openai/v1")
+    monkeypatch.setattr(settings, "DEDICATED_INFERENCE_TOKEN", "test-only-token")
+    monkeypatch.setattr(settings, "DEDICATED_MODEL", "llama-3.3-70b-versatile")
+    monkeypatch.setattr(settings, "GRADIENT_API_KEY", "")
+    requests = []
+    responses = iter([
+        {"criteria": [{"id": "accuracy", "description": "Factual accuracy", "max_points": 10}]},
+        {"per_criterion": {"accuracy": 8}},
+        {"overall_verdict": "FAIR"},
+        {"per_criterion": {"accuracy": 8}, "final_comments": "Explain the missing evidence."},
+    ])
+    clients = []
+    original_client = httpx.AsyncClient
+
+    def respond(request):
+        requests.append((str(request.url), json.loads(request.content)))
+        return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(next(responses))}}]})
+
+    def make_client(**kwargs):
+        client = original_client(**kwargs, transport=httpx.MockTransport(respond))
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(llm_provider.httpx, "AsyncClient", make_client)
+    try:
+        criteria = await decompose("Factual accuracy: 10 points")
+        submission = DocumentPayload("answer.txt", [], 10, False, True, "Student answer")
+        reference = DocumentPayload("reference.txt", [], 10, False, True, "Reference evidence")
+        result = await grade_tier0(submission, reference, criteria)
+        assert result.score == 8
+        assert result.max_score == 10
+        assert len(requests) == 4
+        assert all(url == "https://api.groq.com/openai/v1/chat/completions" for url, _ in requests)
+        assert all(body["model"] == "llama-3.3-70b-versatile" for _, body in requests)
+    finally:
+        for client in clients:
+            await client.aclose()
+
+
 @pytest_asyncio.fixture
 async def db(monkeypatch):
     owner_url = os.environ.get("DEMO_TEST_OWNER_URL")

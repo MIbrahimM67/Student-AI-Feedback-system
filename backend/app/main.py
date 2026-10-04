@@ -54,6 +54,9 @@ async def lifespan(app: FastAPI):
     if not settings.DOCUMENT_DEMO:
         _redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
     _llm = build_llm_from_env()
+    if settings.DOCUMENT_DEMO and settings.DEMO_VERIFY_PROVIDERS:
+        from app.services.demo_verification import verify_demo_providers
+        await verify_demo_providers()
     start_worker()
 
     try:

@@ -66,7 +66,7 @@ The Blueprint asks for:
 - `DATABASE_URL`: the restricted direct URL generated above.
 - `DEMO_ALLOWED_UIDS`: your Firebase Authentication user UID, optionally comma-separated
   with the UIDs of invited testers (not emails). An empty list fails startup.
-- Existing `GRADIENT_API_KEY`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`,
+- Existing `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`,
   `FIREBASE_PRIVATE_KEY` and `FIREBASE_STORAGE_BUCKET` from your private `.env`.
 
 Add your existing optional inference/vision settings if used:
@@ -74,6 +74,13 @@ Add your existing optional inference/vision settings if used:
 `DEDICATED_VISION_BASE_URL`, `DEDICATED_VISION_TOKEN`, `DEDICATED_VISION_MODEL`,
 `GRADIENT_VISION_OCR_MODEL`. Preserve model IDs from the working configuration.
 Do not copy the deleted Droplet's `DATABASE_URL` or `REDIS_URL`.
+
+When dedicated inference is configured, the demo uses it for rubric decomposition,
+small and large documents, and utility text calls. `GRADIENT_API_KEY` is then optional.
+For a one-time deployment check, set `DEMO_VERIFY_PROVIDERS=true`: startup verifies
+the first invited Firebase user and grades a synthetic text document with real AI
+calls. Set it back to `false` after the verification succeeds. No user documents or
+database records are created by this check.
 
 The demo grades directly against the uploaded reference. For more than about
 2,000 combined submission/reference tokens, configure the existing high-context

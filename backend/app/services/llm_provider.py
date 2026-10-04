@@ -339,8 +339,16 @@ def build_dedicated_llm_from_env() -> ResilientLLM | None:
 
 
 def build_llm_from_env() -> ResilientLLM:
-    """Build the standard DigitalOcean Gradient chat provider."""
+    """Use the configured dedicated chat model throughout the document demo."""
     from app.config import settings
+
+    if settings.DOCUMENT_DEMO:
+        dedicated = build_dedicated_llm_from_env()
+        if dedicated:
+            # Rubric decomposition and small submissions also enter this factory.
+            # Their legacy Gradient model IDs must not reach the dedicated API.
+            dedicated.model_overrides[dedicated.primary.name] = settings.DEDICATED_MODEL
+            return dedicated
 
     primary = GradientProvider(
         api_key=settings.GRADIENT_API_KEY,
@@ -393,4 +401,3 @@ def build_vision_llm_from_env() -> ResilientLLM | None:
         )
 
     return None
-
