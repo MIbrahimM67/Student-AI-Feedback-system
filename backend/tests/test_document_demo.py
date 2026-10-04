@@ -79,6 +79,19 @@ async def test_sandbox_cannot_fall_back_to_simulation(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_failed_pdf_vision_does_not_become_grading_evidence(monkeypatch, tmp_path):
+    import fitz
+    from app.services.ocr_service import ocr_service
+    path = tmp_path / "scanned.pdf"
+    with fitz.open() as document:
+        document.new_page()
+        document.save(path)
+    monkeypatch.setattr(ocr_service, "_vision_model_extract", AsyncMock(side_effect=RuntimeError("Vision unavailable")))
+    with pytest.raises(RuntimeError, match="Vision unavailable"):
+        await ocr_service._vision_extract_pdf_pages(str(path), path.name)
+
+
+@pytest.mark.asyncio
 async def test_demo_auth_requires_allowed_verified_uid(monkeypatch):
     from app.auth import firebase
     class Auth:

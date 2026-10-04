@@ -160,6 +160,8 @@ class OCRService:
                         if analysis.strip():
                             parts.append(f"--- Page {idx + 1} visual analysis ---\n{analysis}")
                     except Exception as page_error:
+                        if settings.DOCUMENT_DEMO:
+                            raise  # Missing visual evidence must not become grading input.
                         logger.warning(
                             "Vision extraction failed for %s page %d: %s",
                             filename,
@@ -190,6 +192,8 @@ class OCRService:
             return "\n\n".join(parts)
         except Exception as e:
             logger.warning("PDF visual extraction failed for %s: %s", filename, e)
+            if settings.DOCUMENT_DEMO:
+                raise
             return ""
 
     def _select_pdf_pages_for_vision(self, doc, max_pages: int) -> list[int]:

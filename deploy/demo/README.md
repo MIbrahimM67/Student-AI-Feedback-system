@@ -79,7 +79,8 @@ When dedicated inference is configured, the demo uses it for rubric decompositio
 small and large documents, and utility text calls. `GRADIENT_API_KEY` is then optional.
 For a one-time deployment check, set `DEMO_VERIFY_PROVIDERS=true`: startup verifies
 the first invited Firebase user and grades a synthetic text document with real AI
-calls. Set it back to `false` after the verification succeeds. No user documents or
+calls. If visual extraction is enabled, it also checks the vision API with a
+synthetic image. Set it back to `false` after verification succeeds. No user documents or
 database records are created by this check.
 The Groq deployment uses `openai/gpt-oss-120b`; check model availability for your
 account before reusing an older Llama model ID. Embedding-backed knowledge-base

@@ -32,3 +32,17 @@ async def verify_demo_providers() -> None:
     if result.max_score <= 0 or not result.feedback.strip():
         raise RuntimeError("Document demo verification returned an incomplete grading report")
     logger.warning("Document demo verification: text_grading=ok score=%s max_score=%s", result.score, result.max_score)
+
+    if settings.VISUAL_EXTRACTION_ENABLED:
+        import fitz
+        from app.services.ocr_service import ocr_service
+        with tempfile.TemporaryDirectory(prefix="gradewise-vision-verification-") as directory:
+            image = Path(directory) / "freezing-point.png"
+            with fitz.open() as document:
+                page = document.new_page(width=320, height=160)
+                page.insert_text((20, 55), "Water freezes at 0 degrees Celsius.", fontsize=12)
+                page.get_pixmap().save(str(image))
+            evidence = await ocr_service.extract_text(str(image), image.name)
+            if not evidence.strip():
+                raise RuntimeError("Document demo verification returned no visual evidence")
+        logger.warning("Document demo verification: vision_extraction=ok")
