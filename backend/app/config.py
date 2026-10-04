@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     PORT: int = 8000
     DOCUMENT_DEMO: bool = False
+    DEMO_PREVIEW_URL: str = ""  # Additional demo origin; never replaces production.
     DEMO_VERIFY_PROVIDERS: bool = False  # One-time deployment smoke check; makes real AI calls.
     CODE_EXECUTION_ENABLED: bool = True
     DB_POOL_MAX_SIZE: int = 20

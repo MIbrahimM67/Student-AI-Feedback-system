@@ -74,9 +74,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+frontend_origins = [settings.FRONTEND_URL.rstrip("/"), "https://student-ai-feedback-system.vercel.app", "http://localhost:3000", "http://127.0.0.1:3000"]
+if settings.DOCUMENT_DEMO and settings.DEMO_PREVIEW_URL:
+    frontend_origins.append(settings.DEMO_PREVIEW_URL.rstrip("/"))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL.rstrip("/"), "https://student-ai-feedback-system.vercel.app", "http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=frontend_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -127,8 +127,8 @@ NEXT_PUBLIC_DOCUMENT_DEMO=true
 NEXT_PUBLIC_API_BASE_URL=https://YOUR-BACKEND-HOST
 ```
 
-Keep the existing `NEXT_PUBLIC_FIREBASE_*` values. Set backend `FRONTEND_URL` to
-the exact preview origin for testing; production origin is also allowed. Redeploy
+Keep the existing `NEXT_PUBLIC_FIREBASE_*` values. Set backend `DEMO_PREVIEW_URL` to
+the exact preview origin for testing; keep `FRONTEND_URL` for production. Redeploy
 after changing `NEXT_PUBLIC_*`: Next.js embeds these at build time. Only public
 frontend settings belong in Vercel; no database password or AI/service-account key.
 After verification, deploy the branch/merge to main and set the production backend
