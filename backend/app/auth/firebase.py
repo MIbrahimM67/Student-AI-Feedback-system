@@ -78,7 +78,13 @@ def verify_id_token(token: str) -> dict[str, Any]:
     if _firebase_auth is None:
         raise ValueError("Firebase Auth is not initialised.")
     try:
-        return _firebase_auth.verify_id_token(token)
+        claims = _firebase_auth.verify_id_token(token)
+        from app.config import settings
+        if settings.DOCUMENT_DEMO:
+            allowed = {uid.strip() for uid in settings.DEMO_ALLOWED_UIDS.split(",") if uid.strip()}
+            if claims.get("uid") not in allowed:
+                raise ValueError("This document demo is invite-only.")
+        return claims
     except Exception as e:
         raise ValueError(f"Invalid Firebase token: {e}") from e
 

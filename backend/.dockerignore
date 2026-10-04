@@ -1,0 +1,11 @@
+.env
+.env.*
+__pycache__/
+*.pyc
+.venv/
+venv/
+uploads/
+app/temp_mock_storage/
+*firebase-adminsdk*.json
+*service-account*.json
+tests/

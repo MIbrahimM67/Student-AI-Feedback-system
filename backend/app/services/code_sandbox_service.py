@@ -15,6 +15,10 @@ class CodeSandboxService:
         self._init_docker()
 
     def _init_docker(self):
+        if settings.DOCUMENT_DEMO or not settings.CODE_EXECUTION_ENABLED:
+            self.docker_client = None
+            self.has_docker = False
+            return
         try:
             import docker
             self.docker_client = docker.from_env()
@@ -38,6 +42,8 @@ class CodeSandboxService:
             - durationMs: time taken in milliseconds
             - isSimulated: boolean flag
         """
+        if settings.DOCUMENT_DEMO or not settings.CODE_EXECUTION_ENABLED:
+            raise RuntimeError("Code execution is paused on this deployment.")
         lang = language.lower()
         if lang not in ['python', 'cpp', 'java', 'c++']:
             return {
@@ -92,7 +98,7 @@ class CodeSandboxService:
                 image = "gcc:latest"
                 cmd = f"sh -c 'find /sandbox -name \"*.cpp\" -o -name \"*.c\" | xargs g++ -o /sandbox/run && /sandbox/run{stdin_cmd}'"
             else: # java
-                image = "openjdk:17-slim"
+                image = "eclipse-temurin:17-jdk"
                 cmd = f"sh -c 'find /sandbox -name \"*.java\" > /sandbox/sources.txt && javac @/sandbox/sources.txt && java -cp /sandbox Main{stdin_cmd}'"
 
             # Mount temp folder inside container

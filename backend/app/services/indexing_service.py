@@ -79,27 +79,11 @@ async def run_indexing(reference_id: str, org_id: str, subject_id: str) -> None:
     # ---- Step 2: Download + extract text ------------------------------------
     tmp_path = None
     try:
-        from app.services.local_storage import get_local_path
-        local_path = get_local_path(file_url)
-        
-        if local_path and os.path.exists(local_path):
-            # Local Storage Fast Path
-            target_path = local_path
-        else:
-            # Legacy HTTP Download Path (if still using external URLs)
-            import httpx
-            async with httpx.AsyncClient(timeout=60) as client:
-                resp = await client.get(file_url)
-                resp.raise_for_status()
-
-            ext = os.path.splitext(file_url.split("?")[0])[1] or ".pdf"
-            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-                tmp.write(resp.content)
-                tmp_path = tmp.name
-            target_path = tmp_path
-
-        filename = os.path.basename(file_url.split("?")[0])
-        text = await ocr_service.extract_text(target_path, filename)
+        from app.services.file_storage import materialize
+        from urllib.parse import unquote
+        filename = unquote(os.path.basename(file_url.split("?")[0]))
+        async with materialize(file_url, filename, org_id) as target_path:
+            text = await ocr_service.extract_text(target_path, filename)
 
     except Exception as e:
         logger.error("Failed to download/extract reference %s: %s", reference_id, e)
@@ -109,7 +93,7 @@ async def run_indexing(reference_id: str, org_id: str, subject_id: str) -> None:
         if tmp_path and os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-    if not text.strip():
+    if not text.strip() or (settings.DOCUMENT_DEMO and len(text) > settings.DEMO_MAX_TEXT_CHARS):
         logger.error("No text extracted from reference %s", reference_id)
         await _mark_failed(org_id, reference_id)
         return

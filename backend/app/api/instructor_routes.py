@@ -25,9 +25,10 @@ from fastapi import (
 from pydantic import BaseModel
 
 from app.auth.firebase import verify_id_token
-from app.services import local_storage
+from app.services import file_storage
+from app.services.demo_limits import check_submission_type, read_upload
 from app.db.postgres import get_conn
-from app.workers.celery_app import celery_app
+from app.services.task_dispatch import dispatch, notify
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -154,10 +155,11 @@ async def upload_reference(
     from app.config import settings
 
     org_id = user["org_id"]
+    uid = user["uid"]
     ref_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
 
-    content = await file.read()
+    content = await read_upload(file)
     file_size_mb = len(content) / (1024 * 1024)
     if file_size_mb > 50:
         raise HTTPException(413, "Reference file must be under 50MB.")
@@ -165,7 +167,9 @@ async def upload_reference(
     # Upload to Local Storage
     blob_name = f"references/{org_id}/{subject_id}/{ref_id}_{file.filename}"
     try:
-        file_url = local_storage.save_file(content, blob_name)
+        file_url = await file_storage.save_file(content, blob_name, org_id=org_id, owner_uid=uid)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Local storage upload failed: %s", e, exc_info=True)
         raise HTTPException(500, f"File upload failed: {e}")
@@ -186,11 +190,10 @@ async def upload_reference(
             now, subject_id,
         )
 
-    # Queue indexing task
-    celery_app.send_task(
-        "tasks.index_reference_material",
-        args=[ref_id, org_id, subject_id],
-    )
+        await dispatch("tasks.index_reference_material", [ref_id, org_id, subject_id], conn=conn)
+    notify()
+    if not settings.DOCUMENT_DEMO:
+        await dispatch("tasks.index_reference_material", [ref_id, org_id, subject_id])
 
     return {
         "reference_id": ref_id,
@@ -526,19 +529,22 @@ async def single_upload(
     """
     Directly uploads and queues a single student submission for grading.
     """
+    check_submission_type(type)
     org_id = user["org_id"]
     uid = user["uid"]
     
     sub_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     
-    content = await file.read()
+    content = await read_upload(file)
     if len(content) > settings.STUDENT_MAX_FILE_MB * 1024 * 1024:
         raise HTTPException(413, f"File exceeds {settings.STUDENT_MAX_FILE_MB}MB limit.")
         
     blob_name = f"submissions/{org_id}/{assignment_id}/{sub_id}_{file.filename}"
     try:
-        file_url = local_storage.save_file(content, blob_name)
+        file_url = await file_storage.save_file(content, blob_name, org_id=org_id, owner_uid=uid)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Local storage upload failed: %s", e)
         raise HTTPException(500, f"File upload failed: {e}")
@@ -566,6 +572,8 @@ async def single_upload(
                 sub_id, org_id, assignment_id, subject_id, batch_id, type, stdin_text, file_url, file.filename, student_name, now,
             )
             
+            await dispatch("tasks.grade_submission", [sub_id, org_id], conn=conn)
+
             # Increment the batch total files count
             await conn.execute(
                 "UPDATE batches SET total_files = total_files + 1 WHERE id = $1", batch_id
@@ -574,9 +582,9 @@ async def single_upload(
         logger.error("DB Insert Failed: %s", e)
         raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")
         
-    # Queue single processing directly
-    from app.workers.celery_app import celery_app
-    celery_app.send_task("tasks.grade_submission", args=[sub_id, org_id])
+    notify()
+    if not settings.DOCUMENT_DEMO:
+        await dispatch("tasks.grade_submission", [sub_id, org_id])
     
     return {
         "submission_id": sub_id,
@@ -621,6 +629,9 @@ async def upload_batch(
     from app.config import settings
     org_id = user["org_id"]
     uid = user["uid"]
+    check_submission_type(type)
+    if settings.DOCUMENT_DEMO:
+        raise HTTPException(503, "ZIP batches are paused in this demo. Use single document upload.")
     import traceback
     import zipfile
     import shutil
@@ -646,7 +657,7 @@ async def upload_batch(
                 plagiarism_enabled, now,
             )
 
-        content = await file.read()
+        content = await read_upload(file)
         if len(content) > settings.INSTRUCTOR_BATCH_MAX_MB * 1024 * 1024:
             raise HTTPException(413, f"Batch exceeds {settings.INSTRUCTOR_BATCH_MAX_MB}MB limit.")
 
@@ -701,7 +712,7 @@ async def upload_batch(
                         blob_name = f"batches/{org_id}/{batch_id}/{sub_id}_{folder_name}.zip"
 
                         with open(student_zip_path, "rb") as f:
-                            file_url = local_storage.save_file(f.read(), blob_name)
+                            file_url = await file_storage.save_file(f.read(), blob_name, org_id=org_id, owner_uid=uid)
 
                         async with get_conn(org_id) as conn:
                             await conn.execute(
@@ -733,7 +744,7 @@ async def upload_batch(
                         blob_name = f"batches/{org_id}/{batch_id}/{sub_id}_{f_name}"
 
                         with open(file_path, "rb") as f:
-                            file_url = local_storage.save_file(f.read(), blob_name)
+                            file_url = await file_storage.save_file(f.read(), blob_name, org_id=org_id, owner_uid=uid)
 
                         async with get_conn(org_id) as conn:
                             await conn.execute(
@@ -813,6 +824,8 @@ async def confirm_batch_names(
 @router.post("/batch/{batch_id}/process")
 async def process_batch(batch_id: str, user: dict = Depends(_get_instructor)):
     """Trigger grading for an already-uploaded batch (called after name confirmation)."""
+    if settings.DOCUMENT_DEMO:
+        raise HTTPException(503, "Batch processing is paused in this demo. Use single document upload.")
     org_id = str(user["org_id"])
     async with get_conn(org_id) as conn:
         row = await conn.fetchrow(
@@ -826,7 +839,7 @@ async def process_batch(batch_id: str, user: dict = Depends(_get_instructor)):
     async with get_conn(org_id) as conn:
         await conn.execute("UPDATE batches SET status = 'processing' WHERE id = $1", batch_id)
 
-    celery_app.send_task("tasks.run_batch_grading", args=[batch_id, org_id])
+    await dispatch("tasks.run_batch_grading", args=[batch_id, org_id])
     return {"status": "processing_started", "batch_id": batch_id}
 
 
@@ -1367,9 +1380,9 @@ async def submit_faculty_application(
     proof_url = None
     if proofFile and proofFile.filename:
         try:
-            content = await proofFile.read()
+            content = await read_upload(proofFile)
             blob_path = f"faculty_proofs/{uid}/{uuid.uuid4()}_{proofFile.filename}"
-            proof_url = local_storage.save_file(content, blob_path)
+            proof_url = await file_storage.save_file(content, blob_path, org_id=org_id, owner_uid=uid)
         except Exception as e:
             logger.warning(f"Proof file upload failed: {e}")
 
@@ -1398,3 +1411,4 @@ async def submit_faculty_application(
         )
 
     return {"status": "submitted", "message": "Application submitted. An admin will review it shortly."}
+

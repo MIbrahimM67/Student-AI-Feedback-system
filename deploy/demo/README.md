@@ -1,0 +1,143 @@
+# GradeWise document demo (2–3 months)
+
+Use the `deploy/document-demo` branch. This is an invite-only, low-traffic demo,
+not a production deployment. Source lives in GitHub, the existing frontend stays
+on Vercel, and one backend web service runs on Render Free or Railway. An external
+Neon Free Postgres database stores app records, original files and queued jobs.
+The platform does not host an AI model: the existing Gradient/Groq/vision calls
+still require working credentials and may cost money.
+
+## Scope and limits
+
+- Student text/PDF/DOCX/image submission and instructor **single-document** grading.
+- Subject references, feedback, instructor review and PDF reports remain available.
+- Code grading and ZIP batches return an explicit unavailable response. No sandbox
+  or simulated code results run in the demo.
+- One grading/indexing job at a time, 20-minute job timeout, 5 MB/file, 20 PDF pages,
+  60,000 extracted characters/document, 100 MB total original-file storage.
+- DOCX currently extracts paragraph text, not embedded figures. Use PDF for visual
+  documents. Images/scanned PDFs require your configured vision model; without one,
+  start with typed PDFs or TXT. Do not assume visual evidence was read without
+  checking extraction output and a representative graded example.
+- Allowlisted Firebase UIDs only; auth is never mocked. Originals are stored behind
+  RLS and authenticated downloads, not exposed via a public static uploads folder.
+- Pending work survives restarts. An interrupted running job is marked failed when
+  the next consumer starts; upload it again. We do not silently repeat AI charges.
+- Keep the grading page open: its normal status polling keeps an active demonstration
+  connected. Render can still restart a free service at any time. No artificial
+  uptime pings are configured. The worker does not poll the database while idle.
+
+## 1. Create the persistent database
+
+Create a **Neon Free** project in a region near your backend. Use a new, dedicated
+database; do not reuse another project's database. No old DigitalOcean records are
+recovered by this process. Your old `.env` provides credentials, not a data backup.
+Keep any discovered backup untouched; this bootstrap refuses an existing schema.
+
+Install `asyncpg` on your computer, clone this branch, then run:
+
+```bash
+python -m pip install asyncpg==0.30.0
+python backend/scripts/prepare_demo_db.py
+```
+
+The script privately prompts for the database **owner direct URL** and a new,
+generated app password. It applies `postgres/init.sql` and `backend/demo_schema.sql`
+in one transaction and writes `.env.demo.database` with the restricted `app_user`
+URL. This file is ignored by git. Never paste its contents into chat or commit it.
+Use a direct endpoint: transaction poolers are incompatible with the worker's
+session advisory lock. The app fails startup if its role can bypass RLS.
+
+The bootstrap needs permission to create extensions (`vector`, `pgcrypto`) and a
+restricted SQL role. Do not create app_user through Neon's role UI: initialize it
+with the script. Do not put owner credentials in backend environment variables.
+
+## 2. Deploy one backend
+
+### Render (recommended for a strictly free demo)
+
+Connect GitHub, allow access to the private GradeWise repo, choose **New Blueprint**,
+select this branch and its root `render.yaml`. Confirm the service says **Free**.
+There is no Render database, Redis, paid worker, persistent disk or cron service.
+Render's free database expires after 30 days, so use the external database above.
+
+The Blueprint asks for:
+
+- `DATABASE_URL`: the restricted direct URL generated above.
+- `DEMO_ALLOWED_UIDS`: your Firebase Authentication user UID, optionally comma-separated
+  with the UIDs of invited testers (not emails). An empty list fails startup.
+- Existing `GRADIENT_API_KEY`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`,
+  `FIREBASE_PRIVATE_KEY` and `FIREBASE_STORAGE_BUCKET` from your private `.env`.
+
+Add your existing optional inference/vision settings if used:
+`DEDICATED_INFERENCE_BASE_URL`, `DEDICATED_INFERENCE_TOKEN`, `DEDICATED_MODEL`,
+`DEDICATED_VISION_BASE_URL`, `DEDICATED_VISION_TOKEN`, `DEDICATED_VISION_MODEL`,
+`GRADIENT_VISION_OCR_MODEL`. Preserve model IDs from the working configuration.
+Do not copy the deleted Droplet's `DATABASE_URL` or `REDIS_URL`.
+
+The demo grades directly against the uploaded reference. For more than about
+2,000 combined submission/reference tokens, configure the existing high-context
+dedicated endpoint (for example the project's Groq integration); otherwise the
+job fails explicitly. Start with a short typed document when testing Gradient
+alone. Model usage is separate from free web hosting.
+
+Render supplies HTTPS and `PORT`. Expect a cold start after idle periods. Check
+`/health` returns 200 and `/api/capabilities` reports the document demo enabled.
+API/AI failures must be corrected before switching the existing Vercel deployment.
+
+### Railway (optional, same backend image)
+
+Connect this GitHub branch and set service **Root Directory** to `/backend`.
+Use `/backend/railway.json` as the config path if it is not discovered automatically.
+It builds `Dockerfile.demo` and uses `$PORT`; generate a public HTTPS domain.
+Set all the values from `render.yaml` manually, including `DOCUMENT_DEMO=true`,
+`CODE_EXECUTION_ENABLED=false`, `USE_MOCKS=false`, `DEBUG=false`, `DB_POOL_MAX_SIZE=4`,
+`FRONTEND_URL`, and the secret/invite values above. Use one replica and one Uvicorn
+worker. Use the external database; do not add separately billed Railway data services.
+
+Railway's current trial is $5 for up to 30 days, then the Free plan has $1/month
+non-rollover usage credit. Do not assume this covers a continuously running app for
+3 months. Limited trials restrict outbound networking, which may block the database
+or AI provider. Check trial verification and actual usage before selecting Railway.
+Do not upgrade to a paid plan just to pass verification without reviewing its cost.
+
+## 3. Connect Vercel after backend checks pass
+
+Deploy the frontend changes from this branch in a preview first, with:
+
+```text
+NEXT_PUBLIC_DOCUMENT_DEMO=true
+NEXT_PUBLIC_API_BASE_URL=https://YOUR-BACKEND-HOST
+```
+
+Keep the existing `NEXT_PUBLIC_FIREBASE_*` values. Set backend `FRONTEND_URL` to
+the exact preview origin for testing; production origin is also allowed. Redeploy
+after changing `NEXT_PUBLIC_*`: Next.js embeds these at build time. Only public
+frontend settings belong in Vercel; no database password or AI/service-account key.
+After verification, deploy the branch/merge to main and set the production backend
+URL. No frontend cutover is performed by adding these files to GitHub.
+
+## Acceptance check before sharing
+
+1. Invited Google sign-in succeeds; a non-invited Firebase account is rejected.
+2. Submit one short typed PDF and a reference; check a real feedback report and PDF
+   download. Inspect the score/explanation, not just an HTTP success.
+3. Instructor single upload completes and can be reviewed/approved.
+4. Code/ZIP submissions are visibly unavailable. No simulated grades appear.
+5. Restart the service: saved documents/reports remain; pending jobs run again on
+   startup; interrupted work shows failure rather than staying processing forever.
+6. Check actual memory and provider consumption with representative documents.
+   The 512 MB free service still needs a real workload test; no capacity guarantee.
+
+## Data retention
+
+Take a `pg_dump` using the private owner URL before/after important demos and keep
+the backup away from the hosting service. `demo_files` are in the dump. Free tiers
+are not backups. To clear old originals intentionally, the database owner can delete
+selected rows from `demo_files`; its trigger updates the storage counter. Deleting
+a submission currently does not automatically delete its stored original.
+
+Provider docs checked 2026-10-03:
+- https://render.com/docs/free
+- https://neon.com/pricing
+- https://docs.railway.com/pricing/free-trial

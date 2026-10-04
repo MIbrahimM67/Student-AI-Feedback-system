@@ -34,6 +34,7 @@ async def grade_tier0(
     return await grade(
         submission=submission,
         reference_pages=reference_payload.pages,
+        reference_text=reference_payload.plain_text,
         criteria=criteria,
         tier=Tier.CONTEXT,
         reference_sections_used=sections_used,

@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { BatchUploadTutorialModal } from "./BatchUploadTutorialModal";
 
+const DOCUMENT_DEMO = process.env.NEXT_PUBLIC_DOCUMENT_DEMO === "true";
+
 // --- Types ---
 interface Subject {
   id: string;
@@ -1280,6 +1282,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
   return (
     <div className="space-y-6">
       
+      {DOCUMENT_DEMO && <p className="text-sm text-[var(--color-muted)]">Document demo: upload one file at a time, up to 5 MB and 20 PDF pages. Code execution is paused. Keep this page open while grading.</p>}
       {/* Current Assignment Context */}
       <div className="glass-panel p-5 border border-[var(--color-rule)] bg-[var(--color-surface)] flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
         <div>
@@ -1295,8 +1298,8 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
          <button onClick={()=>setUploadMode("single")} className={`flex-1 py-4 border font-bold text-sm transition-all ${uploadMode === "single" ? "border-[var(--color-accent)] bg-blue-50 text-[var(--color-accent)]" : "border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-rule-2)]"}`}>
             Single Submission Upload
          </button>
-         <button onClick={()=>setUploadMode("batch")} className={`flex-1 py-4 border font-bold text-sm transition-all ${uploadMode === "batch" ? "border-[var(--color-success)] bg-green-50 text-[var(--color-success)]" : "border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-rule-2)]"}`}>
-            Classroom Batch (Master ZIP)
+         <button disabled={DOCUMENT_DEMO} title={DOCUMENT_DEMO ? "Batch grading is paused in this demo" : undefined} onClick={()=>setUploadMode("batch")} className={`flex-1 py-4 border font-bold text-sm transition-all ${uploadMode === "batch" ? "border-[var(--color-success)] bg-green-50 text-[var(--color-success)]" : "border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-rule-2)]"}`}>
+            {DOCUMENT_DEMO ? "Batch grading paused" : "Classroom Batch (Master ZIP)"}
          </button>
          <button onClick={()=>setUploadMode("history")} className={`flex-1 py-4 border font-bold text-sm transition-all ${uploadMode === "history" ? "border-[var(--color-warning)] bg-amber-50 text-[var(--color-warning)]" : "border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-rule-2)]"}`}>
             Grading History
@@ -1739,7 +1742,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                  <select value={fileType} onChange={e=>setFileType(e.target.value)} className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none">
                     <option value="text">Digital Document (PDF/TXT/DOCX)</option>
                     <option value="handwritten">Handwritten Scan (OCR)</option>
-                    <option value="coding">Programming Code</option>
+                    {!DOCUMENT_DEMO && <option value="coding">Programming Code</option>}
                  </select>
               </div>
            </div>
@@ -1798,7 +1801,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                  <select value={fileType} onChange={e=>setFileType(e.target.value)} className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none">
                     <option value="text">Digital Documents (PDF/TXT/DOCX folders)</option>
                     <option value="handwritten">Handwritten Scans (OCR)</option>
-                    <option value="coding">Programming Code Projects</option>
+                    {!DOCUMENT_DEMO && <option value="coding">Programming Code Projects</option>}
                  </select>
               </div>
               <div className="space-y-1.5">
@@ -1914,3 +1917,4 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
     </div>
   );
 };
+

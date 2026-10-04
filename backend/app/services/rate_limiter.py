@@ -1,10 +1,17 @@
 import time
 import redis
 import logging
+import os
+import threading
+from collections import deque
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-r = redis.Redis(host="redis", port=6379, decode_responses=True)
+r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_timeout=5)
+_local_requests = deque()
+_local_lock = threading.Lock()
+_local_limit = 8
 
 RPM_KEY        = "do_infer:rpm_limit"      # discovered ceiling (from headers)
 REMAINING_KEY  = "do_infer:remaining"      # remaining in current window (from headers)
@@ -17,6 +24,18 @@ SAFETY_FACTOR  = 0.85    # use 85% of the discovered ceiling for headroom
 
 def acquire_slot():
     """Block until a request slot is free. Call immediately before every LLM request."""
+    if settings.DOCUMENT_DEMO:
+        # One API process, one grader; no separate Redis service needed.
+        while True:
+            with _local_lock:
+                now = time.monotonic()
+                while _local_requests and _local_requests[0] <= now - 60:
+                    _local_requests.popleft()
+                if len(_local_requests) < _local_limit:
+                    _local_requests.append(now)
+                    return
+                delay = max(0.05, _local_requests[0] + 60 - now)
+            time.sleep(delay)
     while True:
         now = time.time()
         
@@ -53,6 +72,14 @@ def acquire_slot():
 
 def update_from_headers(headers):
     """Call after every response (success OR 429) to self-tune the limiter."""
+    global _local_limit
+    if settings.DOCUMENT_DEMO:
+        try:
+            with _local_lock:
+                _local_limit = max(1, int(float(headers.get("ratelimit-limit", 10)) * SAFETY_FACTOR))
+        except (TypeError, ValueError):
+            pass
+        return
     try:
         if "ratelimit-limit" in headers:
             r.set(RPM_KEY, int(headers["ratelimit-limit"]))

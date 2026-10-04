@@ -33,6 +33,7 @@ def _build_document_context(
     submission: DocumentPayload,
     reference_pages: list[PageImage],
     criteria: list[Criterion],
+    reference_text: str | None = None,
 ) -> str:
     """Builds the shared document context block used by all three stages."""
     parts: list[str] = []
@@ -45,6 +46,8 @@ def _build_document_context(
             parts.append(f"  Reference Hint: {c.reference_hint}")
 
     parts.append("\n=== REFERENCE MATERIAL ===")
+    if reference_text:
+        parts.append(reference_text)
     for i, ref_page in enumerate(reference_pages):
         if ref_page.extracted_text:
             parts.append(f"--- Reference Page {i + 1} ---")
@@ -176,6 +179,7 @@ async def grade(
     reference_sections_used: list[str] | None = None,
     prefer_dedicated: bool = False,
     progress_callback: ProgressCallback | None = None,
+    reference_text: str | None = None,
 ) -> GradingResult:
     """
     Three-stage agentic grading pipeline: Specialist → Judge → Senior.
@@ -198,7 +202,7 @@ async def grade(
     from app.config import settings
     model_name = settings.DEDICATED_MODEL if (dedicated and llm is dedicated) else config.GEMINI_MODEL
 
-    doc_context = _build_document_context(submission, reference_pages, criteria)
+    doc_context = _build_document_context(submission, reference_pages, criteria, reference_text)
     total_input_tokens = 0
     total_output_tokens = 0
 
@@ -384,6 +388,9 @@ async def grade(
 
     except Exception as e:
         logger.error("3-Stage grading pipeline failed: %s", e, exc_info=True)
+        from app.config import settings
+        if settings.DOCUMENT_DEMO:
+            raise  # Provider failures must not become a zero-mark demo report.
         return GradingResult(
             score=0.0,
             max_score=sum(c.max_points for c in criteria),

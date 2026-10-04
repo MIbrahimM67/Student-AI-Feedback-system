@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import asyncpg
+from app.config import settings
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -22,7 +23,18 @@ _pool: asyncpg.Pool | None = None
 async def init_pool() -> None:
     global _pool
     raw_url = os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
-    _pool = await asyncpg.create_pool(raw_url, min_size=2, max_size=20)
+    _pool = await asyncpg.create_pool(
+        raw_url, min_size=1, max_size=settings.DB_POOL_MAX_SIZE,
+        max_inactive_connection_lifetime=60,
+    )
+    if settings.DOCUMENT_DEMO:
+        async with _pool.acquire() as conn:
+            unsafe = await conn.fetchval(
+                "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user"
+            )
+            if unsafe:
+                raise RuntimeError("Use the restricted app_user database role, not the database owner.")
+        return  # Demo schema is installed explicitly by its owner before deployment.
 
     # Automatically ensure subscription & Stripe columns exist
     try:

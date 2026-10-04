@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: gradewise-document-demo
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile.demo
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: DOCUMENT_DEMO
+        value: "true"
+      - key: CODE_EXECUTION_ENABLED
+        value: "false"
+      - key: DEBUG
+        value: "false"
+      - key: USE_MOCKS
+        value: "false"
+      - key: DB_POOL_MAX_SIZE
+        value: "4"
+      - key: FRONTEND_URL
+        value: https://student-ai-feedback-system.vercel.app
+      - key: DATABASE_URL
+        sync: false
+      - key: DEMO_ALLOWED_UIDS
+        sync: false
+      - key: GRADIENT_API_KEY
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: FIREBASE_STORAGE_BUCKET
+        sync: false

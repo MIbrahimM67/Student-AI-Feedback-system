@@ -1,0 +1,45 @@
+name: Document demo checks
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'postgres/**'
+      - 'frontend/**'
+      - '.github/workflows/document-demo.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  document-demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: gradewise_demo_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test-only-owner-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r backend/requirements.txt pytest pytest-asyncio
+      - run: PYTHONPATH=backend pytest -q backend/tests/test_document_demo.py
+        env:
+          DEMO_TEST_OWNER_URL: postgresql://postgres:test-only-owner-password@localhost:5432/gradewise_demo_test
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: frontend
+      - run: npx tsc --noEmit
+        working-directory: frontend
