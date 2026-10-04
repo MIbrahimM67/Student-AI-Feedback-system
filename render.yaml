@@ -24,7 +24,11 @@ services:
         sync: false
       - key: DEMO_ALLOWED_UIDS
         sync: false
-      - key: GRADIENT_API_KEY
+      - key: DEDICATED_INFERENCE_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: DEDICATED_MODEL
+        value: openai/gpt-oss-120b
+      - key: DEDICATED_INFERENCE_TOKEN
         sync: false
       - key: FIREBASE_PROJECT_ID
         sync: false

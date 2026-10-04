@@ -153,6 +153,8 @@ async def upload_reference(
     Upload a reference material (PDF/DOCX/TXT) and queue chunking + embedding.
     """
     from app.config import settings
+    if settings.DOCUMENT_DEMO:
+        raise HTTPException(503, "Subject knowledge-base indexing is paused in this document demo.")
 
     org_id = user["org_id"]
     uid = user["uid"]
@@ -265,10 +267,10 @@ async def create_assignment(
     title = body.title
     prompt = body.prompt
     rubric = (body.rubric or "").strip()
-    plagiarism = bool(body.plagiarism_enabled or body.internal_similarity_enabled or body.internet_plagiarism_enabled)
-    internal_similarity = bool(body.internal_similarity_enabled)
-    internet_plagiarism = bool(body.internet_plagiarism_enabled)
-    use_subject_kb = bool(body.use_subject_kb)
+    plagiarism = not settings.DOCUMENT_DEMO and bool(body.plagiarism_enabled or body.internal_similarity_enabled or body.internet_plagiarism_enabled)
+    internal_similarity = not settings.DOCUMENT_DEMO and bool(body.internal_similarity_enabled)
+    internet_plagiarism = not settings.DOCUMENT_DEMO and bool(body.internet_plagiarism_enabled)
+    use_subject_kb = not settings.DOCUMENT_DEMO and bool(body.use_subject_kb)
     course_weight = max(0, min(100, int(body.course_material_weight or 0)))
     ai_weight = 100 - course_weight
     total_marks = max(1, int(body.total_marks or 100))
@@ -346,10 +348,10 @@ async def update_assignment(
     rubric = (body.rubric or "").strip()
     total_marks = max(1, int(body.total_marks or 100))
     minimum_marks = max(0, min(total_marks, int(body.minimum_marks or 0)))
-    internal_similarity = bool(body.internal_similarity_enabled)
-    internet_plagiarism = bool(body.internet_plagiarism_enabled)
+    internal_similarity = not settings.DOCUMENT_DEMO and bool(body.internal_similarity_enabled)
+    internet_plagiarism = not settings.DOCUMENT_DEMO and bool(body.internet_plagiarism_enabled)
     plagiarism = internal_similarity or internet_plagiarism
-    use_subject_kb = bool(body.use_subject_kb)
+    use_subject_kb = not settings.DOCUMENT_DEMO and bool(body.use_subject_kb)
     course_weight = max(0, min(100, int(body.course_material_weight or 0)))
     ai_weight = 100 - course_weight
 

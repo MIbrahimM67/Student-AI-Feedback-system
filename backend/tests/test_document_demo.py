@@ -236,7 +236,9 @@ async def test_instructor_single_upload_grades_and_approval_persists(db, monkeyp
     subject, assignment = uuid.uuid4(), uuid.uuid4()
     await owner.execute("UPDATE users SET role='instructor' WHERE uid='tester'")
     await owner.execute("INSERT INTO subjects(id,org_id,instructor_id,title) VALUES ($1,$2,'tester','Course')", subject, org)
-    await owner.execute("INSERT INTO assignments(id,org_id,subject_id,title,use_subject_kb,internal_similarity_enabled) VALUES ($1,$2,$3,'Assignment',false,false)", assignment, org, subject)
+    await owner.execute("INSERT INTO assignments(id,org_id,subject_id,title) VALUES ($1,$2,$3,'Assignment')", assignment, org, subject)
+    monkeypatch.setattr(grading_task, "_run_integrity_checks", AsyncMock(side_effect=AssertionError("Demo attempted embedding-backed integrity checks")))
+    monkeypatch.setattr(grading_task, "_retrieve_subject_kb_context", AsyncMock(side_effect=AssertionError("Demo attempted embedding-backed knowledge-base search")))
     app.dependency_overrides[_get_instructor] = lambda: {"uid": "tester", "org_id": org, "role": "instructor"}
     async def fake_pipeline(**kwargs):
         assert Path(kwargs["submission_path"]).read_text() == "Instructor uploaded answer"

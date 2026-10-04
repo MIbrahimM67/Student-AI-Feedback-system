@@ -81,6 +81,15 @@ For a one-time deployment check, set `DEMO_VERIFY_PROVIDERS=true`: startup verif
 the first invited Firebase user and grades a synthetic text document with real AI
 calls. Set it back to `false` after the verification succeeds. No user documents or
 database records are created by this check.
+The Groq deployment uses `openai/gpt-oss-120b`; check model availability for your
+account before reusing an older Llama model ID. Embedding-backed knowledge-base
+indexing/search and plagiarism checks are paused in demo mode, including for
+assignments whose stored settings enabled them before the migration.
+
+The current Render service uses native Python 3.11.11 with build command
+`python -m pip install -r backend/requirements.txt`, no root directory, and start
+command `cd backend && exec uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1`.
+The Docker Blueprint remains an equivalent alternative for creating a new service.
 
 The demo grades directly against the uploaded reference. For more than about
 2,000 combined submission/reference tokens, configure the existing high-context
