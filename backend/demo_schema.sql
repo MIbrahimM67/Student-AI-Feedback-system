@@ -9,6 +9,8 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS plan TEXT DEFAULT 'free';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status TEXT DEFAULT 'inactive';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS current_period_end TIMESTAMPTZ;
+-- The instructor upload/history API expects this column on a fresh database.
+ALTER TABLE batches ADD COLUMN IF NOT EXISTS batch_name TEXT;
 
 CREATE TABLE IF NOT EXISTS demo_files (
     id UUID PRIMARY KEY,

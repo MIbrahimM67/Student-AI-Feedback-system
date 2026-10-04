@@ -1052,26 +1052,6 @@ async def approve_report(
     now = datetime.now(timezone.utc)
     org_id = user["org_id"]
 
-
-class ApprovePayload(BaseModel):
-    final_payload: Optional[dict] = None   # If None, use AI payload as-is
-
-
-@router.post("/batch/{batch_id}/reports/{report_id}/approve")
-async def approve_report(
-    batch_id: str,
-    report_id: str,
-    payload: ApprovePayload,
-    user: dict = Depends(_get_instructor),
-):
-    """
-    Instructor approves (and optionally edits) the AI grade.
-    Sets approved_at. Students can see the report only after published_at is set.
-    """
-    import json
-    now = datetime.now(timezone.utc)
-    org_id = user["org_id"]
-
     async with get_conn(org_id) as conn:
         existing = await conn.fetchrow(
             "SELECT * FROM feedback_reports WHERE id = $1 AND batch_id = $2",
@@ -1411,4 +1391,3 @@ async def submit_faculty_application(
         )
 
     return {"status": "submitted", "message": "Application submitted. An admin will review it shortly."}
-

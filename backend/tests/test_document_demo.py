@@ -180,6 +180,44 @@ async def test_student_document_grades_and_saves_real_schema_report(db, monkeypa
 
 
 @pytest.mark.asyncio
+async def test_instructor_single_upload_grades_and_approval_persists(db, monkeypatch):
+    owner, org = db
+    from app.main import app
+    from app.api.instructor_routes import _get_instructor
+    from app.services import grading_task
+    from app.grading.types import GradingResult, Tier
+    subject, assignment = uuid.uuid4(), uuid.uuid4()
+    await owner.execute("UPDATE users SET role='instructor' WHERE uid='tester'")
+    await owner.execute("INSERT INTO subjects(id,org_id,instructor_id,title) VALUES ($1,$2,'tester','Course')", subject, org)
+    await owner.execute("INSERT INTO assignments(id,org_id,subject_id,title,use_subject_kb,internal_similarity_enabled) VALUES ($1,$2,$3,'Assignment',false,false)", assignment, org, subject)
+    app.dependency_overrides[_get_instructor] = lambda: {"uid": "tester", "org_id": org, "role": "instructor"}
+    async def fake_pipeline(**kwargs):
+        assert Path(kwargs["submission_path"]).read_text() == "Instructor uploaded answer"
+        return GradingResult(score=75, max_score=100, per_criterion={"quality": 75}, feedback="Instructor review draft", tier_used=Tier.CONTEXT, reference_sections_used=[])
+    monkeypatch.setattr(grading_task, "route_and_grade", fake_pipeline)
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/api/instructor/single-upload", data={"assignment_id": str(assignment), "subject_id": str(subject), "student_name": "Demo Student", "type": "text"}, files={"file": ("answer.txt", b"Instructor uploaded answer", "text/plain")})
+            assert response.status_code == 202, response.text
+            batch = response.json()["batch_id"]
+            assert await task_dispatch._drain()
+            reports = await client.get(f"/api/instructor/batch/{batch}/reports")
+            assert reports.status_code == 200, reports.text
+            report = reports.json()["reports"][0]
+            assert report["submission_status"] == "graded"
+            assert report["approved_at"] is None
+            approval = await client.post(f"/api/instructor/batch/{batch}/reports/{report['report_id']}/approve", json={})
+            assert approval.status_code == 200, approval.text
+            assert approval.json()["status"] == "approved"
+            saved = await owner.fetchrow("SELECT approved_by, final_overall_score, published_at FROM feedback_reports WHERE id=$1", uuid.UUID(report["report_id"]))
+            assert saved["approved_by"] == "tester"
+            assert saved["final_overall_score"] == 75
+            assert saved["published_at"] is not None
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
 async def test_interrupted_job_fails_without_repeating_ai_calls(db, monkeypatch):
     owner, org = db
     sid = uuid.uuid4()
