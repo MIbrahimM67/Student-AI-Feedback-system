@@ -1,4 +1,4 @@
-import { Sandbox, Snapshot } from "@vercel/sandbox";
+import { APIError, Sandbox, Snapshot } from "@vercel/sandbox";
 import { validExecutorRequest, validCodeRequest } from "@/lib/executor-auth";
 import { EXECUTOR_RUNNER } from "@/lib/executor-runner";
 
@@ -16,7 +16,17 @@ async function toolchainSnapshot(): Promise<string> {
   if (saved) return saved.id;
   // Only trusted, signed distro package installation happens in this VM.
   // Network is blocked before the snapshot and in every submission VM.
-  const builder = await Sandbox.getOrCreate({ name: "gradewise-toolchain-v1", resources: { vcpus: 1 },
+  // The API can report a stopped ephemeral sandbox with HTTP 400 rather than
+  // the SDK's expected snapshot_not_found/410. Retrieve metadata without resume
+  // and remove only our failed compiler-only resource (never a submission VM).
+  let existing: Awaited<ReturnType<typeof Sandbox.get>> | undefined;
+  try { existing = await Sandbox.get({ name: "gradewise-toolchain-v1", resume: false }); }
+  catch (error) { if (!(error instanceof APIError) || error.response.status !== 404) throw error; }
+  if (existing && existing.status !== "running" && !existing.currentSnapshotId) {
+    await existing.delete();
+    existing = undefined;
+  }
+  const builder = existing || await Sandbox.create({ name: "gradewise-toolchain-v1", resources: { vcpus: 1 },
     timeout: 120000, persistent: false,
     networkPolicy: "allow-all" });
   try {
