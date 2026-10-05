@@ -17,11 +17,12 @@ import {
 
 export const LandingSection: React.FC = () => {
   const { loginWithGoogle, error, loading } = useAuth();
+  const documentDemo = process.env.NEXT_PUBLIC_DOCUMENT_DEMO === "true";
 
   const workflow = [
-    { icon: <FileText className="w-4 h-4" />, label: "Submit", text: "Text, files, scans, or code" },
+    { icon: <FileText className="w-4 h-4" />, label: "Submit", text: documentDemo ? "Text, documents, or scans" : "Text, files, scans, or code" },
     { icon: <ScanText className="w-4 h-4" />, label: "Extract", text: "OCR and document parsing" },
-    { icon: <Code className="w-4 h-4" />, label: "Run", text: "Sandboxed code checks" },
+    { icon: documentDemo ? <BookOpen className="w-4 h-4" /> : <Code className="w-4 h-4" />, label: documentDemo ? "Grade" : "Run", text: documentDemo ? "Reference and rubric checks" : "Sandboxed code checks" },
     { icon: <ShieldCheck className="w-4 h-4" />, label: "Review", text: "Rubrics, warnings, reports" },
   ];
 
@@ -38,7 +39,7 @@ export const LandingSection: React.FC = () => {
           <div className="space-y-8">
             <div className="inline-flex items-center gap-2 border border-[var(--color-rule)] bg-[var(--color-paper-2)] px-3 py-2 text-xs font-semibold text-[var(--color-ink-2)]">
               <Sparkles className="w-4 h-4 text-[var(--color-accent)]" />
-              Academic grading workbench
+              {documentDemo ? "Document grading demo" : "Academic grading workbench"}
             </div>
 
             <div className="space-y-5">
@@ -46,8 +47,11 @@ export const LandingSection: React.FC = () => {
                 GradeWise
               </h1>
               <p className="max-w-2xl text-base leading-7 text-[var(--color-ink-2)] sm:text-lg">
-                One place to submit assignments, run rubric checks, inspect code execution, process handwritten work, and publish feedback for students.
+                {documentDemo
+                  ? "Submit documents, process handwritten work, grade against references and rubrics, and publish feedback for students."
+                  : "One place to submit assignments, run rubric checks, inspect code execution, process handwritten work, and publish feedback for students."}
               </p>
+              {documentDemo && <p className="text-xs leading-5 text-[var(--color-muted)]">Code execution, knowledge-base search, and plagiarism checks are paused in this demo.</p>}
             </div>
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -123,7 +127,7 @@ export const LandingSection: React.FC = () => {
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   {[
                     ["Input", "Question + answer"],
-                    ["Checks", "OCR + sandbox"],
+                    ["Checks", documentDemo ? "OCR + rubric" : "OCR + sandbox"],
                     ["Output", "PDF feedback"],
                   ].map(([label, value]) => (
                     <div key={label} className="border border-[oklch(96%_0.012_92_/_0.14)] bg-[oklch(22%_0.014_82)] p-4">
@@ -136,16 +140,21 @@ export const LandingSection: React.FC = () => {
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
                   <div className="border border-[oklch(96%_0.012_92_/_0.14)] bg-[oklch(15%_0.012_82)] p-4 font-mono text-xs">
                     <div className="mb-4 flex items-center justify-between border-b border-[oklch(96%_0.012_92_/_0.12)] pb-3">
-                      <span className="text-[oklch(74%_0.02_92)]">submission.cpp</span>
+                      <span className="text-[oklch(74%_0.02_92)]">{documentDemo ? "submission.txt" : "submission.cpp"}</span>
                       <CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" />
                     </div>
-                    {[
+                    {(documentDemo ? [
+                      "Question: When does water freeze?",
+                      "Answer: At 0°C at standard pressure.",
+                      "Reference: Water freezes at 0°C.",
+                      "Rubric: State the temperature.",
+                    ] : [
                       "01  int main() {",
                       "02    vector<int> scores;",
                       "03    run_hidden_tests();",
                       "04    compare_with_rubric();",
                       "05  }",
-                    ].map((line) => (
+                    ]).map((line) => (
                       <p key={line} className="leading-7 text-[oklch(88%_0.01_92)]">{line}</p>
                     ))}
                   </div>
@@ -155,7 +164,7 @@ export const LandingSection: React.FC = () => {
                       <BookOpen className="w-4 h-4 text-[var(--color-accent-2)]" />
                       Feedback sheet
                     </div>
-                    {["Rubric alignment", "Runtime evidence", "Plagiarism signal"].map((item) => (
+                    {(documentDemo ? ["Rubric alignment", "Reference evidence", "Instructor review"] : ["Rubric alignment", "Runtime evidence", "Plagiarism signal"]).map((item) => (
                       <div key={item} className="flex items-center justify-between border-b border-[oklch(96%_0.012_92_/_0.1)] py-3 text-xs">
                         <span className="text-[oklch(84%_0.012_92)]">{item}</span>
                         <span className="h-2 w-10 bg-[var(--color-accent-2)]" />
