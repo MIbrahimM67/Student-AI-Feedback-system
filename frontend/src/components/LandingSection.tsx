@@ -103,7 +103,7 @@ export const LandingSection: React.FC = () => {
           </div>
 
           <div className="relative overflow-hidden border border-[var(--color-rule)] bg-[var(--color-ink)] p-4 text-[var(--color-paper)] shadow-[var(--shadow-panel)] sm:p-6">
-            <div className="grid h-full min-h-[480px] grid-cols-1 gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+            <div className={`grid h-full min-h-[480px] grid-cols-1 gap-4 ${documentDemo ? "lg:grid-cols-[160px_minmax(0,1fr)]" : "lg:grid-cols-[220px_minmax(0,1fr)]"}`}>
               <div className="space-y-3 border border-[oklch(96%_0.012_92_/_0.16)] bg-[oklch(24%_0.014_82)] p-4">
                 <div className="mb-6 flex items-center gap-2 text-xs font-bold">
                   <Archive className="w-4 h-4 text-[var(--color-accent-2)]" />
@@ -137,7 +137,7 @@ export const LandingSection: React.FC = () => {
                   ))}
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+                <div className={`grid gap-4 ${documentDemo ? "lg:grid-cols-1" : "lg:grid-cols-[minmax(0,1fr)_280px]"}`}>
                   <div className="border border-[oklch(96%_0.012_92_/_0.14)] bg-[oklch(15%_0.012_82)] p-4 font-mono text-xs">
                     <div className="mb-4 flex items-center justify-between border-b border-[oklch(96%_0.012_92_/_0.12)] pb-3">
                       <span className="text-[oklch(74%_0.02_92)]">{documentDemo ? "submission.txt" : "submission.cpp"}</span>
