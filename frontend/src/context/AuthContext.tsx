@@ -11,6 +11,7 @@ import {
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import axios from "axios";
+import { API_URL } from "@/lib/api-config";
 
 export interface UserProfile {
   uid: string;
@@ -38,8 +39,6 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);

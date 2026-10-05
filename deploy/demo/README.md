@@ -127,6 +127,13 @@ NEXT_PUBLIC_DOCUMENT_DEMO=true
 NEXT_PUBLIC_API_BASE_URL=https://YOUR-BACKEND-HOST
 ```
 
+If the existing API URL is a legacy write-only Vercel Secret that cannot be
+updated as public Config, set `NEXT_PUBLIC_DOCUMENT_DEMO_API_URL` to the demo
+backend instead. With demo mode enabled, both authentication and application API
+requests use that value; previews can continue using `NEXT_PUBLIC_API_BASE_URL`.
+Save the demo flag and URL as public Config for the intended environment, then
+redeploy. These values contain no credentials.
+
 Keep the existing `NEXT_PUBLIC_FIREBASE_*` values. Set backend `DEMO_PREVIEW_URL` to
 the exact preview origin for testing; keep `FRONTEND_URL` for production. Redeploy
 after changing `NEXT_PUBLIC_*`: Next.js embeds these at build time. Only public
