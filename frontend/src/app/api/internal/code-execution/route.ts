@@ -16,7 +16,7 @@ async function toolchainSnapshot(): Promise<string> {
   if (saved) return saved.id;
   // Only trusted, signed distro package installation happens in this VM.
   // Network is blocked before the snapshot and in every submission VM.
-  const builder = await Sandbox.create({ name: "gradewise-toolchain-v1", resources: { vcpus: 1 },
+  const builder = await Sandbox.getOrCreate({ name: "gradewise-toolchain-v1", resources: { vcpus: 1 },
     timeout: 120000, persistent: false,
     networkPolicy: "allow-all" });
   try {
