@@ -6,7 +6,7 @@ import os
 from urllib.parse import urlparse
 import httpx
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error")
 
 
 async def keepalive() -> None:

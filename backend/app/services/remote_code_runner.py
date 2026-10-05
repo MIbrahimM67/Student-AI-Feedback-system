@@ -47,7 +47,8 @@ async def execute_tests(code: str, language: str, inputs: list[str]) -> list[dic
 
 async def verify_runner() -> None:
     import logging
-    log = logging.getLogger(__name__)
+    log = logging.getLogger("uvicorn.error")
+    log.info("Starting real code runner verification")
     checks = [
         ("python", "print(int(input()) + 1)", ["41"], "42"),
         ("cpp", '#include <iostream>\nint main(){int x;std::cin>>x;std::cout<<x+1;}', ["41"], "42"),
@@ -66,3 +67,31 @@ async def verify_runner() -> None:
     if result["exitCode"] != 0 or result["stdout"].strip() != "network blocked":
         raise RuntimeError("Code execution network isolation verification failed")
     log.info("Real code verification passed: network blocked")
+
+    result = (await execute_tests("this is not valid C++", "cpp", [""]))[0]
+    if result["exitCode"] == 0 or not result.get("compilationFailed") or not result["stderr"]:
+        raise RuntimeError("Compilation failure verification failed")
+    log.info("Real code verification passed: compiler errors preserved")
+    result = (await execute_tests("import os\nprint(os.getuid())\nprint('DEDICATED_INFERENCE_TOKEN' in os.environ)\nprint('FIREBASE_PRIVATE_KEY' in os.environ)", "python", [""]))[0]
+    lines = result["stdout"].strip().splitlines()
+    if result["exitCode"] != 0 or len(lines) != 3 or lines[0] == "0" or lines[1:] != ["False", "False"]:
+        raise RuntimeError("Unprivileged execution verification failed")
+    log.info("Real code verification passed: non-root user without backend secrets")
+
+    # Synthetic code grading exercises the real existing grading stages. No user
+    # submission or database record is created by this deployment-only check.
+    import tempfile
+    from pathlib import Path
+    from app.grading.pipeline import grade_submission
+    with tempfile.TemporaryDirectory(prefix="gradewise-code-verification-") as folder:
+        source = Path(folder) / "solution.txt"
+        reference = Path(folder) / "reference.txt"
+        source.write_text("print(int(input()) + 1)")
+        reference.write_text("Read an integer from stdin and output that integer plus one. For stdin 41, expected stdout is 42.")
+        report = await grade_submission(str(source), str(reference),
+            "Award up to 10 points for correctly reading an integer and printing that integer plus one.",
+            "deployment-verification", "deployment-verification",
+            code_execution_evidence="Python real execution; stdin: 41; stdout: 42; exit code: 0; isSimulated: false")
+    if report.max_score <= 0 or not report.feedback.strip():
+        raise RuntimeError("Real code grading returned an incomplete report")
+    log.info("Real code grading verification passed: score=%s max_score=%s", report.score, report.max_score)
