@@ -14,14 +14,16 @@ async function toolchainSnapshot(): Promise<string> {
   const previous = await (await Snapshot.list({ name: "gradewise-toolchain-v1" })).toArray();
   const saved = previous.find(snapshot => snapshot.status === "created");
   if (saved) return saved.id;
+  // Only trusted, signed distro package installation happens in this VM.
+  // Network is blocked before the snapshot and in every submission VM.
   const builder = await Sandbox.create({ name: "gradewise-toolchain-v1", resources: { vcpus: 1 },
     timeout: 120000, persistent: false,
-    networkPolicy: { allow: ["archive.ubuntu.com", "security.ubuntu.com", "ports.ubuntu.com"] } });
+    networkPolicy: "allow-all" });
   try {
     const tools = await builder.runCommand("sh", ["-c", "command -v python3 && command -v g++ && command -v javac"]);
     if (tools.exitCode !== 0) {
       const install = await builder.runCommand({ cmd: "sh", args: ["-c", "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends g++ default-jdk-headless"], sudo: true });
-      if (install.exitCode !== 0) throw new Error("Compiler setup failed");
+      if (install.exitCode !== 0) throw new Error(`Compiler setup failed: ${(await install.stderr()).slice(-1800)}`);
     }
     await builder.update({ networkPolicy: "deny-all" });
     await builder.createUser("student");
