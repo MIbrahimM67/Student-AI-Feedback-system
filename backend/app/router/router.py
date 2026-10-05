@@ -30,6 +30,14 @@ def route(sub_payload: DocumentPayload, ref_payload: DocumentPayload) -> Tier:
     Route the document payload to the cheapest capable grading tier.
     """
     combined = sub_payload.est_tokens + ref_payload.est_tokens
+    from app.config import settings
+    if settings.DOCUMENT_DEMO:
+        # Uploaded references are not necessarily indexed. Grade from the actual
+        # document, and fail explicitly when the configured model is too small.
+        budget = DEDICATED_CONTEXT_CAP if _dedicated_available() else TIER0_BUDGET
+        if combined > budget:
+            raise ValueError("Document demo requires a configured high-context dedicated model for documents this size")
+        return Tier.CONTEXT
     logger.info("Routing payload: combined_tokens=%d, sub_tokens=%d, dedicated=%s",
                 combined, sub_payload.est_tokens, _dedicated_available())
 

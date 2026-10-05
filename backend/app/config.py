@@ -14,6 +14,17 @@ class Settings(BaseSettings):
     APP_NAME: str = "GradeWise API"
     DEBUG: bool = False
     PORT: int = 8000
+    DOCUMENT_DEMO: bool = False
+    DEMO_PREVIEW_URL: str = ""  # Additional demo origin; never replaces production.
+    DEMO_VERIFY_PROVIDERS: bool = False  # One-time deployment smoke check; makes real AI calls.
+    CODE_EXECUTION_ENABLED: bool = True
+    DB_POOL_MAX_SIZE: int = 20
+    DEMO_MAX_FILE_MB: int = 5
+    DEMO_MAX_PDF_PAGES: int = 20
+    DEMO_MAX_TEXT_CHARS: int = 60000
+    DEMO_STORAGE_MB: int = 100
+    # Restrict the public demo to explicitly invited Firebase users.
+    DEMO_ALLOWED_UIDS: str = ""
 
     # Database — ONE Postgres for relational + vectors + graph
     DATABASE_URL: str = "postgresql+asyncpg://app_user:change_me@postgres:5432/feedback"

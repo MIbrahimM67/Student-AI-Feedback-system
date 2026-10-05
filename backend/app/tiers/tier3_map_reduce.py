@@ -123,6 +123,7 @@ async def grade_tier3(
     final_result = await grade(
         submission=aggregate_payload,
         reference_pages=reference_payload.pages,
+        reference_text=reference_payload.plain_text,
         criteria=criteria,
         tier=Tier.MAP_REDUCE,
         reference_sections_used=[review.chunk_label for review in reviews],

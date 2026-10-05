@@ -18,9 +18,10 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile, status
 
 from app.auth.firebase import verify_id_token
-from app.services import local_storage
+from app.services import file_storage
+from app.services.demo_limits import check_submission_type, read_upload
 from app.db.postgres import get_conn
-from app.workers.celery_app import celery_app
+from app.services.task_dispatch import dispatch, notify
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -83,6 +84,9 @@ async def create_submission(
     """
     from app.config import settings
 
+    check_submission_type(type)
+    if settings.DOCUMENT_DEMO and len(input_text or "") > settings.DEMO_MAX_TEXT_CHARS:
+        raise HTTPException(413, "Text is too long for this demo.")
     uid = user["uid"]
     org_id = user["org_id"]
     submission_id = str(uuid.uuid4())
@@ -93,7 +97,7 @@ async def create_submission(
 
     # ---- File upload (Firebase Storage) -------------------------------------
     if file and file.filename:
-        content = await file.read()
+        content = await read_upload(file)
         file_size_mb = len(content) / (1024 * 1024)
 
         if file_size_mb > settings.STUDENT_MAX_FILE_MB:
@@ -106,7 +110,9 @@ async def create_submission(
         blob_name = f"submissions/{uid}/{submission_id}_{file_name}"
 
         try:
-            file_url = local_storage.save_file(content, blob_name)
+            file_url = await file_storage.save_file(content, blob_name, org_id=org_id, owner_uid=uid)
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error("Storage upload failed: %s", e)
             raise HTTPException(500, "File upload failed. Please try again.")
@@ -115,7 +121,7 @@ async def create_submission(
     reference_file_url = None
     reference_file_name = None
     if reference_file and reference_file.filename:
-        content = await reference_file.read()
+        content = await read_upload(reference_file)
         file_size_mb = len(content) / (1024 * 1024)
         if file_size_mb > settings.STUDENT_MAX_FILE_MB:
             raise HTTPException(
@@ -125,7 +131,9 @@ async def create_submission(
         reference_file_name = reference_file.filename
         blob_name = f"submissions/{uid}/{submission_id}_ref_{reference_file_name}"
         try:
-            reference_file_url = local_storage.save_file(content, blob_name)
+            reference_file_url = await file_storage.save_file(content, blob_name, org_id=org_id, owner_uid=uid)
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error("Reference storage upload failed: %s", e)
             raise HTTPException(500, "Reference file upload failed.")
@@ -149,16 +157,16 @@ async def create_submission(
             reference_file_url, reference_file_name, file_url, file_name, now,
         )
 
-    # ---- Enqueue grading task -----------------------------------------------
-    celery_app.send_task(
-        "tasks.grade_submission",
-        args=[submission_id, org_id],
-    )
+        # Persist the job in the same transaction as its submission on the demo.
+        await dispatch("tasks.grade_submission", [submission_id, org_id], conn=conn)
+    notify()
+    if not settings.DOCUMENT_DEMO:
+        await dispatch("tasks.grade_submission", [submission_id, org_id])
 
     return {
         "submission_id": submission_id,
         "status": "uploaded",
-        "message": "Submission received. Grading has started — check back in ~30 seconds.",
+        "message": "Submission queued. Keep this page open while grading; it may take several minutes.",
     }
 
 
@@ -453,4 +461,5 @@ async def get_my_application(user: dict = Depends(_get_student_profile)):
         return {"application": None}
 
     return {"application": dict(row)}
+
 

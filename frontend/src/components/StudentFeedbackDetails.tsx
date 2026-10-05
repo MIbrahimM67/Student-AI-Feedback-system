@@ -103,6 +103,7 @@ export const StudentFeedbackDetails: React.FC<StudentFeedbackDetailsProps> = ({ 
   }
 
   const isPass = report.status?.toLowerCase() === "pass";
+  const needsReview = report.status === "needs_review";
   const sourceCodeText = report.extractedText || report.summary || "No source code or document text captured.";
   const codeLines = sourceCodeText.split("\n");
 
@@ -130,10 +131,10 @@ export const StudentFeedbackDetails: React.FC<StudentFeedbackDetailsProps> = ({ 
           <span className={`py-1 px-3.5 rounded-full border text-[10px] font-black tracking-widest uppercase flex items-center gap-1.5 ${
             isPass 
               ? "text-[var(--color-success)] border-green-200 bg-green-50" 
-              : "text-[var(--color-error)] border-red-200 bg-red-50"
+              : needsReview ? "text-amber-700 border-amber-200 bg-amber-50" : "text-[var(--color-error)] border-red-200 bg-red-50"
           }`}>
             <span className="w-1.5 h-1.5 rounded-full bg-current" />
-            Claim: {report.status || "N/A"}
+            {needsReview ? "AI feedback — review suggested" : `Assessment: ${report.status || "N/A"}`}
           </span>
 
           <button
@@ -327,3 +328,4 @@ export const StudentFeedbackDetails: React.FC<StudentFeedbackDetailsProps> = ({ 
     </div>
   );
 };
+

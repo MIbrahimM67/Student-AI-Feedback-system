@@ -27,7 +27,6 @@ from app.utils.prompt_templates import utility_title_generator_user
 from app.grading.pipeline import grade_submission as route_and_grade
 
 
-import redis.asyncio as aioredis
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +42,12 @@ async def get_batch_submission_ids(batch_id: str, org_id: str) -> list[str]:
 
 
 async def run_grade_submission(submission_id: str, org_id: str) -> None:
+    # Also cleans up files on early failure, cancellation and provider errors.
+    with tempfile.TemporaryDirectory(prefix="gradewise-job-") as work_dir:
+        await _run_grade_submission(submission_id, org_id, work_dir)
+
+
+async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) -> None:
     """
     Full grading flow for one submission:
       1. Load submission + assignment + rubric from Postgres
@@ -56,7 +61,6 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
     which creates a fresh pool for every Celery task execution.
     """
     llm = build_llm_from_env()
-    redis = aioredis.from_url(os.environ["REDIS_URL"], decode_responses=True)
 
     # ---- Load submission -----------------------------------------------------
     async with get_conn(org_id) as conn:
@@ -65,6 +69,10 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
         )
         if not sub:
             logger.error("Submission %s not found", submission_id)
+            return
+
+        if sub["type"] == "coding" and (settings.DOCUMENT_DEMO or not settings.CODE_EXECUTION_ENABLED):
+            await conn.execute("UPDATE submissions SET status='failed', progress_message='Code grading is paused.' WHERE id=$1", submission_id)
             return
 
         await conn.execute(
@@ -116,23 +124,15 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
                 15,
                 "Extracting text, diagrams, charts, tables, and visual evidence from the file.",
             )
-            from app.services.local_storage import get_local_path
-            local_path = get_local_path(sub["file_url"])
-            
-            if local_path and os.path.exists(local_path):
-                tmp_path = local_path
-                ext = os.path.splitext(sub["file_name"] or local_path)[1].lower()
-            else:
-                import httpx
-                async with httpx.AsyncClient(timeout=60) as client:
-                    resp = await client.get(sub["file_url"])
-                    resp.raise_for_status()
-
-                ext = os.path.splitext(sub["file_name"] or ".pdf")[1].lower()
-                with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-                    tmp.write(resp.content)
-                    tmp_path = tmp.name
+            from app.services.file_storage import materialize
+            ext = os.path.splitext(sub["file_name"] or ".pdf")[1].lower()
+            async with materialize(sub["file_url"], sub["file_name"] or "file.pdf", org_id) as source_path:
+                # Keep the working copy alive until all extraction/grading paths finish.
+                import shutil
+                with tempfile.NamedTemporaryFile(dir=work_dir, delete=False, suffix=ext) as temp:
+                    tmp_path = temp.name
                 files_to_cleanup.append(tmp_path)
+                shutil.copyfile(source_path, tmp_path)
 
             if ext == ".zip":
                 tmp_zip_path = tmp_path
@@ -172,7 +172,7 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
             await _mark_failed(org_id, submission_id, batch_id)
             return
 
-    if not extracted_text.strip():
+    if not extracted_text.strip() or (settings.DOCUMENT_DEMO and len(extracted_text) > settings.DEMO_MAX_TEXT_CHARS):
         await _mark_failed(org_id, submission_id, batch_id)
         return
 
@@ -201,20 +201,18 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
     if sub.get("reference_file_url"):
         try:
             await progress("reference_extracting", 32, "Extracting reference material for comparison.")
-            import httpx
-            async with httpx.AsyncClient(timeout=60) as client:
-                resp = await client.get(sub["reference_file_url"])
-                resp.raise_for_status()
-
-            ext = os.path.splitext(sub.get("reference_file_name") or ".pdf")[1]
-            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-                tmp.write(resp.content)
-                ref_tmp_path = tmp.name
-
-            reference_text = await ocr_service.extract_text(ref_tmp_path, sub.get("reference_file_name") or "reference_file")
-            os.remove(ref_tmp_path)
+            from app.services.file_storage import materialize
+            async with materialize(sub["reference_file_url"], sub.get("reference_file_name") or "reference.pdf", org_id) as ref_tmp_path:
+                reference_text = await ocr_service.extract_text(ref_tmp_path, sub.get("reference_file_name") or "reference.pdf")
+                if not reference_text.strip() or (settings.DOCUMENT_DEMO and len(reference_text) > settings.DEMO_MAX_TEXT_CHARS):
+                    raise ValueError("Reference is empty or exceeds the demo text limit")
         except Exception as e:
             logger.warning("Reference text extraction failed for submission %s: %s", submission_id, e)
+            await _mark_failed(org_id, submission_id, batch_id)
+            for path in files_to_cleanup:
+                if os.path.exists(path):
+                    os.remove(path)
+            return
 
     # ---- Policy scan --------------------------------------------------------
     await progress("policy_scan", 36, "Checking the submission for blocked prompt-injection or policy issues.")
@@ -232,7 +230,7 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
         return
 
     integrity_report = None
-    if assignment_settings and (
+    if assignment_settings and not settings.DOCUMENT_DEMO and (
         assignment_settings.get("internal_similarity_enabled", True)
         or assignment_settings.get("internet_plagiarism_enabled", False)
     ):
@@ -251,7 +249,7 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
 
     # ---- Code sandbox -------------------------------------------------------
     code_execution_result = None
-    if sub["type"] == "coding":
+    if sub["type"] == "coding" and settings.CODE_EXECUTION_ENABLED and not settings.DOCUMENT_DEMO:
         try:
             await progress("code_checks", 40, "Generating and running code checks before grading.")
             from app.services.code_sandbox_service import code_sandbox_service
@@ -350,7 +348,7 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
                 f"Lowest allowed marks: {assignment_dict.get('minimum_marks', 0)}.\n"
                 f"{raw_rubric}"
             )
-        if subject_id and assignment_dict.get("use_subject_kb", True):
+        if subject_id and not settings.DOCUMENT_DEMO and assignment_dict.get("use_subject_kb", True):
             course_weight = int(assignment_dict.get("course_material_weight") or 60)
             ai_weight = int(assignment_dict.get("ai_expertise_weight") or (100 - course_weight))
             await progress(
@@ -393,19 +391,19 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
             # Text submissions and visual submissions both enter the agentic
             # grader as text evidence. For visual files, extracted_text is the
             # vision model's structured analysis of the diagram/design image.
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".txt", encoding='utf-8') as f:
+            with tempfile.NamedTemporaryFile(dir=work_dir, mode='w', delete=False, suffix=".txt", encoding='utf-8') as f:
                 f.write(extracted_text)
                 sub_path_for_pipeline = f.name
                 pipeline_cleanup.append(f.name)
 
         if reference_text:
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".txt", encoding='utf-8') as f:
+            with tempfile.NamedTemporaryFile(dir=work_dir, mode='w', delete=False, suffix=".txt", encoding='utf-8') as f:
                 f.write(reference_text)
                 ref_path_for_pipeline = f.name
                 pipeline_cleanup.append(ref_path_for_pipeline)
         else:
              # Create empty dummy text file if no reference provided
-             with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".txt", encoding='utf-8') as f:
+             with tempfile.NamedTemporaryFile(dir=work_dir, mode='w', delete=False, suffix=".txt", encoding='utf-8') as f:
                 f.write("No reference provided.")
                 ref_path_for_pipeline = f.name
                 pipeline_cleanup.append(f.name)
@@ -430,7 +428,6 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
             for tmp_file in pipeline_cleanup:
                  if os.path.exists(tmp_file):
                     os.remove(tmp_file)
-        await redis.aclose()
 
     # ---- Persist feedback_report --------------------------------------------
     await progress("finalizing", 96, "Saving the final feedback report for instructor review.")
@@ -444,6 +441,9 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
     
     # GradingResult doesn't have a model_dump(), so we serialize to dict manually
     report_dict = {
+        "summary": report.student_feedback or report.feedback,
+        "finalComments": report.score_rationale,
+        "extractedText": extracted_text,
         "score": report.score,
         "max_score": report.max_score,
         "per_criterion": report.per_criterion,
@@ -469,7 +469,7 @@ async def run_grade_submission(submission_id: str, org_id: str) -> None:
     # The new pipeline doesn't output confidence (which was mostly fake anyway) or status directly.
     # We map score to a binary 'needs_review' based on threshold or just default to published.
     avg_confidence = 0.9 
-    ai_status = "published" if not batch_id else "needs_review"
+    ai_status = "needs_review"
     needs_review = ai_status == "needs_review"
 
     report_id = str(uuid.uuid4())

@@ -122,10 +122,10 @@ class OpenAICompatibleProvider(LLMProvider):
 
         t0 = time.perf_counter()
         if self._rate_limited:
-            acquire_slot()
+            await asyncio.to_thread(acquire_slot)
         r = await self._client.post("/chat/completions", json=body)
         if self._rate_limited:
-            update_from_headers(r.headers)
+            await asyncio.to_thread(update_from_headers, r.headers)
         r.raise_for_status()
         data = r.json()
         usage = data.get("usage", {})
@@ -139,13 +139,13 @@ class OpenAICompatibleProvider(LLMProvider):
 
     async def embed(self, texts: Sequence[str], *, model: str) -> list[list[float]]:
         if self._rate_limited:
-            acquire_slot()
+            await asyncio.to_thread(acquire_slot)
         r = await self._client.post(
             "/embeddings",
             json={"model": model, "input": list(texts)},
         )
         if self._rate_limited:
-            update_from_headers(r.headers)
+            await asyncio.to_thread(update_from_headers, r.headers)
         r.raise_for_status()
         data = r.json()
         return [item["embedding"] for item in data["data"]]
@@ -154,7 +154,7 @@ class OpenAICompatibleProvider(LLMProvider):
         self, query: str, documents: Sequence[str], *, model: str, top_k: int = 6
     ) -> list[tuple[int, float]]:
         if self._rate_limited:
-            acquire_slot()
+            await asyncio.to_thread(acquire_slot)
         r = await self._client.post(
             "/rerank",
             json={
@@ -165,7 +165,7 @@ class OpenAICompatibleProvider(LLMProvider):
             },
         )
         if self._rate_limited:
-            update_from_headers(r.headers)
+            await asyncio.to_thread(update_from_headers, r.headers)
         r.raise_for_status()
         data = r.json()
         results = data.get("results", [])
@@ -339,8 +339,16 @@ def build_dedicated_llm_from_env() -> ResilientLLM | None:
 
 
 def build_llm_from_env() -> ResilientLLM:
-    """Build the standard DigitalOcean Gradient chat provider."""
+    """Use the configured dedicated chat model throughout the document demo."""
     from app.config import settings
+
+    if settings.DOCUMENT_DEMO:
+        dedicated = build_dedicated_llm_from_env()
+        if dedicated:
+            # Rubric decomposition and small submissions also enter this factory.
+            # Their legacy Gradient model IDs must not reach the dedicated API.
+            dedicated.model_overrides[dedicated.primary.name] = settings.DEDICATED_MODEL
+            return dedicated
 
     primary = GradientProvider(
         api_key=settings.GRADIENT_API_KEY,

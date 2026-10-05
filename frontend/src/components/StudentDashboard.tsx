@@ -36,6 +36,8 @@ interface SubmissionSummary {
   published_at: string | null;
 }
 
+const DOCUMENT_DEMO = process.env.NEXT_PUBLIC_DOCUMENT_DEMO === "true";
+
 const TYPE_OPTIONS = [
   { value: "text", label: "Typed Text", icon: <FileText className="w-3.5 h-3.5" /> },
   { value: "handwritten", label: "Handwritten Scan", icon: <BookOpen className="w-3.5 h-3.5" /> },
@@ -193,7 +195,7 @@ export const StudentDashboard: React.FC = () => {
       <div className="border-b border-[var(--color-rule)] bg-[var(--color-surface)] p-5 lg:border-b-0 lg:border-r overflow-y-auto">
         <div className="mb-6 border-b border-[var(--color-rule)] pb-5">
           <h2 className="text-lg font-bold text-[var(--color-ink)] font-display">New Submission</h2>
-          <p className="text-sm text-[var(--color-muted)] mt-1">Create a grading request from text, file, scan, or code.</p>
+          <p className="text-sm text-[var(--color-muted)] mt-1">{DOCUMENT_DEMO ? "Document demo: one submission at a time, up to 5 MB and 20 PDF pages. Code grading is paused." : "Create a grading request from text, file, scan, or code."}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -203,7 +205,7 @@ export const StudentDashboard: React.FC = () => {
               Submission Type
             </label>
             <div className="grid grid-cols-3 gap-2">
-              {TYPE_OPTIONS.map((opt) => (
+              {TYPE_OPTIONS.filter((opt) => !DOCUMENT_DEMO || opt.value !== "coding").map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
@@ -341,7 +343,7 @@ export const StudentDashboard: React.FC = () => {
                 ref={fileRef}
                 type="file"
                 className="hidden"
-                accept=".pdf,.docx,.doc,.txt,.py,.java,.cpp,.png,.jpg,.jpeg,.zip"
+                accept={DOCUMENT_DEMO ? ".pdf,.docx,.txt,.png,.jpg,.jpeg" : ".pdf,.docx,.doc,.txt,.py,.java,.cpp,.png,.jpg,.jpeg,.zip"}
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
               />
             </div>
@@ -614,3 +616,4 @@ export const StudentDashboard: React.FC = () => {
     </div>
   );
 };
+

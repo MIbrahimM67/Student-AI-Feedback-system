@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { BatchUploadTutorialModal } from "./BatchUploadTutorialModal";
 
+const DOCUMENT_DEMO = process.env.NEXT_PUBLIC_DOCUMENT_DEMO === "true";
+
 // --- Types ---
 interface Subject {
   id: string;
@@ -501,9 +503,9 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
   const [rubric, setRubric] = useState("");
   const [minimumMarks, setMinimumMarks] = useState(0);
   const [totalMarks, setTotalMarks] = useState(100);
-  const [internalSimilarityEnabled, setInternalSimilarityEnabled] = useState(true);
+  const [internalSimilarityEnabled, setInternalSimilarityEnabled] = useState(!DOCUMENT_DEMO);
   const [internetPlagiarismEnabled, setInternetPlagiarismEnabled] = useState(false);
-  const [useSubjectKb, setUseSubjectKb] = useState(true);
+  const [useSubjectKb, setUseSubjectKb] = useState(!DOCUMENT_DEMO);
   const [courseMaterialWeight, setCourseMaterialWeight] = useState(60);
 
   // Refs state
@@ -549,9 +551,9 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
         rubric,
         minimum_marks: minimumMarks,
         total_marks: totalMarks,
-        internal_similarity_enabled: internalSimilarityEnabled,
-        internet_plagiarism_enabled: internetPlagiarismEnabled,
-        use_subject_kb: useSubjectKb,
+        internal_similarity_enabled: !DOCUMENT_DEMO && internalSimilarityEnabled,
+        internet_plagiarism_enabled: !DOCUMENT_DEMO && internetPlagiarismEnabled,
+        use_subject_kb: !DOCUMENT_DEMO && useSubjectKb,
         course_material_weight: courseMaterialWeight,
       };
       if (editingAssignment) {
@@ -570,9 +572,9 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
     setRubric("");
     setMinimumMarks(0);
     setTotalMarks(100);
-    setInternalSimilarityEnabled(true);
+    setInternalSimilarityEnabled(!DOCUMENT_DEMO);
     setInternetPlagiarismEnabled(false);
-    setUseSubjectKb(true);
+    setUseSubjectKb(!DOCUMENT_DEMO);
     setCourseMaterialWeight(60);
     setEditingAssignment(null);
     setCreating(false);
@@ -585,9 +587,9 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
     setRubric(assignment.rubric || "");
     setMinimumMarks(assignment.minimum_marks || 0);
     setTotalMarks(assignment.total_marks || 100);
-    setInternalSimilarityEnabled(assignment.internal_similarity_enabled ?? true);
-    setInternetPlagiarismEnabled(assignment.internet_plagiarism_enabled ?? false);
-    setUseSubjectKb(assignment.use_subject_kb ?? true);
+    setInternalSimilarityEnabled(!DOCUMENT_DEMO && (assignment.internal_similarity_enabled ?? true));
+    setInternetPlagiarismEnabled(!DOCUMENT_DEMO && (assignment.internet_plagiarism_enabled ?? false));
+    setUseSubjectKb(!DOCUMENT_DEMO && (assignment.use_subject_kb ?? true));
     setCourseMaterialWeight(assignment.course_material_weight ?? 60);
     setCreating(true);
     setTab("assignments");
@@ -630,9 +632,9 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
         <button onClick={()=>setTab("assignments")} className={`pb-2 text-sm font-bold ${tab === "assignments" ? "text-indigo-600 border-b-2 border-indigo-600" : "text-slate-500 hover:text-slate-800"}`}>
           Assignments
         </button>
-        <button onClick={()=>setTab("references")} className={`pb-2 text-sm font-bold ${tab === "references" ? "text-indigo-600 border-b-2 border-indigo-600" : "text-slate-500 hover:text-slate-800"}`}>
+        {!DOCUMENT_DEMO && <button onClick={()=>setTab("references")} className={`pb-2 text-sm font-bold ${tab === "references" ? "text-indigo-600 border-b-2 border-indigo-600" : "text-slate-500 hover:text-slate-800"}`}>
           Subject Knowledge Base
-        </button>
+        </button>}
       </div>
 
       {tab === "assignments" && (
@@ -707,7 +709,8 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
                     className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:font-medium placeholder:text-slate-400" 
                   />
                 </div>
-                <div className="border border-slate-200 bg-slate-50 p-4 space-y-4">
+                {DOCUMENT_DEMO && <p className="text-xs text-slate-500">Knowledge-base search and plagiarism checks are paused in this document demo.</p>}
+                {!DOCUMENT_DEMO && <div className="border border-slate-200 bg-slate-50 p-4 space-y-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
                       <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Use Subject Knowledge Base</label>
@@ -738,8 +741,8 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
                       className="w-full accent-indigo-600"
                     />
                   </div>
-                </div>
-                <div className="border border-slate-200 bg-slate-50 p-4 space-y-4">
+                </div>}
+                {!DOCUMENT_DEMO && <div className="border border-slate-200 bg-slate-50 p-4 space-y-4">
                   <div>
                     <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Academic Integrity Checks</label>
                     <p className="mt-1 text-[11px] font-semibold text-slate-500">Similarity flags are shown for instructor review and do not automatically deduct marks.</p>
@@ -768,7 +771,7 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
                       className="mt-1 h-5 w-5 accent-indigo-600"
                     />
                   </label>
-                </div>
+                </div>}
                 <div className="flex justify-end gap-3 pt-2">
                   <button 
                     type="button" 
@@ -1280,6 +1283,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
   return (
     <div className="space-y-6">
       
+      {DOCUMENT_DEMO && <p className="text-sm text-[var(--color-muted)]">Document demo: upload one file at a time, up to 5 MB and 20 PDF pages. Code execution is paused. Keep this page open while grading.</p>}
       {/* Current Assignment Context */}
       <div className="glass-panel p-5 border border-[var(--color-rule)] bg-[var(--color-surface)] flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
         <div>
@@ -1295,8 +1299,8 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
          <button onClick={()=>setUploadMode("single")} className={`flex-1 py-4 border font-bold text-sm transition-all ${uploadMode === "single" ? "border-[var(--color-accent)] bg-blue-50 text-[var(--color-accent)]" : "border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-rule-2)]"}`}>
             Single Submission Upload
          </button>
-         <button onClick={()=>setUploadMode("batch")} className={`flex-1 py-4 border font-bold text-sm transition-all ${uploadMode === "batch" ? "border-[var(--color-success)] bg-green-50 text-[var(--color-success)]" : "border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-rule-2)]"}`}>
-            Classroom Batch (Master ZIP)
+         <button disabled={DOCUMENT_DEMO} title={DOCUMENT_DEMO ? "Batch grading is paused in this demo" : undefined} onClick={()=>setUploadMode("batch")} className={`flex-1 py-4 border font-bold text-sm transition-all ${uploadMode === "batch" ? "border-[var(--color-success)] bg-green-50 text-[var(--color-success)]" : "border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-rule-2)]"}`}>
+            {DOCUMENT_DEMO ? "Batch grading paused" : "Classroom Batch (Master ZIP)"}
          </button>
          <button onClick={()=>setUploadMode("history")} className={`flex-1 py-4 border font-bold text-sm transition-all ${uploadMode === "history" ? "border-[var(--color-warning)] bg-amber-50 text-[var(--color-warning)]" : "border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-rule-2)]"}`}>
             Grading History
@@ -1739,7 +1743,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                  <select value={fileType} onChange={e=>setFileType(e.target.value)} className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none">
                     <option value="text">Digital Document (PDF/TXT/DOCX)</option>
                     <option value="handwritten">Handwritten Scan (OCR)</option>
-                    <option value="coding">Programming Code</option>
+                    {!DOCUMENT_DEMO && <option value="coding">Programming Code</option>}
                  </select>
               </div>
            </div>
@@ -1798,7 +1802,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                  <select value={fileType} onChange={e=>setFileType(e.target.value)} className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none">
                     <option value="text">Digital Documents (PDF/TXT/DOCX folders)</option>
                     <option value="handwritten">Handwritten Scans (OCR)</option>
-                    <option value="coding">Programming Code Projects</option>
+                    {!DOCUMENT_DEMO && <option value="coding">Programming Code Projects</option>}
                  </select>
               </div>
               <div className="space-y-1.5">
@@ -1914,3 +1918,4 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
     </div>
   );
 };
+
