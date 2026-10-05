@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     DEMO_PREVIEW_URL: str = ""  # Additional demo origin; never replaces production.
     DEMO_VERIFY_PROVIDERS: bool = False  # One-time deployment smoke check; makes real AI calls.
     CODE_EXECUTION_ENABLED: bool = True
+    CODE_RUNNER_URL: str = ""  # Authenticated Vercel microVM bridge, never a browser credential.
+    DEMO_VERIFY_CODE_RUNNER: bool = False
+    DEMO_KEEPALIVE_ENABLED: bool = False
     DB_POOL_MAX_SIZE: int = 20
     DEMO_MAX_FILE_MB: int = 5
     DEMO_MAX_PDF_PAGES: int = 20

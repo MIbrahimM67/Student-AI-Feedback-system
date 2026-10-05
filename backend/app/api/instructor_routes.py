@@ -538,7 +538,7 @@ async def single_upload(
     sub_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     
-    content = await read_upload(file)
+    content = await read_upload(file, kind=type)
     if len(content) > settings.STUDENT_MAX_FILE_MB * 1024 * 1024:
         raise HTTPException(413, f"File exceeds {settings.STUDENT_MAX_FILE_MB}MB limit.")
         

@@ -28,6 +28,7 @@ from app.db.postgres import init_pool, close_pool, get_conn
 from app.services.llm_provider import build_llm_from_env
 from app.config import settings
 from app.services.task_dispatch import start_worker, stop_worker
+import asyncio
 
 # ---- App state --------------------------------------------------------------
 _redis = None
@@ -57,11 +58,20 @@ async def lifespan(app: FastAPI):
     if settings.DOCUMENT_DEMO and settings.DEMO_VERIFY_PROVIDERS:
         from app.services.demo_verification import verify_demo_providers
         await verify_demo_providers()
+    if settings.DOCUMENT_DEMO and settings.DEMO_VERIFY_CODE_RUNNER:
+        from app.services.remote_code_runner import verify_runner
+        await verify_runner()
     start_worker()
+    keepalive_task = None
+    if settings.DOCUMENT_DEMO and settings.DEMO_KEEPALIVE_ENABLED:
+        from app.services.demo_keepalive import keepalive
+        keepalive_task = asyncio.create_task(keepalive())
 
     try:
         yield
     finally:
+        from app.services.demo_keepalive import stop_keepalive
+        await stop_keepalive(keepalive_task)
         await stop_worker()
         await close_pool()
         if _redis:
@@ -123,6 +133,10 @@ def get_llm():
 
 # ---- /health ----------------------------------------------------------------
 
+@app.get("/ping", tags=["ops"])
+async def ping():
+    return {"status": "awake"}
+
 @app.get("/health", tags=["ops"])
 async def health() -> dict:
     pg_ok = "fail"
@@ -151,9 +165,10 @@ async def health() -> dict:
 
 @app.get("/api/capabilities", tags=["ops"])
 async def capabilities():
+    from app.services.demo_limits import code_execution_available
     return {
         "document_demo": settings.DOCUMENT_DEMO,
-        "code_execution": settings.CODE_EXECUTION_ENABLED and not settings.DOCUMENT_DEMO,
+        "code_execution": code_execution_available(),
         "batch_grading": not settings.DOCUMENT_DEMO,
         "max_file_mb": settings.DEMO_MAX_FILE_MB if settings.DOCUMENT_DEMO else settings.STUDENT_MAX_FILE_MB,
     }

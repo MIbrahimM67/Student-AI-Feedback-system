@@ -1,4 +1,4 @@
-# GradeWise document demo (2–3 months)
+# GradeWise document and code demo (2–3 months)
 
 Use the `deploy/document-demo` branch. This is an invite-only, low-traffic demo,
 not a production deployment. Source lives in GitHub, the existing frontend stays
@@ -11,8 +11,9 @@ still require working credentials and may cost money.
 
 - Student text/PDF/DOCX/image submission and instructor **single-document** grading.
 - Subject references, feedback, instructor review and PDF reports remain available.
-- Code grading and ZIP batches return an explicit unavailable response. No sandbox
-  or simulated code results run in the demo.
+- Python, C++17 and Java (`Main` class) single-file coding use real Vercel Sandbox
+  microVMs. ZIP projects/batches, embedding-backed KB and plagiarism remain paused.
+  Execution failures never fall back to simulation.
 - One grading/indexing job at a time, 20-minute job timeout, 5 MB/file, 20 PDF pages,
   60,000 extracted characters/document, 100 MB total original-file storage.
 - DOCX currently extracts paragraph text, not embedded figures. Use PDF for visual
@@ -23,9 +24,11 @@ still require working credentials and may cost money.
   RLS and authenticated downloads, not exposed via a public static uploads folder.
 - Pending work survives restarts. An interrupted running job is marked failed when
   the next consumer starts; upload it again. We do not silently repeat AI charges.
-- Keep the grading page open: its normal status polling keeps an active demonstration
-  connected. Render can still restart a free service at any time. No artificial
-  uptime pings are configured. The worker does not poll the database while idle.
+- Optional `DEMO_KEEPALIVE_ENABLED=true` sends a lightweight request to the Render
+  external `/ping` endpoint every ten minutes while the process runs. It does not
+  query Postgres or call AI. It cannot wake an already stopped process or prevent
+  provider restarts/outages/quota exhaustion. Free service hours still apply.
+  The worker does not poll the database while idle.
 
 ## 1. Create the persistent database
 
@@ -147,7 +150,8 @@ URL. No frontend cutover is performed by adding these files to GitHub.
 2. Submit one short typed PDF and a reference; check a real feedback report and PDF
    download. Inspect the score/explanation, not just an HTTP success.
 3. Instructor single upload completes and can be reviewed/approved.
-4. Code/ZIP submissions are visibly unavailable. No simulated grades appear.
+4. Python/C++/Java stdout, compilation failures and timeout errors come from actual
+   execution. ZIP submissions remain unavailable. No simulated grades appear.
 5. Restart the service: saved documents/reports remain; pending jobs run again on
    startup; interrupted work shows failure rather than staying processing forever.
 6. Check actual memory and provider consumption with representative documents.
@@ -165,3 +169,38 @@ Provider docs checked 2026-10-03:
 - https://render.com/docs/free
 - https://neon.com/pricing
 - https://docs.railway.com/pricing/free-trial
+
+## Real code execution setup
+
+Deploy the frontend bridge before enabling backend coding. It uses Vercel's automatic
+OIDC credentials; no database or AI secrets belong in the frontend. The committed
+RSA public key verifies 60-second body-bound requests signed by the existing backend
+Firebase service-account private key, under an execution-specific signature namespace.
+A service-account key rotation requires updating `executor-public-key.ts` as well.
+
+Set backend `CODE_RUNNER_URL` to the production Vercel origin plus
+`/api/internal/code-execution`. Leave `CODE_EXECUTION_ENABLED=false` until a deployment
+with `DEMO_VERIFY_CODE_RUNNER=true` passes actual Python, C++ and Java stdin/output,
+CPU/wall timeout and network-isolation checks. Then set `CODE_EXECUTION_ENABLED=true`
+and `DEMO_VERIFY_CODE_RUNNER=false`. UI capability checks reveal coding only when the
+backend enables it. This verifier uses synthetic programs, not user submissions.
+
+The runner caches a compiler-only snapshot, compiles once per submission, runs up to
+five stdin cases in a disposable VM, and always stops it. Submitted programs run as
+an unprivileged user, without outbound network or host credentials. Per-case time
+limit is five seconds; compilation limit is fifteen seconds. Python/C++ address
+space and Java heap are bounded; stdout/stderr are truncated. No uploaded program is
+executed in the Vercel function or Render process. The Specialist, Judge and Senior
+stages/models are preserved and receive actual execution evidence with the code.
+Exit code zero means the program ran; the rubric determines correctness.
+
+Vercel Hobby Sandbox includes limited CPU/memory hours, creations and snapshot storage;
+when its free allowance is exhausted, execution is unavailable. Warm snapshots avoid
+reinstalling compilers each run, but first setup and serverless cold starts can take
+longer. Free hosting does not guarantee zero latency or continuous uptime. Check quotas
+before the presentation and run one representative document and coding example.
+
+Provider docs checked 2026-10-05:
+- https://vercel.com/docs/vercel-sandbox/pricing
+- https://vercel.com/docs/vercel-sandbox
+- https://render.com/docs/free

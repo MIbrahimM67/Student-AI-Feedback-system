@@ -12,6 +12,12 @@ services:
         value: "true"
       - key: CODE_EXECUTION_ENABLED
         value: "false"
+      - key: CODE_RUNNER_URL
+        value: https://student-ai-feedback-system.vercel.app/api/internal/code-execution
+      - key: DEMO_VERIFY_CODE_RUNNER
+        value: "false"
+      - key: DEMO_KEEPALIVE_ENABLED
+        value: "true"
       - key: DEBUG
         value: "false"
       - key: USE_MOCKS

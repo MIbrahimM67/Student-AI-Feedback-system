@@ -23,7 +23,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp"}
-TEXT_EXTENSIONS = {".txt", ".py", ".java", ".cpp", ".c", ".js", ".ts", ".cs", ".go"}
+TEXT_EXTENSIONS = {".txt", ".py", ".java", ".cpp", ".cc", ".cxx", ".c", ".js", ".ts", ".cs", ".go"}
 
 
 class OCRService:

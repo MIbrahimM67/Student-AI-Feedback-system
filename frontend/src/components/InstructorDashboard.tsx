@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { BatchUploadTutorialModal } from "./BatchUploadTutorialModal";
 
+import { useDemoCodeExecution } from "@/lib/use-demo-capabilities";
+
 const DOCUMENT_DEMO = process.env.NEXT_PUBLIC_DOCUMENT_DEMO === "true";
 
 // --- Types ---
@@ -927,6 +929,7 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
 
 // --- LAYER 3: ASSIGNMENT UPLOAD ZONE ---
 const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment, onTutorial: () => void }> = ({ subject, assignment, onTutorial }) => {
+  const codeExecution = useDemoCodeExecution();
   const [uploadMode, setUploadMode] = useState<"single" | "batch" | "history">("single");
 
   // Shared state
@@ -1283,7 +1286,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
   return (
     <div className="space-y-6">
       
-      {DOCUMENT_DEMO && <p className="text-sm text-[var(--color-muted)]">Document demo: upload one file at a time, up to 5 MB and 20 PDF pages. Code execution is paused. Keep this page open while grading.</p>}
+      {DOCUMENT_DEMO && <p className="text-sm text-[var(--color-muted)]">Demo: upload one file at a time, up to 5 MB and 20 PDF pages. {codeExecution ? "Python, C++ and Java execution is available." : "Code execution is unavailable."} Keep this page open while grading.</p>}
       {/* Current Assignment Context */}
       <div className="glass-panel p-5 border border-[var(--color-rule)] bg-[var(--color-surface)] flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
         <div>
@@ -1686,7 +1689,9 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                                             <Terminal className="w-3 h-3" /> Sandbox Execution Logs
                                           </div>
                                           <div className="space-y-3">
-                                            {detail.ai_payload.sandbox_logs.map((log: any, i: number) => (
+                                            {typeof detail.ai_payload.sandbox_logs === "string" ? (
+                                              <pre className="text-xs text-slate-300 whitespace-pre-wrap break-words">{detail.ai_payload.sandbox_logs}</pre>
+                                            ) : detail.ai_payload.sandbox_logs.map((log: any, i: number) => (
                                               <div key={i} className="text-[10px] space-y-1">
                                                 <div className="flex items-center gap-2 text-indigo-400">
                                                   <span className="font-bold">Test Case {i+1}</span>
@@ -1743,7 +1748,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                  <select value={fileType} onChange={e=>setFileType(e.target.value)} className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none">
                     <option value="text">Digital Document (PDF/TXT/DOCX)</option>
                     <option value="handwritten">Handwritten Scan (OCR)</option>
-                    {!DOCUMENT_DEMO && <option value="coding">Programming Code</option>}
+                    {codeExecution && <option value="coding">Programming Code</option>}
                  </select>
               </div>
            </div>
@@ -1802,7 +1807,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                  <select value={fileType} onChange={e=>setFileType(e.target.value)} className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none">
                     <option value="text">Digital Documents (PDF/TXT/DOCX folders)</option>
                     <option value="handwritten">Handwritten Scans (OCR)</option>
-                    {!DOCUMENT_DEMO && <option value="coding">Programming Code Projects</option>}
+                    {codeExecution && <option value="coding">Programming Code Projects</option>}
                  </select>
               </div>
               <div className="space-y-1.5">

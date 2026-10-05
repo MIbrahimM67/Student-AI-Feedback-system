@@ -8,16 +8,30 @@ from app.config import settings
 
 
 def check_submission_type(kind: str) -> None:
-    if kind == "coding" and (settings.DOCUMENT_DEMO or not settings.CODE_EXECUTION_ENABLED):
+    if kind == "coding" and not code_execution_available():
         raise HTTPException(503, "Code grading is paused. Submit a document instead.")
 
 
-def validate_document(content: bytes, filename: str) -> None:
+def code_execution_available() -> bool:
+    return settings.CODE_EXECUTION_ENABLED and (not settings.DOCUMENT_DEMO or bool(settings.CODE_RUNNER_URL))
+
+
+def validate_document(content: bytes, filename: str, *, kind: str = "text") -> None:
     if not settings.DOCUMENT_DEMO:
         return
     if len(content) > settings.DEMO_MAX_FILE_MB * 1024 * 1024:
         raise HTTPException(413, f"Demo documents must be at most {settings.DEMO_MAX_FILE_MB} MB.")
     extension = Path(filename).suffix.lower()
+    if kind == "coding":
+        check_submission_type(kind)
+        if extension not in {".py", ".cpp", ".cc", ".cxx", ".java", ".txt"}:
+            raise HTTPException(415, "Use one Python, C++ or Java source file. ZIP projects are paused.")
+        try:
+            if len(content.decode("utf-8")) > settings.DEMO_MAX_TEXT_CHARS:
+                raise HTTPException(413, "Source code is too long for this demo.")
+        except UnicodeDecodeError as exc:
+            raise HTTPException(422, "Source code must be UTF-8 text.") from exc
+        return
     if extension not in {".pdf", ".docx", ".txt", ".png", ".jpg", ".jpeg"}:
         raise HTTPException(415, "Demo supports PDF, DOCX, TXT, PNG and JPEG documents only.")
     try:
@@ -50,10 +64,10 @@ def validate_document(content: bytes, filename: str) -> None:
         raise HTTPException(422, "Document is invalid or unreadable.") from exc
 
 
-async def read_upload(file) -> bytes:
+async def read_upload(file, *, kind: str = "text") -> bytes:
     # Avoid reading an arbitrarily large body into the small API process.
     if not settings.DOCUMENT_DEMO:
         return await file.read()
     content = await file.read(settings.DEMO_MAX_FILE_MB * 1024 * 1024 + 1)
-    validate_document(content, file.filename or "")
+    validate_document(content, file.filename or "", kind=kind)
     return content
