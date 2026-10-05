@@ -36,6 +36,8 @@ interface SubmissionSummary {
   published_at: string | null;
 }
 
+import { useDemoCodeExecution } from "@/lib/use-demo-capabilities";
+
 const DOCUMENT_DEMO = process.env.NEXT_PUBLIC_DOCUMENT_DEMO === "true";
 
 const TYPE_OPTIONS = [
@@ -53,6 +55,8 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 export const StudentDashboard: React.FC = () => {
+  const codeExecution = useDemoCodeExecution();
+  const [codeLanguage, setCodeLanguage] = useState("python");
   const { user } = useAuth();
 
   const [type, setType] = useState("text");
@@ -152,6 +156,7 @@ export const StudentDashboard: React.FC = () => {
 
     const form = new FormData();
     form.append("type", type);
+    if (type === "coding") form.append("code_language", codeLanguage);
     if (questionText.trim()) form.append("question_text", questionText);
     if (referenceFile) form.append("reference_file", referenceFile);
     if (inputText.trim()) form.append("input_text", inputText);
@@ -195,7 +200,7 @@ export const StudentDashboard: React.FC = () => {
       <div className="border-b border-[var(--color-rule)] bg-[var(--color-surface)] p-5 lg:border-b-0 lg:border-r overflow-y-auto">
         <div className="mb-6 border-b border-[var(--color-rule)] pb-5">
           <h2 className="text-lg font-bold text-[var(--color-ink)] font-display">New Submission</h2>
-          <p className="text-sm text-[var(--color-muted)] mt-1">{DOCUMENT_DEMO ? "Document demo: one submission at a time, up to 5 MB and 20 PDF pages. Code grading is paused." : "Create a grading request from text, file, scan, or code."}</p>
+          <p className="text-sm text-[var(--color-muted)] mt-1">{DOCUMENT_DEMO ? `Demo: one submission at a time, up to 5 MB and 20 PDF pages. ${codeExecution ? "Python, C++ and Java code checks are available." : "Code execution is unavailable."}` : "Create a grading request from text, file, scan, or code."}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -205,7 +210,7 @@ export const StudentDashboard: React.FC = () => {
               Submission Type
             </label>
             <div className="grid grid-cols-3 gap-2">
-              {TYPE_OPTIONS.filter((opt) => !DOCUMENT_DEMO || opt.value !== "coding").map((opt) => (
+              {TYPE_OPTIONS.filter((opt) => codeExecution || opt.value !== "coding").map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
@@ -298,6 +303,11 @@ export const StudentDashboard: React.FC = () => {
           {/* STDIN input (only for coding) */}
           {type === "coding" && (
             <div>
+              <label className="text-xs font-bold block mb-2">Language for pasted code
+                <select value={codeLanguage} onChange={e => setCodeLanguage(e.target.value)} className="block border px-3 py-2 mt-1">
+                  <option value="python">Python</option><option value="cpp">C++</option><option value="java">Java (Main class)</option>
+                </select>
+              </label>
               <label className="text-[10px] font-bold text-[#5e5c54] uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
                 Input Hints / Data Type <span className="text-gray-400 font-normal normal-case">- Optional</span>
               </label>
@@ -343,7 +353,7 @@ export const StudentDashboard: React.FC = () => {
                 ref={fileRef}
                 type="file"
                 className="hidden"
-                accept={DOCUMENT_DEMO ? ".pdf,.docx,.txt,.png,.jpg,.jpeg" : ".pdf,.docx,.doc,.txt,.py,.java,.cpp,.png,.jpg,.jpeg,.zip"}
+                accept={DOCUMENT_DEMO ? (type === "coding" ? ".py,.cpp,.cc,.cxx,.java,.txt" : ".pdf,.docx,.txt,.png,.jpg,.jpeg") : ".pdf,.docx,.doc,.txt,.py,.java,.cpp,.png,.jpg,.jpeg,.zip"}
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
               />
             </div>

@@ -73,6 +73,7 @@ async def create_submission(
     rubric_text: Optional[str] = Form(""),
     input_text: Optional[str] = Form(""),
     stdin_text: Optional[str] = Form(""),
+    code_language: str = Form("python"),
     reference_file: Optional[UploadFile] = File(None),
     file: Optional[UploadFile] = File(None),
     user: dict = Depends(_get_student_profile),
@@ -85,6 +86,8 @@ async def create_submission(
     from app.config import settings
 
     check_submission_type(type)
+    if type == "coding" and code_language not in {"python", "cpp", "java"}:
+        raise HTTPException(422, "Choose Python, C++ or Java.")
     if settings.DOCUMENT_DEMO and len(input_text or "") > settings.DEMO_MAX_TEXT_CHARS:
         raise HTTPException(413, "Text is too long for this demo.")
     uid = user["uid"]
@@ -93,11 +96,12 @@ async def create_submission(
     now = datetime.now(timezone.utc)
 
     file_url = None
-    file_name = None
+    file_name = ({"python": "solution.py", "cpp": "solution.cpp", "java": "Main.java"}[code_language]
+                 if type == "coding" else None)
 
     # ---- File upload (Firebase Storage) -------------------------------------
     if file and file.filename:
-        content = await read_upload(file)
+        content = await read_upload(file, kind=type)
         file_size_mb = len(content) / (1024 * 1024)
 
         if file_size_mb > settings.STUDENT_MAX_FILE_MB:
@@ -107,6 +111,8 @@ async def create_submission(
             )
 
         file_name = file.filename
+        if type == "coding" and file_name.lower().endswith(".txt"):
+            file_name = {"python": "solution.py", "cpp": "solution.cpp", "java": "Main.java"}[code_language]
         blob_name = f"submissions/{uid}/{submission_id}_{file_name}"
 
         try:

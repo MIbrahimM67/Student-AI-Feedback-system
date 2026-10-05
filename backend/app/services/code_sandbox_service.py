@@ -15,7 +15,7 @@ class CodeSandboxService:
         self._init_docker()
 
     def _init_docker(self):
-        if settings.DOCUMENT_DEMO or not settings.CODE_EXECUTION_ENABLED:
+        if settings.DOCUMENT_DEMO or settings.CODE_RUNNER_URL or not settings.CODE_EXECUTION_ENABLED:
             self.docker_client = None
             self.has_docker = False
             return
@@ -29,11 +29,11 @@ class CodeSandboxService:
         except Exception as e:
             self.docker_client = None
             self.has_docker = False
-            logger.warning(f"Docker is not available ({e}). Sandbox will run in secure simulation mode.")
+            logger.warning(f"Docker is not available ({e}). Real code execution is unavailable.")
 
     async def execute_code(self, code_text: str, language: str, stdin_text: Optional[str] = None, zip_path: Optional[str] = None) -> Dict[str, Any]:
         """
-        Executes code inside a sandbox or simulation.
+        Executes code inside a real isolated sandbox.
         Returns:
             Dict containing:
             - stdout: standard output from execution
@@ -42,8 +42,14 @@ class CodeSandboxService:
             - durationMs: time taken in milliseconds
             - isSimulated: boolean flag
         """
-        if settings.DOCUMENT_DEMO or not settings.CODE_EXECUTION_ENABLED:
+        from app.services.demo_limits import code_execution_available
+        if not code_execution_available():
             raise RuntimeError("Code execution is paused on this deployment.")
+        if settings.CODE_RUNNER_URL:
+            if zip_path:
+                raise RuntimeError("ZIP projects are paused on the demo runner.")
+            from app.services.remote_code_runner import execute_tests
+            return (await execute_tests(code_text, language, [stdin_text or ""]))[0]
         lang = language.lower()
         if lang not in ['python', 'cpp', 'java', 'c++']:
             return {
@@ -51,7 +57,7 @@ class CodeSandboxService:
                 "stderr": f"Unsupported language: {language}",
                 "exitCode": 1,
                 "durationMs": 0,
-                "isSimulated": True
+                "isSimulated": False
             }
 
         # Normalize C++ language string
@@ -65,10 +71,21 @@ class CodeSandboxService:
             try:
                 return await self._run_in_docker(code_text, lang, stdin_text, zip_path)
             except Exception as e:
-                logger.error(f"Docker execution failed: {e}. Falling back to simulation.")
+                raise RuntimeError("Docker execution failed; no simulated result used.") from e
 
-        # Default secure local simulation
-        return self._run_code_simulation(code_text, lang, stdin_text)
+        # Fail closed when a real runner is unavailable
+        raise RuntimeError("No real code runner is available; no simulated result used.")
+
+    async def execute_tests(self, code_text: str, language: str, inputs: list[str], zip_path: Optional[str] = None) -> list[dict]:
+        from app.services.demo_limits import code_execution_available
+        if not code_execution_available():
+            raise RuntimeError("Code execution is paused on this deployment.")
+        if settings.CODE_RUNNER_URL:
+            if zip_path:
+                raise RuntimeError("ZIP projects are paused on the demo runner.")
+            from app.services.remote_code_runner import execute_tests
+            return await execute_tests(code_text, language, inputs)
+        return [await self.execute_code(code_text, language, stdin_text=i, zip_path=zip_path) for i in inputs]
 
     async def _run_in_docker(self, code_text: str, lang: str, stdin_text: Optional[str] = None, zip_path: Optional[str] = None) -> Dict[str, Any]:
         # Ephemeral file storage
@@ -158,70 +175,6 @@ class CodeSandboxService:
             except Exception as e:
                 logger.error(f"Error executing in Docker container: {e}")
                 raise e
-
-    def _run_code_simulation(self, code_text: str, lang: str, stdin_text: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Performs static check logic and constructs authentic execution traces without running code.
-        """
-        duration = 45 # simulated execution time in ms
-        stdout = ""
-        stderr = ""
-        exit_code = 0
-        
-        # Check basic code patterns to simulate accurate responses
-        lines = code_text.split('\n')
-        
-        # Look for obvious syntax gaps
-        open_brackets = code_text.count('{')
-        close_brackets = code_text.count('}')
-        
-        if lang in ['cpp', 'java'] and open_brackets != close_brackets:
-            stderr = "Compiler Error: Syntax error - unmatched brackets '{' and '}' detected."
-            exit_code = 1
-            return {
-                "stdout": "",
-                "stderr": stderr,
-                "exitCode": exit_code,
-                "durationMs": duration,
-                "isSimulated": True
-            }
-
-        # Java main class check
-        if lang == 'java' and 'public class' not in code_text and 'class Main' not in code_text:
-            stderr = "Compiler Error: Class Main is public, should be declared in a file named Main.java"
-            exit_code = 1
-            return {
-                "stdout": "",
-                "stderr": stderr,
-                "exitCode": exit_code,
-                "durationMs": duration,
-                "isSimulated": True
-            }
-
-        # Analyze student code intent to compile a custom simulated stdout
-        if "fibonacci" in code_text.lower() or "fib" in code_text.lower():
-            stdout = "Fibonacci Sequence up to 10 elements:\n0 1 1 2 3 5 8 13 21 34\n"
-        elif "bubble" in code_text.lower() or "sort" in code_text.lower():
-            stdout = "Original array: [64, 34, 25, 12, 22, 11, 90]\nSorted array: [11, 12, 22, 25, 34, 64, 90]\n"
-        elif "hello" in code_text.lower():
-            stdout = "Hello, World!\n"
-        else:
-            # General generic coding output
-            stdout = "Execution successful.\nCompilation units loaded: 1\nRun time diagnostics: Normal\nReturn code: 0\n"
-
-        # Check for division by zero risk
-        if "/ 0" in code_text or "/0" in code_text:
-            stderr = "Runtime Exception: ArithmeticException: / by zero"
-            stdout = ""
-            exit_code = 136 # typical crash code
-
-        return {
-            "stdout": stdout,
-            "stderr": stderr,
-            "exitCode": exit_code,
-            "durationMs": duration,
-            "isSimulated": True
-        }
 
 # Initialize global instance
 code_sandbox_service = CodeSandboxService()

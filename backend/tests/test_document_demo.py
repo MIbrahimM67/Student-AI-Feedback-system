@@ -73,7 +73,7 @@ def test_pdf_page_limit_and_docx_expansion_limit():
 async def test_sandbox_cannot_fall_back_to_simulation(monkeypatch):
     from app.services.code_sandbox_service import CodeSandboxService
     service = CodeSandboxService()
-    monkeypatch.setattr(service, "_run_code_simulation", lambda *args: pytest.fail("Simulation executed"))
+    assert not hasattr(service, "_run_code_simulation")
     with pytest.raises(RuntimeError, match="paused"):
         await service.execute_code("print('hello')", "python")
 

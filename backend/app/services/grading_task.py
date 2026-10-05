@@ -17,6 +17,7 @@ from collections import Counter
 from datetime import datetime, timezone
 
 from app.config import settings
+from app.services.demo_limits import code_execution_available
 from app.db.postgres import get_conn
 from app.db.vectors import internal_similarity_search, upsert_submission_chunks
 from app.services.llm_provider import build_llm_from_env
@@ -71,7 +72,7 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
             logger.error("Submission %s not found", submission_id)
             return
 
-        if sub["type"] == "coding" and (settings.DOCUMENT_DEMO or not settings.CODE_EXECUTION_ENABLED):
+        if sub["type"] == "coding" and not code_execution_available():
             await conn.execute("UPDATE submissions SET status='failed', progress_message='Code grading is paused.' WHERE id=$1", submission_id)
             return
 
@@ -249,7 +250,7 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
 
     # ---- Code sandbox -------------------------------------------------------
     code_execution_result = None
-    if sub["type"] == "coding" and settings.CODE_EXECUTION_ENABLED and not settings.DOCUMENT_DEMO:
+    if sub["type"] == "coding" and code_execution_available():
         try:
             await progress("code_checks", 40, "Generating and running code checks before grading.")
             from app.services.code_sandbox_service import code_sandbox_service
@@ -260,58 +261,65 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
                 lang = detected_lang
             else:
                 ext = os.path.splitext(sub["file_name"] or ".py")[1].lower()
-                lang = "python" if ext == ".py" else ("cpp" if ext in (".cpp", ".cc") else "java")
+                lang = "java" if ext == ".java" else ("cpp" if ext in (".cpp", ".cc", ".cxx") else "python")
             
             if lang == "web":
                 code_execution_result = "Status: SKIPPED\nWeb assignment detected (HTML/CSS/JS). Relying on AI static analysis instead of terminal sandbox."
             else:
                 # 1. Generate autonomous test cases via LLM
                 llm = build_llm_from_env()
-            is_batch = sub["mode"] == "batch"
-            test_gen_prompt = utility_test_case_generator_user(extracted_text, sub.get("stdin_text", ""), is_batch)
+                is_batch = sub["mode"] == "batch"
+                test_gen_prompt = utility_test_case_generator_user(extracted_text, sub.get("stdin_text", ""), is_batch)
             
-            resp = await llm.chat(
-                messages=[ChatMessage(role="user", content=test_gen_prompt)],
-                model=settings.GRADIENT_MODEL_UTILITY,
-                temperature=0.4,
-                max_tokens=800,
-            )
+                resp = await llm.chat(
+                    messages=[ChatMessage(role="user", content=test_gen_prompt)],
+                    model=settings.GRADIENT_MODEL_UTILITY,
+                    temperature=0.4,
+                    max_tokens=800,
+                )
             
-            # Safely parse JSON from LLM response
-            json_str = resp.text.strip()
-            if json_str.startswith("```json"):
-                json_str = json_str[7:-3]
-            elif json_str.startswith("```"):
-                json_str = json_str[3:-3]
+                # Safely parse JSON from LLM response
+                json_str = resp.text.strip()
+                if json_str.startswith("```json"):
+                    json_str = json_str[7:-3]
+                elif json_str.startswith("```"):
+                    json_str = json_str[3:-3]
                 
-            test_cases = [{"name": "Default Test", "input": sub.get("stdin_text", "")}]
-            try:
-                parsed = json.loads(json_str)
-                if "test_cases" in parsed and isinstance(parsed["test_cases"], list) and len(parsed["test_cases"]) > 0:
-                    test_cases = parsed["test_cases"]
-            except Exception as e:
-                logger.warning("Failed to parse test cases from LLM: %s", e)
+                test_cases = [{"name": "Default Test", "input": sub.get("stdin_text", "")}]
+                try:
+                    parsed = json.loads(json_str)
+                    if "test_cases" in parsed and isinstance(parsed["test_cases"], list) and len(parsed["test_cases"]) > 0:
+                        test_cases = parsed["test_cases"]
+                except Exception as e:
+                    logger.warning("Failed to parse test cases from LLM: %s", e)
             
-            # 2. Execute test cases sequentially
-            if code_execution_result is None:  # Ensure we didn't skip it (like web)
-                execution_results = []
-                for tc in test_cases:
-                    tc_name = tc.get("name", "Test Case")
-                    tc_input = tc.get("input", "")
-                    result = await code_sandbox_service.execute_code(extracted_text, lang, stdin_text=tc_input, zip_path=tmp_zip_path)
+                # 2. Execute test cases sequentially
+                if code_execution_result is None:  # Ensure we didn't skip it (like web)
+                    execution_results = []
+                    test_cases = [tc for tc in test_cases if isinstance(tc, dict)][:5]
+                    if not test_cases:
+                        raise RuntimeError("No usable code checks were generated")
+                    inputs = [str(tc.get("input", ""))[:8000] for tc in test_cases]
+                    results = await code_sandbox_service.execute_tests(extracted_text, lang, inputs, zip_path=tmp_zip_path)
+                    for tc, result in zip(test_cases, results):
+                        tc_name = tc.get("name", "Test Case")
+                        tc_input = tc.get("input", "")
                     
-                    # Apply user requested formatting: Passed/Failed with capped output
-                    if result.get("exitCode") == 0:
-                        out_str = f"=== Test Case: {tc_name} ===\nStatus: PASSED\nOutput:\n{result.get('stdout', '').strip()[:500]}"
-                    else:
-                        out_str = f"=== Test Case: {tc_name} ===\nStatus: FAILED\nErrors/Reasons:\n{result.get('stderr', '').strip()[:500]}"
+                        # Apply user requested formatting: Passed/Failed with capped output
+                        if result.get("exitCode") == 0:
+                            out_str = f"=== Test Case: {tc_name} ===\nStatus: EXECUTED (exit code 0; correctness judged against the rubric)\nInput:\n{str(tc_input)[:8000]}\nOutput:\n{result.get('stdout', '').strip()[:4000]}\nStderr:\n{result.get('stderr', '').strip()[:1000]}"
+                        else:
+                            out_str = f"=== Test Case: {tc_name} ===\nStatus: FAILED (exit code {result.get('exitCode')})\nInput:\n{str(tc_input)[:8000]}\nOutput:\n{result.get('stdout', '').strip()[:4000]}\nErrors/Reasons:\n{result.get('stderr', '').strip()[:1000]}"
                     
-                    execution_results.append(out_str)
+                        execution_results.append(out_str)
                     
-                code_execution_result = "\n\n".join(execution_results)
+                    code_execution_result = "\n\n".join(execution_results)
             
         except Exception as e:
             logger.warning("Code sandbox failed: %s", e)
+            await progress("failed", 40, "Real code execution failed. No simulated evidence or grade was generated.")
+            await _mark_failed(org_id, submission_id, batch_id)
+            return
 
     # ---- Build pipeline inputs ----------------------------------------------
     await progress("context_building", 44, "Building the grading context from the assignment, rubric, and evidence.")
@@ -415,6 +423,7 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
             org_id=org_id,
             subject_id=subject_id or str(uuid.uuid4()),
             progress_callback=progress,
+            code_execution_evidence=code_execution_result,
         )
     except Exception as e:
         logger.error("Pipeline failed for submission %s: %s", submission_id, e)

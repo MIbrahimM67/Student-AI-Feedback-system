@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useDemoCodeExecution } from "@/lib/use-demo-capabilities";
 import { useAuth } from "@/context/AuthContext";
 import {
   AlertTriangle,
@@ -17,12 +18,13 @@ import {
 
 export const LandingSection: React.FC = () => {
   const { loginWithGoogle, error, loading } = useAuth();
+  const codeExecution = useDemoCodeExecution();
   const documentDemo = process.env.NEXT_PUBLIC_DOCUMENT_DEMO === "true";
 
   const workflow = [
-    { icon: <FileText className="w-4 h-4" />, label: "Submit", text: documentDemo ? "Text, documents, or scans" : "Text, files, scans, or code" },
+    { icon: <FileText className="w-4 h-4" />, label: "Submit", text: documentDemo && !codeExecution ? "Text, documents, or scans" : "Text, files, scans, or code" },
     { icon: <ScanText className="w-4 h-4" />, label: "Extract", text: "OCR and document parsing" },
-    { icon: documentDemo ? <BookOpen className="w-4 h-4" /> : <Code className="w-4 h-4" />, label: documentDemo ? "Grade" : "Run", text: documentDemo ? "Reference and rubric checks" : "Sandboxed code checks" },
+    { icon: documentDemo && !codeExecution ? <BookOpen className="w-4 h-4" /> : <Code className="w-4 h-4" />, label: documentDemo && !codeExecution ? "Grade" : "Run", text: documentDemo && !codeExecution ? "Reference and rubric checks" : "Sandboxed code checks" },
     { icon: <ShieldCheck className="w-4 h-4" />, label: "Review", text: "Rubrics, warnings, reports" },
   ];
 
@@ -39,7 +41,7 @@ export const LandingSection: React.FC = () => {
           <div className="space-y-8">
             <div className="inline-flex items-center gap-2 border border-[var(--color-rule)] bg-[var(--color-paper-2)] px-3 py-2 text-xs font-semibold text-[var(--color-ink-2)]">
               <Sparkles className="w-4 h-4 text-[var(--color-accent)]" />
-              {documentDemo ? "Document grading demo" : "Academic grading workbench"}
+              {documentDemo ? (codeExecution ? "Document and code grading demo" : "Document grading demo") : "Academic grading workbench"}
             </div>
 
             <div className="space-y-5">
@@ -51,7 +53,7 @@ export const LandingSection: React.FC = () => {
                   ? "Submit documents, process handwritten work, grade against references and rubrics, and publish feedback for students."
                   : "One place to submit assignments, run rubric checks, inspect code execution, process handwritten work, and publish feedback for students."}
               </p>
-              {documentDemo && <p className="text-xs leading-5 text-[var(--color-muted)]">Code execution, knowledge-base search, and plagiarism checks are paused in this demo.</p>}
+              {documentDemo && <p className="text-xs leading-5 text-[var(--color-muted)]">{codeExecution ? "Python, C++ and Java run in an isolated sandbox. ZIP batches, knowledge-base search, and plagiarism checks are paused." : "Code execution, knowledge-base search, and plagiarism checks are paused in this demo."}</p>}
             </div>
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
