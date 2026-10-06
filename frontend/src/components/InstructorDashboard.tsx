@@ -235,15 +235,15 @@ const VerificationForm: React.FC<{ isPending: boolean }> = ({ isPending }) => {
           </span>
           <h3 className="text-2xl font-bold tracking-normal text-[var(--color-paper)]">Classroom grading operations</h3>
           <p className="text-xs text-[oklch(82%_0.012_92)] leading-relaxed">
-            Verification lets faculty create classrooms, attach reference material, and process student submissions in batches.
+            {DOCUMENT_DEMO ? "Verification lets faculty create classrooms and grade individual document and code submissions." : "Verification lets faculty create classrooms, attach reference material, and process student submissions in batches."}
           </p>
         </div>
         <div className="border-t border-[oklch(96%_0.012_92_/_0.14)] my-4" />
         <div className="space-y-4">
           <h4 className="text-[10px] font-extrabold text-[oklch(78%_0.014_92)] uppercase tracking-wider">Available after approval</h4>
           <ul className="space-y-3.5 text-xs text-[oklch(86%_0.012_92)]">
-            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" /> Staged bulk uploads</li>
-            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" /> Cross-submission plagiarism matching</li>
+            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" /> Staged bulk uploads {DOCUMENT_DEMO && <span className="text-[9px] font-bold uppercase text-amber-200">Coming soon</span>}</li>
+            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" /> Cross-submission plagiarism matching {DOCUMENT_DEMO && <span className="text-[9px] font-bold uppercase text-amber-200">Coming soon</span>}</li>
             <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" /> Excel summaries export</li>
             <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" /> Isolated subject classrooms</li>
           </ul>
@@ -268,7 +268,7 @@ const VerifiedDashboard: React.FC = () => {
   useEffect(() => {
     fetchSubjects();
     const hasSeen = localStorage.getItem("hasSeenBatchTutorial");
-    if (!hasSeen) setIsTutorialOpen(true);
+    if (!DOCUMENT_DEMO && !hasSeen) setIsTutorialOpen(true);
   }, []);
 
   const fetchSubjects = async () => {
@@ -711,7 +711,7 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
                     className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:font-medium placeholder:text-slate-400" 
                   />
                 </div>
-                {DOCUMENT_DEMO && <p className="text-xs text-slate-500">Knowledge-base search and plagiarism checks are paused in this document demo.</p>}
+                {DOCUMENT_DEMO && <p className="text-xs text-slate-500">Knowledge-base search and plagiarism checks <span className="ml-1 border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-800">Coming soon</span></p>}
                 {!DOCUMENT_DEMO && <div className="border border-slate-200 bg-slate-50 p-4 space-y-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
@@ -1020,6 +1020,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
 
   const handleSingleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
+    const selectedType = new FormData(e.currentTarget as HTMLFormElement).get("submission_type");
     if(!studentName || !singleFile) return setError("Name and file required.");
     setLoading(true); setError(null); setSuccessMsg(null);
     try {
@@ -1027,7 +1028,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
       fd.append("assignment_id", assignment.id);
       fd.append("subject_id", subject.id);
       fd.append("student_name", studentName);
-      fd.append("type", fileType);
+      fd.append("type", typeof selectedType === "string" ? selectedType : fileType);
       fd.append("file", singleFile);
 
       const token = await auth.currentUser?.getIdToken();
@@ -1184,6 +1185,8 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
 
   const fetchBatchReports = async (id: string) => {
     try {
+      setBatchReports([]);
+      setExpandedReportId(null);
       setReviewingReports(true);
       setBatchId(id);
       const res = await api.get(`/api/instructor/batch/${id}/reports`);
@@ -1293,17 +1296,17 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
            <h3 className="text-xl font-black text-slate-800">{assignment.title}</h3>
            <p className="text-xs text-slate-500 line-clamp-1 max-w-2xl mt-1"><span className="font-bold">Prompt:</span> {assignment.prompt}</p>
         </div>
-        <button onClick={onTutorial} className="text-xs font-bold text-[var(--color-muted)] hover:text-[var(--color-accent)] bg-[var(--color-surface)] border border-[var(--color-rule)] px-3 py-1.5 flex items-center gap-1.5">
+        {!DOCUMENT_DEMO && <button onClick={onTutorial} className="text-xs font-bold text-[var(--color-muted)] hover:text-[var(--color-accent)] bg-[var(--color-surface)] border border-[var(--color-rule)] px-3 py-1.5 flex items-center gap-1.5">
           <HelpCircle className="w-3.5 h-3.5"/> Batch Tutorial
-        </button>
+        </button>}
       </div>
 
       <div className="flex gap-4">
          <button onClick={()=>setUploadMode("single")} className={`flex-1 py-4 border font-bold text-sm transition-all ${uploadMode === "single" ? "border-[var(--color-accent)] bg-blue-50 text-[var(--color-accent)]" : "border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-rule-2)]"}`}>
             Single Submission Upload
          </button>
-         <button disabled={DOCUMENT_DEMO} title={DOCUMENT_DEMO ? "Batch grading is paused in this demo" : undefined} onClick={()=>setUploadMode("batch")} className={`flex-1 py-4 border font-bold text-sm transition-all ${uploadMode === "batch" ? "border-[var(--color-success)] bg-green-50 text-[var(--color-success)]" : "border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-rule-2)]"}`}>
-            {DOCUMENT_DEMO ? "Batch grading paused" : "Classroom Batch (Master ZIP)"}
+         <button disabled={DOCUMENT_DEMO} title={DOCUMENT_DEMO ? "ZIP batch grading is coming soon. Upload one file at a time in this demo." : undefined} onClick={()=>setUploadMode("batch")} className={`flex-1 py-4 border font-bold text-sm transition-all ${uploadMode === "batch" ? "border-[var(--color-success)] bg-green-50 text-[var(--color-success)]" : "border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-rule-2)]"}`}>
+            Classroom Batch (Master ZIP) {DOCUMENT_DEMO && <span className="ml-1 border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-800">Coming soon</span>}
          </button>
          <button onClick={()=>setUploadMode("history")} className={`flex-1 py-4 border font-bold text-sm transition-all ${uploadMode === "history" ? "border-[var(--color-warning)] bg-amber-50 text-[var(--color-warning)]" : "border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-rule-2)]"}`}>
             Grading History
@@ -1491,6 +1494,8 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                               <td className="p-4">
                                  {report.submission_status === 'failed' ? (
                                    <span className="text-xs text-slate-400">—</span>
+                                 ) : DOCUMENT_DEMO || report.ai_overall_confidence == null ? (
+                                   <span className="text-xs text-slate-400">Not measured</span>
                                  ) : (
                                    <div className="flex items-center gap-1.5">
                                      <div className="w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden">
@@ -1510,7 +1515,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                                     {Number(report.plagiarism_similarity_score).toFixed(1)}%
                                   </span>
                                 ) : (
-                                  <span className="text-xs text-slate-400">Pending</span>
+                                  <span className="text-xs text-slate-400">{DOCUMENT_DEMO ? "Coming soon" : "Pending"}</span>
                                 )}
                               </td>
                               <td className="p-4">
@@ -1594,7 +1599,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                                                 <div className="mt-2 text-xl font-black text-slate-900">
                                                   {detail.plagiarism_similarity_score !== null && detail.plagiarism_similarity_score !== undefined
                                                     ? `${Number(detail.plagiarism_similarity_score).toFixed(1)}%`
-                                                    : "Pending"}
+                                                    : DOCUMENT_DEMO ? "Coming soon" : "Pending"}
                                                 </div>
                                                 <div className="mt-1 text-[10px] font-bold text-slate-400 uppercase">Similarity</div>
                                               </div>
@@ -1745,7 +1750,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
               </div>
               <div className="space-y-1.5">
                  <label className="text-[10px] font-extrabold text-slate-500 uppercase">Submission Format</label>
-                 <select value={fileType} onChange={e=>setFileType(e.target.value)} className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none">
+                 <select name="submission_type" value={fileType} onChange={e=>setFileType(e.target.value)} className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none">
                     <option value="text">Digital Document (PDF/TXT/DOCX)</option>
                     <option value="handwritten">Handwritten Scan (OCR)</option>
                     {codeExecution && <option value="coding">Programming Code</option>}
@@ -1923,4 +1928,3 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
     </div>
   );
 };
-

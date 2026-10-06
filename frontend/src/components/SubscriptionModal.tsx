@@ -27,6 +27,9 @@ interface Props {
   onClose: () => void;
 }
 
+const DOCUMENT_DEMO = process.env.NEXT_PUBLIC_DOCUMENT_DEMO === "true";
+const ComingSoon = () => <span className="ml-1.5 inline-block border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800">Coming soon</span>;
+
 export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
   const { user, refreshProfile } = useAuth();
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
@@ -187,7 +190,7 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                 </span>
               </div>
               <p className="text-[11px] text-[oklch(78%_0.014_92)]">
-                Upgrade verified faculty accounts for unlimited batch evaluations, Deep Vision OCR, and similarity checks
+                {DOCUMENT_DEMO ? "Demo features are available within upload limits. Coming soon features stay unavailable when a plan is activated." : "Upgrade verified faculty accounts for batch evaluations, Deep Vision OCR, and similarity checks"}
               </p>
             </div>
           </div>
@@ -334,7 +337,7 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                 <div className="border-t border-[var(--color-rule)] pt-4 space-y-2.5">
                   <div className="text-[10px] font-extrabold uppercase tracking-wider text-[var(--color-muted)]">Included Features:</div>
                   {[
-                    "5 Submissions per month",
+                    DOCUMENT_DEMO ? "Single uploads: up to 5 MB and 20 PDF pages" : "5 Submissions per month",
                     "Single file uploads (.pdf, .docx, code)",
                     "Basic rubric evaluation",
                     "Standard OCR processing",
@@ -406,17 +409,18 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                 <div className="border-t border-[var(--color-rule)] pt-4 space-y-2.5">
                   <div className="text-[10px] font-extrabold uppercase tracking-wider text-[var(--color-accent)]">Everything in Free plus:</div>
                   {[
-                    "Unlimited submissions & batch uploads (up to 30 files)",
-                    "3-Stage Evaluation Pipeline (Specialist + Judge + Senior)",
-                    "Deep Vision Multi-Modal OCR for diagrams & math",
-                    "Internet Web Search & Cross-Batch Plagiarism matching",
-                    "Subject Knowledge Graph & Reference indexing",
-                    "Publication-Grade PDF Reports & Excel Gradebooks",
-                    "Live student name extraction & inline editing",
+                    { text: "Unlimited submissions & batch uploads (up to 30 files)", future: DOCUMENT_DEMO },
+                    { text: "3-Stage Evaluation Pipeline (Specialist + Judge + Senior)", future: false },
+                    { text: "Deep Vision Multi-Modal OCR for diagrams & math", future: false },
+                    { text: "Internet Web Search & Cross-Batch Plagiarism matching", future: DOCUMENT_DEMO },
+                    { text: "Subject Knowledge Graph & Reference indexing", future: DOCUMENT_DEMO },
+                    { text: "PDF Reports & Excel Gradebooks", future: false },
+                    { text: "Automatic student name extraction", future: DOCUMENT_DEMO },
+                    { text: "Inline student name editing", future: false },
                   ].map((feat, idx) => (
                     <div key={idx} className="flex items-start gap-2 text-xs font-medium text-[var(--color-ink)]">
                       <CheckCircle2 className="w-3.5 h-3.5 text-[var(--color-accent)] shrink-0 mt-0.5" />
-                      <span>{feat}</span>
+                      <span>{feat.text}{feat.future && <ComingSoon />}</span>
                     </div>
                   ))}
                 </div>
@@ -462,7 +466,7 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                 </div>
 
                 <div>
-                  <h4 className="text-xl font-black text-[var(--color-ink)]">Institution</h4>
+                  <h4 className="text-xl font-black text-[var(--color-ink)]">Institution <ComingSoon /></h4>
                   <p className="text-xs text-[var(--color-muted)] mt-1">Campus-wide multi-instructor grading platform</p>
                 </div>
 
@@ -480,16 +484,16 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                 <div className="border-t border-[var(--color-rule)] pt-4 space-y-2.5">
                   <div className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700">Enterprise features:</div>
                   {[
-                    "Everything in Pro Instructor plan",
-                    "Multi-instructor shared department workspace",
-                    "Dedicated GPU inference queues for high speed",
-                    "Centralized faculty verification & audit trails",
-                    "Custom LMS integrations & webhooks",
-                    "Dedicated SLA & technical pairing",
+                    { text: "Everything in Pro Instructor plan", future: false },
+                    { text: "Multi-instructor shared department workspace", future: true },
+                    { text: "Dedicated GPU inference queues for high speed", future: true },
+                    { text: "Centralized faculty verification & audit trails", future: false },
+                    { text: "Custom LMS integrations & webhooks", future: true },
+                    { text: "Dedicated SLA & technical pairing", future: true },
                   ].map((feat, idx) => (
                     <div key={idx} className="flex items-start gap-2 text-xs text-[var(--color-ink-2)]">
                       <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                      <span>{feat}</span>
+                      <span>{feat.text}{feat.future && <ComingSoon />}</span>
                     </div>
                   ))}
                 </div>
