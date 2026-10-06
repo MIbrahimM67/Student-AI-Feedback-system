@@ -235,6 +235,20 @@ async def test_storage_survives_pool_restart_and_enforces_tenants(db):
 
 
 @pytest.mark.asyncio
+async def test_billing_plans_load_with_tenant_context(db):
+    _, org = db
+    from app.api.billing_routes import _get_current_user, get_plans_and_status
+    user = await _get_current_user("tester")
+    assert user["org_id"] == org
+    plans = await get_plans_and_status(user)
+    assert plans["subscription"]["uid"] == "tester"
+    assert plans["subscription"]["current_plan"] == "free"
+    with pytest.raises(HTTPException) as exc:
+        await _get_current_user("nonexistent-user")
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_source_upload_is_stored_from_student_and_instructor_routes(db, monkeypatch):
     owner, org = db
     from app.main import app

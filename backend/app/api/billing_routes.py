@@ -39,6 +39,10 @@ async def _get_verified_uid(authorization: Annotated[str, Header()]) -> str:
 
 async def _get_current_user(uid: Annotated[str, Depends(_get_verified_uid)]) -> dict:
     async with get_conn() as conn:
+        org_id = await conn.fetchval("SELECT get_user_org_id($1)", uid)
+    if not org_id:
+        raise HTTPException(404, "User profile not found.")
+    async with get_conn(str(org_id)) as conn:
         row = await conn.fetchrow(
             """
             SELECT u.*, o.name as org_name
@@ -238,4 +242,3 @@ async def sandbox_upgrade(
         plan_id=body.plan_id
     )
     return result
-
