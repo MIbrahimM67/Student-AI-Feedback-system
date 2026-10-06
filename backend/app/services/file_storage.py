@@ -15,11 +15,11 @@ from app.services.demo_limits import validate_document
 PREFIX = "/api/files/"
 
 
-async def save_file(content: bytes, blob_name: str, *, org_id, owner_uid: str) -> str:
+async def save_file(content: bytes, blob_name: str, *, org_id, owner_uid: str, kind: str = "text") -> str:
     if not settings.DOCUMENT_DEMO:
         return local_storage.save_file(content, blob_name)
     filename = Path(blob_name).name
-    validate_document(content, filename)
+    validate_document(content, filename, kind=kind)
     file_id = uuid.uuid4()
     async with get_conn(str(org_id)) as conn:
         # Global budget row serializes concurrent uploads; files themselves enforce RLS.
