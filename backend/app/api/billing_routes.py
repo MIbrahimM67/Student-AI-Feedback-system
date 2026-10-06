@@ -15,7 +15,7 @@ from typing import Optional, Literal, Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from pydantic import BaseModel
 
-from app.auth.firebase import verify_id_token
+from app.auth.firebase import DemoAccessDenied, verify_id_token
 from app.db.postgres import get_conn
 from app.services.stripe_service import stripe_service, PLANS
 
@@ -31,6 +31,8 @@ async def _get_verified_uid(authorization: Annotated[str, Header()]) -> str:
     token = authorization.removeprefix("Bearer ")
     try:
         return verify_id_token(token)["uid"]
+    except DemoAccessDenied as e:
+        raise HTTPException(403, str(e)) from e
     except Exception as e:
         raise HTTPException(401, f"Invalid token: {e}") from e
 
@@ -236,3 +238,4 @@ async def sandbox_upgrade(
         plan_id=body.plan_id
     )
     return result
+

@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 import asyncpg
 
-from app.auth.firebase import verify_id_token
+from app.auth.firebase import DemoAccessDenied, verify_id_token
 from app.db.postgres import get_conn
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,8 @@ async def _get_verified_uid(authorization: Annotated[str, Header()]) -> str:
     try:
         claims = verify_id_token(token)
         return claims["uid"]
+    except DemoAccessDenied as e:
+        raise HTTPException(403, str(e)) from e
     except Exception as e:
         raise HTTPException(401, f"Invalid token: {e}") from e
 
@@ -375,4 +377,5 @@ async def auth_redeem_code(
         "message": "🎉 Promo code applied! Pro status is now active.",
         "pro_status": "active"
     }
+
 
