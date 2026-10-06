@@ -1020,6 +1020,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
 
   const handleSingleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
+    const selectedType = new FormData(e.currentTarget as HTMLFormElement).get("submission_type");
     if(!studentName || !singleFile) return setError("Name and file required.");
     setLoading(true); setError(null); setSuccessMsg(null);
     try {
@@ -1027,7 +1028,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
       fd.append("assignment_id", assignment.id);
       fd.append("subject_id", subject.id);
       fd.append("student_name", studentName);
-      fd.append("type", fileType);
+      fd.append("type", typeof selectedType === "string" ? selectedType : fileType);
       fd.append("file", singleFile);
 
       const token = await auth.currentUser?.getIdToken();
@@ -1493,6 +1494,8 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                               <td className="p-4">
                                  {report.submission_status === 'failed' ? (
                                    <span className="text-xs text-slate-400">—</span>
+                                 ) : DOCUMENT_DEMO || report.ai_overall_confidence == null ? (
+                                   <span className="text-xs text-slate-400">Not measured</span>
                                  ) : (
                                    <div className="flex items-center gap-1.5">
                                      <div className="w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden">
@@ -1747,7 +1750,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
               </div>
               <div className="space-y-1.5">
                  <label className="text-[10px] font-extrabold text-slate-500 uppercase">Submission Format</label>
-                 <select value={fileType} onChange={e=>setFileType(e.target.value)} className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none">
+                 <select name="submission_type" value={fileType} onChange={e=>setFileType(e.target.value)} className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none">
                     <option value="text">Digital Document (PDF/TXT/DOCX)</option>
                     <option value="handwritten">Handwritten Scan (OCR)</option>
                     {codeExecution && <option value="coding">Programming Code</option>}

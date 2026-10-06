@@ -475,9 +475,8 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
         "integrity_report": integrity_report,
     }
     
-    # The new pipeline doesn't output confidence (which was mostly fake anyway) or status directly.
-    # We map score to a binary 'needs_review' based on threshold or just default to published.
-    avg_confidence = 0.9 
+    # This pipeline does not measure confidence. Do not invent a percentage.
+    avg_confidence = None
     ai_status = "needs_review"
     needs_review = ai_status == "needs_review"
 

@@ -164,6 +164,12 @@ class ReportService:
         f_name = _clean_text(file_name or report_data.get("fileName") or "submission_file")
         a_title = _clean_text(assignment_title or report_data.get("assignmentTitle") or "Assignment Submission")
         format_display = _clean_text(assignment_type.capitalize())
+        similarity_score = report_data.get("plagiarism_similarity_score", report_data.get("plagiarismScore"))
+        integrity_display = (
+            f"{similarity_score}% Similarity" if similarity_score is not None
+            else "Not checked (coming soon)" if settings and settings.DOCUMENT_DEMO
+            else "Not checked"
+        )
 
         meta_rows = [
             [
@@ -180,7 +186,7 @@ class ReportService:
             ],
             [
                 Paragraph(f"<b>Format:</b> {format_display} • <b>Tier:</b> {_clean_text(str(report_data.get('tier_used', 'agentic')).replace('_', ' ').title())}", body_style),
-                Paragraph(f"<b>Integrity:</b> {_clean_text(str(report_data.get('plagiarism_similarity_score', report_data.get('plagiarismScore', 0.0))))}% Similarity", body_style),
+                Paragraph(f"<b>Integrity:</b> {_clean_text(integrity_display)}", body_style),
             ],
         ]
 

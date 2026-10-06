@@ -16,6 +16,22 @@ from app.services import remote_code_runner, demo_keepalive
 from app.services.demo_limits import code_execution_available, check_submission_type, validate_document
 
 
+@pytest.mark.parametrize("score", [None, 0.0, 42.0])
+def test_export_does_not_turn_missing_integrity_check_into_zero(score, monkeypatch):
+    import fitz
+    from app.services.report_service import report_service
+    monkeypatch.setattr(settings, "DOCUMENT_DEMO", True)
+    payload = {"score": 5, "max_score": 10, "summary": "Synthetic report", "plagiarism_similarity_score": score}
+    pdf = report_service.generate_student_pdf_bytes(payload, "Demo Student")
+    with fitz.open(stream=pdf, filetype="pdf") as doc:
+        text = " ".join(page.get_text() for page in doc)
+    if score is None:
+        assert "Not checked (coming soon)" in text
+        assert "0.0% Similarity" not in text
+    else:
+        assert f"{score}% Similarity" in text
+
+
 @pytest.fixture
 def enabled(monkeypatch):
     monkeypatch.setattr(settings, "DOCUMENT_DEMO", True)
