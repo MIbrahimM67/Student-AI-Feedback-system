@@ -527,12 +527,12 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
           <div className="border border-[var(--color-rule)] bg-[var(--color-paper)] p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[var(--color-muted)]">
             <div className="flex items-center gap-2 font-medium">
               <Shield className="w-4 h-4 text-emerald-600" />
-              <span>Payments encrypted with 256-bit SSL via Stripe. No credit card details stored on GradeWise servers.</span>
+              <span>{isStripeLive ? "Payments handled by Stripe. No credit card details stored on GradeWise servers." : "Online payments are coming soon. Demo plan activation does not collect payment details."}</span>
             </div>
             <div className="flex items-center gap-4 text-[11px]">
-              <span className="font-mono">Stripe API Live</span>
+              <span className="font-mono">{isStripeLive ? "Stripe connected" : "Payments — Coming soon"}</span>
               <span>•</span>
-              <span>Cancel Anytime</span>
+              <span>{isStripeLive ? "Cancel Anytime" : "Demo access"}</span>
             </div>
           </div>
 

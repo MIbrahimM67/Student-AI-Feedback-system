@@ -235,6 +235,40 @@ async def test_storage_survives_pool_restart_and_enforces_tenants(db):
 
 
 @pytest.mark.asyncio
+async def test_source_upload_is_stored_from_student_and_instructor_routes(db, monkeypatch):
+    owner, org = db
+    from app.main import app
+    from app.api.student_routes import _get_student_profile
+    from app.api.instructor_routes import _get_instructor
+    monkeypatch.setattr(settings, "CODE_EXECUTION_ENABLED", True)
+    monkeypatch.setattr(settings, "CODE_RUNNER_URL", "https://example.test/executor")
+    subject, assignment = uuid.uuid4(), uuid.uuid4()
+    await owner.execute("UPDATE users SET role='instructor' WHERE uid='tester'")
+    await owner.execute("INSERT INTO subjects(id,org_id,instructor_id,title) VALUES ($1,$2,'tester','Code course')", subject, org)
+    await owner.execute("INSERT INTO assignments(id,org_id,subject_id,title) VALUES ($1,$2,$3,'Code assignment')", assignment, org, subject)
+    profile = {"uid": "tester", "org_id": org, "role": "instructor"}
+    app.dependency_overrides[_get_student_profile] = lambda: profile
+    app.dependency_overrides[_get_instructor] = lambda: profile
+    code = b"print(42)\n"
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            routes = [
+                ("/api/student/submissions", {"type": "coding", "code_language": "python"}),
+                ("/api/instructor/single-upload", {"type": "coding", "assignment_id": str(assignment), "subject_id": str(subject), "student_name": "Demo code"}),
+            ]
+            for route, data in routes:
+                response = await client.post(route, data=data, files={"file": ("solution.py", code, "text/plain")})
+                assert response.status_code == 202, response.text
+                blocked = await client.post(route, data={**data, "type": "text"}, files={"file": ("solution.py", code, "text/plain")})
+                assert blocked.status_code == 415, blocked.text
+        stored = await owner.fetch("SELECT content FROM demo_files ORDER BY created_at")
+        assert len(stored) == 2
+        assert all(bytes(row["content"]) == code for row in stored)
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
 async def test_student_document_grades_and_saves_real_schema_report(db, monkeypatch):
     _, org = db
     from app.main import app

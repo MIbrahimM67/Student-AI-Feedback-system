@@ -118,7 +118,7 @@ async def create_submission(
         blob_name = f"submissions/{uid}/{submission_id}_{file_name}"
 
         try:
-            file_url = await file_storage.save_file(content, blob_name, org_id=org_id, owner_uid=uid)
+            file_url = await file_storage.save_file(content, blob_name, org_id=org_id, owner_uid=uid, kind=type)
         except HTTPException:
             raise
         except Exception as e:
@@ -469,5 +469,4 @@ async def get_my_application(user: dict = Depends(_get_student_profile)):
         return {"application": None}
 
     return {"application": dict(row)}
-
 

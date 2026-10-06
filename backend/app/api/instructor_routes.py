@@ -546,7 +546,7 @@ async def single_upload(
         
     blob_name = f"submissions/{org_id}/{assignment_id}/{sub_id}_{file.filename}"
     try:
-        file_url = await file_storage.save_file(content, blob_name, org_id=org_id, owner_uid=uid)
+        file_url = await file_storage.save_file(content, blob_name, org_id=org_id, owner_uid=uid, kind=type)
     except HTTPException:
         raise
     except Exception as e:
