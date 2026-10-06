@@ -393,16 +393,13 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
         ref_path_for_pipeline = None
         pipeline_cleanup = []
 
-        if sub["type"] == "coding" and "tmp_path" in locals() and tmp_path and os.path.exists(tmp_path):
-            sub_path_for_pipeline = tmp_path
-        else:
-            # Text submissions and visual submissions both enter the agentic
-            # grader as text evidence. For visual files, extracted_text is the
-            # vision model's structured analysis of the diagram/design image.
-            with tempfile.NamedTemporaryFile(dir=work_dir, mode='w', delete=False, suffix=".txt", encoding='utf-8') as f:
-                f.write(extracted_text)
-                sub_path_for_pipeline = f.name
-                pipeline_cleanup.append(f.name)
+        # All extracted evidence enters the document grader as UTF-8 text.
+        # Source files retain their original extension for execution, while
+        # ingestion receives a supported .txt file with identical source text.
+        with tempfile.NamedTemporaryFile(dir=work_dir, mode='w', delete=False, suffix=".txt", encoding='utf-8') as f:
+            f.write(extracted_text)
+            sub_path_for_pipeline = f.name
+            pipeline_cleanup.append(f.name)
 
         if reference_text:
             with tempfile.NamedTemporaryFile(dir=work_dir, mode='w', delete=False, suffix=".txt", encoding='utf-8') as f:

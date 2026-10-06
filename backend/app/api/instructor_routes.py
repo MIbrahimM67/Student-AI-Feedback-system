@@ -918,8 +918,12 @@ async def get_batch(batch_id: str, user: dict = Depends(_get_instructor)):
         data["progress_message"] = active["progress_message"] or "Waiting for the grading worker to start."
         data["progress_updated_at"] = active["progress_updated_at"]
     elif data.get("total_files"):
-        data["active_stage"] = "completed"
-        data["progress_message"] = "All submissions have completed AI processing."
+        failed = data.get("failed_count", 0)
+        data["active_stage"] = "failed" if failed else "completed"
+        data["progress_message"] = (
+            f"Grading finished with {failed} failed submission(s). Upload those files again to retry."
+            if failed else "All submissions have completed AI processing."
+        )
         data["progress_percent"] = 100
     else:
         data["active_stage"] = "uploaded"
