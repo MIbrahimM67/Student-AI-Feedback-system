@@ -1258,6 +1258,10 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
     (((gradingProgress?.processed_files || 0) + (gradingProgress?.needs_review_count || 0)) / Math.max(1, gradingProgress?.total_files || 1)) * 100
   )));
   const activeStage = gradingProgress?.active_stage || "queued";
+  const gradedReady = gradingProgress?.graded_count ?? Math.max(0,
+    (gradingProgress?.processed_files || 0) + (gradingProgress?.needs_review_count || 0) - (gradingProgress?.failed_count || 0));
+  const gradingFinished = !!gradingProgress && gradingProgress.total_files > 0
+    && gradedReady + (gradingProgress.failed_count || 0) >= gradingProgress.total_files;
   const progressStages = [
     { label: "Evidence", aliases: ["queued", "extracting", "evidence_ready", "reference_extracting"] },
     { label: "Checks", aliases: ["policy_scan", "integrity_checks", "code_checks", "context_building"] },
@@ -1322,7 +1326,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--color-muted)]">Live AI Pipeline</p>
                 <h3 className="mt-1 text-lg font-black text-slate-800">
-                  {((gradingProgress.processed_files + gradingProgress.needs_review_count) >= gradingProgress.total_files) ? "Grading complete" : "Grading in progress"}
+                  {gradingFinished ? (gradingProgress.failed_count ? "Grading finished with errors" : "Grading complete") : "Grading in progress"}
                 </h3>
                 <p className="mt-2 max-w-2xl text-xs font-semibold leading-relaxed text-slate-500">
                   {gradingProgress.progress_message || "Preparing the grading worker."}
@@ -1331,7 +1335,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
               <div className="min-w-[140px] text-left lg:text-right">
                 <div className="text-3xl font-black text-slate-900">{progressPercent}%</div>
                 <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  {(gradingProgress.processed_files || 0) + (gradingProgress.needs_review_count || 0)} of {gradingProgress.total_files || 0} ready
+                  {gradedReady} of {gradingProgress.total_files || 0} ready{gradingProgress.failed_count > 0 && ` · ${gradingProgress.failed_count} failed`}
                 </div>
               </div>
             </div>
@@ -1361,10 +1365,10 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
               })}
             </div>
             
-            {((gradingProgress.processed_files + gradingProgress.needs_review_count) >= gradingProgress.total_files) && (
+            {gradingFinished && (
               <div className="flex gap-4 pt-4 border-t border-slate-100">
                 <button onClick={() => fetchBatchReports(gradingProgress.id)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 transition-colors text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-md">
-                   <ClipboardList className="w-4 h-4"/> Review {gradingProgress.total_files} Graded Submissions
+                   <ClipboardList className="w-4 h-4"/> Review {gradedReady} Graded Submissions
                 </button>
                 <button onClick={()=>setGradingProgress(null)} className="ml-auto text-xs font-bold text-slate-400">Clear</button>
               </div>

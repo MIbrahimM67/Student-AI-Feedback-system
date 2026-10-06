@@ -235,11 +235,29 @@ async def test_storage_survives_pool_restart_and_enforces_tenants(db):
 
 
 @pytest.mark.asyncio
+async def test_billing_plans_load_with_tenant_context(db):
+    _, org = db
+    from app.api.billing_routes import _get_current_user, get_plans_and_status
+    user = await _get_current_user("tester")
+    assert user["org_id"] == org
+    plans = await get_plans_and_status(user)
+    assert plans["subscription"]["uid"] == "tester"
+    assert plans["subscription"]["current_plan"] == "free"
+    with pytest.raises(HTTPException) as exc:
+        await _get_current_user("nonexistent-user")
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_source_upload_is_stored_from_student_and_instructor_routes(db, monkeypatch):
     owner, org = db
     from app.main import app
     from app.api.student_routes import _get_student_profile
     from app.api.instructor_routes import _get_instructor
+    from app.services import grading_task
+    from app.services.code_sandbox_service import code_sandbox_service
+    from app.grading.types import GradingResult, Tier
+    from types import SimpleNamespace
     monkeypatch.setattr(settings, "CODE_EXECUTION_ENABLED", True)
     monkeypatch.setattr(settings, "CODE_RUNNER_URL", "https://example.test/executor")
     subject, assignment = uuid.uuid4(), uuid.uuid4()
@@ -250,6 +268,19 @@ async def test_source_upload_is_stored_from_student_and_instructor_routes(db, mo
     app.dependency_overrides[_get_student_profile] = lambda: profile
     app.dependency_overrides[_get_instructor] = lambda: profile
     code = b"print(42)\n"
+    llm = SimpleNamespace(chat=AsyncMock(return_value=SimpleNamespace(text='{"test_cases":[{"name":"Output","input":""}]}')))
+    monkeypatch.setattr(grading_task, "build_llm_from_env", lambda: llm)
+    monkeypatch.setattr(grading_task.warning_service, "scan_and_enforce", AsyncMock(return_value=(False, None)))
+    monkeypatch.setattr(code_sandbox_service, "execute_tests", AsyncMock(return_value=[{"stdout": "42\n", "stderr": "", "exitCode": 0, "isSimulated": False}]))
+    observed = []
+    async def grade(**kwargs):
+        source = Path(kwargs["submission_path"])
+        assert source.suffix == ".txt"
+        assert source.read_bytes() == code
+        assert "Output:\n42" in kwargs["code_execution_evidence"]
+        observed.append(kwargs["code_execution_evidence"])
+        return GradingResult(10, 10, {"accuracy": 10}, "Correct", Tier.CONTEXT, [])
+    monkeypatch.setattr(grading_task, "route_and_grade", grade)
     try:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
             routes = [
@@ -264,6 +295,11 @@ async def test_source_upload_is_stored_from_student_and_instructor_routes(db, mo
         stored = await owner.fetch("SELECT content FROM demo_files ORDER BY created_at")
         assert len(stored) == 2
         assert all(bytes(row["content"]) == code for row in stored)
+        assert await task_dispatch._drain()
+        assert len(observed) == 2
+        reports = await owner.fetch("SELECT ai_overall_score FROM feedback_reports")
+        assert len(reports) == 2
+        assert all(float(row["ai_overall_score"]) == 10 for row in reports)
     finally:
         app.dependency_overrides.clear()
 

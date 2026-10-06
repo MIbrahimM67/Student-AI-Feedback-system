@@ -66,6 +66,7 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
 
   const currentPlan = subscriptionData?.subscription?.current_plan || (user?.proStatus === "active" ? "pro" : "free");
   const isStripeLive = subscriptionData?.is_stripe_live;
+  const demoBillingPaused = DOCUMENT_DEMO && !isStripeLive;
   const isFacultyApproved = subscriptionData?.is_faculty_approved ?? (user?.role === "admin" || user?.role === "instructor");
   const isEligible = subscriptionData?.is_eligible ?? (user?.role === "admin" || user?.role === "instructor");
 
@@ -245,9 +246,9 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                 <Tag className="w-4 h-4" />
               </div>
               <div>
-                <div className="text-xs font-bold text-slate-800">Faculty Voucher / Promo Code</div>
+                <div className="text-xs font-bold text-slate-800">Faculty Voucher / Promo Code{DOCUMENT_DEMO && <ComingSoon />}</div>
                 <div className="text-[11px] text-slate-500">
-                  Have a promotional access key or institution voucher? Enter your code below.
+                  {DOCUMENT_DEMO ? "Voucher activation is coming soon. Available demo grading features do not require an upgrade." : "Have a promotional access key or institution voucher? Enter your code below."}
                 </div>
               </div>
             </div>
@@ -258,12 +259,12 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                 value={promoCode}
                 onChange={(e) => setPromoCode(e.target.value)}
                 placeholder="Enter promo code"
-                disabled={applyingPromo || !isEligible}
+                disabled={DOCUMENT_DEMO || applyingPromo || !isEligible}
                 className="py-1.5 px-3 border border-slate-300 bg-white text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-600 w-full sm:w-44"
               />
               <button
                 type="submit"
-                disabled={applyingPromo || !promoCode.trim() || !isEligible}
+                disabled={DOCUMENT_DEMO || applyingPromo || !promoCode.trim() || !isEligible}
                 className="py-1.5 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer shrink-0"
               >
                 {applyingPromo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Apply Code"}
@@ -430,20 +431,20 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                 {currentPlan === "pro" ? (
                   <button
                     onClick={handleOpenPortal}
-                    disabled={actionPlan === "portal"}
+                    disabled={demoBillingPaused || actionPlan === "portal"}
                     className="w-full py-2.5 text-xs font-bold border border-[var(--color-ink)] bg-[var(--color-ink)] text-[var(--color-paper)] hover:bg-[var(--color-ink-2)] transition-colors flex items-center justify-center gap-2 cursor-pointer"
                   >
                     {actionPlan === "portal" ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />}
-                    Manage Subscription (Stripe)
+                    {demoBillingPaused ? "Billing — Coming soon" : "Manage Subscription (Stripe)"}
                   </button>
                 ) : (
                   <button
                     onClick={() => handleCheckout("pro")}
-                    disabled={actionPlan === "pro" || !isEligible}
+                    disabled={demoBillingPaused || actionPlan === "pro" || !isEligible}
                     className="w-full py-3 text-xs font-black uppercase tracking-wider border border-[var(--color-ink)] bg-[var(--color-ink)] text-[var(--color-paper)] hover:bg-[var(--color-accent)] hover:border-[var(--color-accent)] disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer"
                   >
                     {actionPlan === "pro" ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
-                    {isStripeLive ? "Subscribe with Stripe" : "Activate Pro Plan"}
+                    {demoBillingPaused ? "Payments — Coming soon" : isStripeLive ? "Subscribe with Stripe" : "Activate Pro Plan"}
                   </button>
                 )}
               </div>
@@ -503,19 +504,19 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                 {currentPlan === "institution" ? (
                   <button
                     onClick={handleOpenPortal}
-                    disabled={actionPlan === "portal"}
+                    disabled={DOCUMENT_DEMO || actionPlan === "portal"}
                     className="w-full py-2.5 text-xs font-bold border border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800 transition-colors flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    Manage Organization Billing
+                    {DOCUMENT_DEMO ? "Institution — Coming soon" : "Manage Organization Billing"}
                   </button>
                 ) : (
                   <button
                     onClick={() => handleCheckout("institution")}
-                    disabled={actionPlan === "institution" || !isEligible}
+                    disabled={DOCUMENT_DEMO || actionPlan === "institution" || !isEligible}
                     className="w-full py-2.5 text-xs font-bold border border-[var(--color-rule)] bg-white text-[var(--color-ink)] hover:bg-slate-50 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 cursor-pointer"
                   >
                     {actionPlan === "institution" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Building2 className="w-4 h-4" />}
-                    Upgrade to Institution
+                    {DOCUMENT_DEMO ? "Institution — Coming soon" : "Upgrade to Institution"}
                   </button>
                 )}
               </div>
@@ -527,7 +528,7 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
           <div className="border border-[var(--color-rule)] bg-[var(--color-paper)] p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[var(--color-muted)]">
             <div className="flex items-center gap-2 font-medium">
               <Shield className="w-4 h-4 text-emerald-600" />
-              <span>{isStripeLive ? "Payments handled by Stripe. No credit card details stored on GradeWise servers." : "Online payments are coming soon. Demo plan activation does not collect payment details."}</span>
+              <span>{isStripeLive ? "Payments handled by Stripe. No credit card details stored on GradeWise servers." : "Online payments are coming soon. Available demo grading features do not require payment."}</span>
             </div>
             <div className="flex items-center gap-4 text-[11px]">
               <span className="font-mono">{isStripeLive ? "Stripe connected" : "Payments — Coming soon"}</span>
