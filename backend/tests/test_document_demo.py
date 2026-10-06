@@ -100,8 +100,42 @@ async def test_demo_auth_requires_allowed_verified_uid(monkeypatch):
     monkeypatch.setattr(firebase, "_firebase_auth", Auth())
     monkeypatch.setattr(settings, "DEMO_ALLOWED_UIDS", "invited")
     assert firebase.verify_id_token("invited")["uid"] == "invited"
-    with pytest.raises(ValueError, match="invite-only"):
+    with pytest.raises(firebase.DemoAccessDenied, match="not invited"):
         firebase.verify_id_token("uninvited")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("module_name", [
+    "auth_routes", "student_routes", "instructor_routes", "admin_routes", "billing_routes",
+])
+async def test_verified_uninvited_account_returns_403_not_invalid_token(monkeypatch, module_name):
+    import importlib
+    from app.auth import firebase
+
+    class Auth:
+        def verify_id_token(self, token):
+            if token == "invalid":
+                raise ValueError("signature verification failed")
+            return {"uid": "signed-in-account"}
+
+    monkeypatch.setattr(firebase, "_firebase_auth", Auth())
+    monkeypatch.setattr(settings, "DEMO_ALLOWED_UIDS", "invited")
+    module = importlib.import_module(f"app.api.{module_name}")
+    with pytest.raises(HTTPException) as denied:
+        await module._get_verified_uid("Bearer valid-test-token")
+    assert denied.value.status_code == 403
+    assert "Google sign-in succeeded" in denied.value.detail
+    assert "signed-in-account" in denied.value.detail
+    assert "valid-test-token" not in denied.value.detail
+    assert "Invalid" not in denied.value.detail
+
+    with pytest.raises(HTTPException) as invalid:
+        await module._get_verified_uid("Bearer invalid")
+    assert invalid.value.status_code == 401
+    assert "signed-in-account" not in invalid.value.detail
+
+    monkeypatch.setattr(settings, "DEMO_ALLOWED_UIDS", "signed-in-account")
+    assert await module._get_verified_uid("Bearer valid-test-token") == "signed-in-account"
 
 
 @pytest.mark.asyncio

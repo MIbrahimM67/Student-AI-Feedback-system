@@ -20,6 +20,16 @@ _firebase_auth = None
 _storage_bucket = None
 
 
+class DemoAccessDenied(PermissionError):
+    """A verified Firebase account that has not been invited to this demo."""
+
+    def __init__(self, uid: str):
+        super().__init__(
+            "Google sign-in succeeded, but this account is not invited to the demo. "
+            f"Account ID: {uid}. Send this ID to the demo owner to request access."
+        )
+
+
 def _init_firebase():
     global _firebase_auth, _storage_bucket
     if _firebase_auth is not None:
@@ -79,14 +89,14 @@ def verify_id_token(token: str) -> dict[str, Any]:
         raise ValueError("Firebase Auth is not initialised.")
     try:
         claims = _firebase_auth.verify_id_token(token)
-        from app.config import settings
-        if settings.DOCUMENT_DEMO:
-            allowed = {uid.strip() for uid in settings.DEMO_ALLOWED_UIDS.split(",") if uid.strip()}
-            if claims.get("uid") not in allowed:
-                raise ValueError("This document demo is invite-only.")
-        return claims
     except Exception as e:
         raise ValueError(f"Invalid Firebase token: {e}") from e
+    from app.config import settings
+    if settings.DOCUMENT_DEMO:
+        allowed = {uid.strip() for uid in settings.DEMO_ALLOWED_UIDS.split(",") if uid.strip()}
+        if claims.get("uid") not in allowed:
+            raise DemoAccessDenied(claims.get("uid", ""))
+    return claims
 
 
 def get_storage_bucket():

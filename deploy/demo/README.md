@@ -22,6 +22,9 @@ still require working credentials and may cost money.
   checking extraction output and a representative graded example.
 - Allowlisted Firebase UIDs only; auth is never mocked. Originals are stored behind
   RLS and authenticated downloads, not exposed via a public static uploads folder.
+  A valid Google account outside the invite list receives HTTP 403 with its own
+  account ID. Add that exact ID to `DEMO_ALLOWED_UIDS` and redeploy to invite it;
+  do not disable token verification or open the demo to all Google accounts.
 - Pending work survives restarts. An interrupted running job is marked failed when
   the next consumer starts; upload it again. We do not silently repeat AI charges.
 - Optional `DEMO_KEEPALIVE_ENABLED=true` sends a lightweight request to the Render

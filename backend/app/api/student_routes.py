@@ -17,7 +17,7 @@ from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile, status
 
-from app.auth.firebase import verify_id_token
+from app.auth.firebase import DemoAccessDenied, verify_id_token
 from app.services import file_storage
 from app.services.demo_limits import check_submission_type, read_upload
 from app.db.postgres import get_conn
@@ -36,6 +36,8 @@ async def _get_verified_uid(authorization: Annotated[str, Header()]) -> str:
     try:
         claims = verify_id_token(token)
         return claims["uid"]
+    except DemoAccessDenied as e:
+        raise HTTPException(403, str(e)) from e
     except Exception as e:
         raise HTTPException(401, f"Invalid token: {e}") from e
 
