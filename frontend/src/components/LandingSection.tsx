@@ -59,10 +59,10 @@ export const LandingSection: React.FC = () => {
           </button>
         </header>
 
-        <main className={styles.hero}>
+        <section className={styles.hero} aria-labelledby="landing-title">
           <div className={styles.heroCopy}>
             <div className={styles.eyebrow}><span /> AI-assisted assessment for educators</div>
-            <h1>Grade a class without losing the <em>evidence.</em></h1>
+            <h1 id="landing-title">Grade a class without losing the <em>evidence.</em></h1>
             <p className={styles.heroIntro}>
               Evaluate documents and code against your rubric, ground feedback in course material,
               review internal similarity, and keep the final decision in the instructor&apos;s hands.
@@ -126,7 +126,7 @@ export const LandingSection: React.FC = () => {
                   </div>
                   <div className={styles.feedbackBar}>
                     <div><Fingerprint size={16} /><span><strong>12% similarity</strong><small>1 passage to review</small></span></div>
-                    <button type="button">Review report <ArrowRight size={14} /></button>
+                    <span className={styles.reportAction}>Review report <ArrowRight size={14} /></span>
                   </div>
                 </div>
               )}
@@ -167,7 +167,7 @@ export const LandingSection: React.FC = () => {
             </div>
             <div className={styles.floatingStatus}><span><CheckCircle2 size={17} /></span><div><strong>Evidence linked</strong><small>Ready for instructor review</small></div></div>
           </div>
-        </main>
+        </section>
 
         <div className={styles.proofStrip} aria-label="GradeWise availability">
           <span>Available in the hosted demo</span>
