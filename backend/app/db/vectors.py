@@ -31,6 +31,7 @@ async def upsert_reference_chunks(
         return 0
 
     async with get_conn(org_id) as conn:
+        await conn.execute("DELETE FROM reference_chunks WHERE reference_id=$1", reference_id)
         await conn.executemany(
             """
             INSERT INTO reference_chunks
@@ -47,7 +48,7 @@ async def upsert_reference_chunks(
                     doc_type,
                     c["chunk_index"],
                     c["text"],
-                    json.dumps(c["embedding"]),       # asyncpg accepts JSON str for vector
+                    json.dumps(c["embedding"]) if c["embedding"] is not None else None,
                     c.get("concept_ids", []),
                 )
                 for c in chunks
@@ -73,7 +74,7 @@ async def similarity_search(
             SELECT id, chunk_index, text, concept_ids,
                    1 - (embedding <=> $2::vector) AS score
             FROM reference_chunks
-            WHERE subject_id = $1
+            WHERE subject_id = $1 AND embedding IS NOT NULL
             ORDER BY embedding <=> $2::vector
             LIMIT $3
             """,
@@ -199,3 +200,4 @@ async def internal_similarity_search(
             subject_id,
         )
     return [dict(r) for r in rows]
+

@@ -25,7 +25,7 @@ async def dispatch(task: str, args: list, *, conn=None) -> None:
         celery_app.send_task(task, args=args)
         return
     if task not in {"tasks.grade_submission", "tasks.index_reference_material"}:
-        raise ValueError("Batch grading is paused in the document demo")
+        raise ValueError("Unsupported background task")
     if conn is None:
         async with get_conn(str(args[1])) as transaction:
             await dispatch(task, args, conn=transaction)
@@ -65,6 +65,15 @@ async def _execute(job) -> None:
     if job["task"] == "tasks.grade_submission":
         from app.services.grading_task import run_grade_submission
         await run_grade_submission(str(job["target_id"]), str(job["org_id"]))
+        async with get_conn(str(job["org_id"])) as conn:
+            sub = await conn.fetchrow("SELECT batch_id,assignment_id FROM submissions WHERE id=$1", job["target_id"])
+            if sub and sub["batch_id"]:
+                remaining = await conn.fetchval("SELECT count(*) FROM submissions WHERE batch_id=$1 AND status IN ('uploaded','processing')", sub["batch_id"])
+                if remaining == 0:
+                    await conn.execute("UPDATE batches SET status=CASE WHEN EXISTS(SELECT 1 FROM submissions WHERE batch_id=$1 AND status IN ('graded','approved','published')) THEN 'completed' ELSE 'failed' END WHERE id=$1", sub["batch_id"])
+        if sub and sub["assignment_id"] and (not sub["batch_id"] or remaining == 0):
+            from app.services.internal_similarity import refresh_internal_similarity
+            await refresh_internal_similarity(str(job["org_id"]), str(sub["assignment_id"]), str(sub["batch_id"]) if sub["batch_id"] else None)
     else:
         from app.services.indexing_service import run_indexing
         await run_indexing(str(job["target_id"]), str(job["org_id"]), str(job["subject_id"]))
@@ -148,3 +157,4 @@ async def stop_worker() -> None:
         with suppress(asyncio.CancelledError):
             await _worker
         _worker = None
+

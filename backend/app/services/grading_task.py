@@ -230,6 +230,9 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
             )
         return
 
+    async with get_conn(org_id) as conn:
+        await conn.execute("UPDATE submissions SET input_text=$2 WHERE id=$1", submission_id, extracted_text)
+
     integrity_report = None
     if assignment_settings and not settings.DOCUMENT_DEMO and (
         assignment_settings.get("internal_similarity_enabled", True)
@@ -356,8 +359,8 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
                 f"Lowest allowed marks: {assignment_dict.get('minimum_marks', 0)}.\n"
                 f"{raw_rubric}"
             )
-        if subject_id and not settings.DOCUMENT_DEMO and assignment_dict.get("use_subject_kb", True):
-            course_weight = int(assignment_dict.get("course_material_weight") or 60)
+        if subject_id and assignment_dict.get("use_subject_kb", True):
+            course_weight = int(assignment_dict.get("course_material_weight", 60))
             ai_weight = int(assignment_dict.get("ai_expertise_weight") or (100 - course_weight))
             await progress(
                 "retrieving_reference",
@@ -914,7 +917,7 @@ async def _retrieve_subject_kb_context(
         )
     except Exception as e:
         logger.warning("Subject KB retrieval failed for subject %s: %s", subject_id, e)
-        return ""
+        raise RuntimeError("Subject knowledge-base retrieval failed. Retry after indexing is ready.") from e
 
     if not chunks:
         return (
@@ -932,6 +935,7 @@ async def _retrieve_subject_kb_context(
         parts.append(
             f"\n--- Retrieved KB chunk {i} | id={chunk.get('id')} | relevance={float(chunk.get('score', 0.0)):.3f} ---"
         )
+        parts.append(f"Source: {chunk.get('title', 'Course reference')} | retrieval: {chunk.get('method', 'semantic')}")
         parts.append(str(chunk.get("text", ""))[:1_600])
 
     return "\n".join(parts)
@@ -954,3 +958,4 @@ async def _mark_failed(org_id: str, submission_id: str, batch_id: str | None) ->
         100,
         "Grading failed before a report could be generated.",
     )
+

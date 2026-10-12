@@ -155,14 +155,16 @@ async def upload_reference(
     Upload a reference material (PDF/DOCX/TXT) and queue chunking + embedding.
     """
     from app.config import settings
-    if settings.DOCUMENT_DEMO:
-        raise HTTPException(503, "Subject knowledge-base indexing is paused in this document demo.")
 
     org_id = user["org_id"]
     uid = user["uid"]
     ref_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
 
+    async with get_conn(str(org_id)) as conn:
+        owned = await conn.fetchval("SELECT id FROM subjects WHERE id=$1 AND instructor_id=$2", subject_id, uid)
+    if not owned:
+        raise HTTPException(404, "Subject not found.")
     content = await read_upload(file)
     file_size_mb = len(content) / (1024 * 1024)
     if file_size_mb > 50:
@@ -202,7 +204,7 @@ async def upload_reference(
     return {
         "reference_id": ref_id,
         "status": "pending",
-        "message": "File uploaded. Indexing started — knowledge base will be ready in ~1 minute.",
+        "message": "File uploaded. Indexing started — knowledge base will be ready when queued indexing completes.",
     }
 
 @router.get("/subjects/{subject_id}/references")
@@ -218,7 +220,7 @@ async def list_references(
     async with get_conn(org_id) as conn:
         rows = await conn.fetch(
             """
-            SELECT id, title, type, index_status, chunk_count, created_at
+            SELECT id, title, type, index_status, index_method, chunk_count, created_at
             FROM reference_materials
             WHERE subject_id = $1::uuid
             ORDER BY created_at DESC
@@ -269,10 +271,10 @@ async def create_assignment(
     title = body.title
     prompt = body.prompt
     rubric = (body.rubric or "").strip()
-    plagiarism = not settings.DOCUMENT_DEMO and bool(body.plagiarism_enabled or body.internal_similarity_enabled or body.internet_plagiarism_enabled)
-    internal_similarity = not settings.DOCUMENT_DEMO and bool(body.internal_similarity_enabled)
+    plagiarism = bool(body.internal_similarity_enabled) or (not settings.DOCUMENT_DEMO and bool(body.internet_plagiarism_enabled))
+    internal_similarity = bool(body.internal_similarity_enabled)
     internet_plagiarism = not settings.DOCUMENT_DEMO and bool(body.internet_plagiarism_enabled)
-    use_subject_kb = not settings.DOCUMENT_DEMO and bool(body.use_subject_kb)
+    use_subject_kb = bool(body.use_subject_kb)
     course_weight = max(0, min(100, int(body.course_material_weight or 0)))
     ai_weight = 100 - course_weight
     total_marks = max(1, int(body.total_marks or 100))
@@ -350,10 +352,10 @@ async def update_assignment(
     rubric = (body.rubric or "").strip()
     total_marks = max(1, int(body.total_marks or 100))
     minimum_marks = max(0, min(total_marks, int(body.minimum_marks or 0)))
-    internal_similarity = not settings.DOCUMENT_DEMO and bool(body.internal_similarity_enabled)
+    internal_similarity = bool(body.internal_similarity_enabled)
     internet_plagiarism = not settings.DOCUMENT_DEMO and bool(body.internet_plagiarism_enabled)
     plagiarism = internal_similarity or internet_plagiarism
-    use_subject_kb = not settings.DOCUMENT_DEMO and bool(body.use_subject_kb)
+    use_subject_kb = bool(body.use_subject_kb)
     course_weight = max(0, min(100, int(body.course_material_weight or 0)))
     ai_weight = 100 - course_weight
 
@@ -630,165 +632,50 @@ async def upload_batch(
     file: UploadFile = File(...),
     user: dict = Depends(_get_instructor),
 ):
-    from app.config import settings
-    org_id = user["org_id"]
-    uid = user["uid"]
+    from app.services.batch_ingestion import stage_archive
+    from pathlib import PurePosixPath
+    org_id = str(user["org_id"])
     check_submission_type(type)
-    if settings.DOCUMENT_DEMO:
-        raise HTTPException(503, "ZIP batches are paused in this demo. Use single document upload.")
-    import traceback
-    import zipfile
-    import shutil
-
-    try:
-        if not file.filename.lower().endswith(".zip"):
-            raise HTTPException(400, "Batch upload must be a single .zip file.")
-
-        batch_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc)
-
-        # Create batch row in 'uploaded' status
+    batch_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    async with get_conn(org_id) as conn:
+        owned = await conn.fetchrow(
+            "SELECT a.id FROM assignments a JOIN subjects s ON s.id=a.subject_id "
+            "WHERE a.id=$1 AND a.subject_id=$2 AND s.instructor_id=$3",
+            assignment_id, subject_id, user["uid"],
+        )
+    if not owned:
+        raise HTTPException(404, "Assignment not found in this classroom.")
+    async with stage_archive(file, type) as entries:
+        staged = []
+        # One transaction owns the files, storage reservation and all submission rows.
         async with get_conn(org_id) as conn:
             await conn.execute(
-                """
-                INSERT INTO batches
-                  (id, org_id, instructor_id, subject_id, assignment_id,
-                   batch_name, plagiarism_enabled, status, total_files, processed_files, created_at)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,'uploaded',0,0,$8)
-                """,
-                batch_id, org_id, uid, subject_id, assignment_id,
-                batch_name or f"Batch {now.strftime('%b %d, %H:%M')}",
-                plagiarism_enabled, now,
+                "INSERT INTO batches(id,org_id,instructor_id,subject_id,assignment_id,batch_name,"
+                "plagiarism_enabled,status,total_files,processed_files,created_at) "
+                "VALUES($1,$2,$3,$4,$5,$6,$7,'uploaded',$8,0,$9)",
+                batch_id, org_id, user["uid"], subject_id, assignment_id,
+                batch_name or f"Batch {now.strftime('%b %d, %H:%M')}", plagiarism_enabled, len(entries), now,
             )
-
-        content = await read_upload(file)
-        if len(content) > settings.INSTRUCTOR_BATCH_MAX_MB * 1024 * 1024:
-            raise HTTPException(413, f"Batch exceeds {settings.INSTRUCTOR_BATCH_MAX_MB}MB limit.")
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
-            tmp.write(content)
-            tmp_zip_path = tmp.name
-
-        staged_students = []
-
-        try:
-            with tempfile.TemporaryDirectory() as extract_dir:
-                with zipfile.ZipFile(tmp_zip_path, 'r') as zip_ref:
-                    zip_ref.extractall(extract_dir)
-
-                # Detect root dir if the zip wraps everything in one master folder
-                root_contents = [c for c in os.listdir(extract_dir) if not c.startswith('__MACOSX') and not c.startswith('.')]
-                if len(root_contents) == 1 and os.path.isdir(os.path.join(extract_dir, root_contents[0])):
-                    base_dir = os.path.join(extract_dir, root_contents[0])
-                else:
-                    base_dir = extract_dir
-
-                # Look for student folders or direct files
-                valid_entries = [
-                    e for e in os.listdir(base_dir)
-                    if not e.startswith('.') and not e.startswith('__MACOSX')
-                ]
-                student_folders = [d for d in valid_entries if os.path.isdir(os.path.join(base_dir, d))]
-                student_files = [
-                    f for f in valid_entries 
-                    if os.path.isfile(os.path.join(base_dir, f)) and f.lower().endswith(
-                        ('.pdf', '.docx', '.doc', '.txt', '.py', '.cpp', '.c', '.java', '.js', '.ts', '.html', '.zip')
-                    )
-                ]
-
-                if not student_folders and not student_files:
-                    raise HTTPException(400, "No student folders or assignment files (.pdf, .docx, .txt, code) found inside the ZIP.")
-
-                # Case 1: Folder per student
-                if student_folders:
-                    if len(student_folders) > settings.INSTRUCTOR_BATCH_MAX_FILES:
-                        raise HTTPException(400, f"Maximum {settings.INSTRUCTOR_BATCH_MAX_FILES} student folders per batch.")
-
-                    for folder_name in student_folders:
-                        student_path = os.path.join(base_dir, folder_name)
-                        student_name = _clean_extracted_student_name(folder_name)
-                        
-                        student_zip_base = os.path.join(extract_dir, f"st_{folder_name}")
-                        shutil.make_archive(student_zip_base, 'zip', student_path)
-                        student_zip_path = f"{student_zip_base}.zip"
-
-                        sub_id = str(uuid.uuid4())
-                        blob_name = f"batches/{org_id}/{batch_id}/{sub_id}_{folder_name}.zip"
-
-                        with open(student_zip_path, "rb") as f:
-                            file_url = await file_storage.save_file(f.read(), blob_name, org_id=org_id, owner_uid=uid)
-
-                        async with get_conn(org_id) as conn:
-                            await conn.execute(
-                                """
-                                INSERT INTO submissions
-                                  (id, org_id, assignment_id, subject_id, batch_id,
-                                   type, mode, stdin_text, file_url, file_name, student_name, status, created_at)
-                                VALUES ($1,$2,$3,$4,$5,$6,'batch',$7,$8,$9,$10,'uploaded',$11)
-                                """,
-                                sub_id, org_id, assignment_id, subject_id, batch_id,
-                                type, stdin_text, file_url, f"{folder_name}.zip", student_name, now,
-                            )
-                        staged_students.append({
-                            "submissionId": sub_id,
-                            "fileName": f"{folder_name}/",
-                            "extractedName": student_name
-                        })
-
-                # Case 2: Individual files in zip
-                else:
-                    if len(student_files) > settings.INSTRUCTOR_BATCH_MAX_FILES:
-                        raise HTTPException(400, f"Maximum {settings.INSTRUCTOR_BATCH_MAX_FILES} files per batch.")
-
-                    for f_name in student_files:
-                        file_path = os.path.join(base_dir, f_name)
-                        student_name = _clean_extracted_student_name(f_name)
-
-                        sub_id = str(uuid.uuid4())
-                        blob_name = f"batches/{org_id}/{batch_id}/{sub_id}_{f_name}"
-
-                        with open(file_path, "rb") as f:
-                            file_url = await file_storage.save_file(f.read(), blob_name, org_id=org_id, owner_uid=uid)
-
-                        async with get_conn(org_id) as conn:
-                            await conn.execute(
-                                """
-                                INSERT INTO submissions
-                                  (id, org_id, assignment_id, subject_id, batch_id,
-                                   type, mode, stdin_text, file_url, file_name, student_name, status, created_at)
-                                VALUES ($1,$2,$3,$4,$5,$6,'batch',$7,$8,$9,$10,'uploaded',$11)
-                                """,
-                                sub_id, org_id, assignment_id, subject_id, batch_id,
-                                type, stdin_text, file_url, f_name, student_name, now,
-                            )
-                        staged_students.append({
-                            "submissionId": sub_id,
-                            "fileName": f_name,
-                            "extractedName": student_name
-                        })
-
-                # Update batch total_files
-                async with get_conn(org_id) as conn:
-                    await conn.execute("UPDATE batches SET total_files = $1 WHERE id = $2", len(staged_students), batch_id)
-
-        finally:
-            if 'tmp_zip_path' in locals() and os.path.exists(tmp_zip_path):
-                os.remove(tmp_zip_path)
-
-        # Do NOT auto-trigger grading — let instructor review and edit names first!
-        return {
-            "batch_id": batch_id,
-            "total_files": len(staged_students),
-            "students": staged_students,
-            "message": f"Successfully extracted {len(staged_students)} student submissions. Please verify or edit student names.",
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        error_msg = f"Batch upload failed: {str(e)}\n{traceback.format_exc()}"
-        logger.error(error_msg)
-        raise HTTPException(400, error_msg)
+            for entry in entries:
+                sub_id = str(uuid.uuid4())
+                filename = entry["filename"]
+                archive_name = PurePosixPath(entry["archive_name"])
+                raw_name = archive_name.parent.name if len(archive_name.parts) > 2 else filename
+                name = _clean_extracted_student_name(raw_name)
+                url = await file_storage.save_file(
+                    entry["path"].read_bytes(), f"batches/{org_id}/{batch_id}/{sub_id}_{filename}",
+                    org_id=org_id, owner_uid=user["uid"], kind=type, conn=conn,
+                )
+                await conn.execute(
+                    "INSERT INTO submissions(id,org_id,assignment_id,subject_id,batch_id,type,mode,"
+                    "stdin_text,file_url,file_name,student_name,status,created_at) "
+                    "VALUES($1,$2,$3,$4,$5,$6,'batch',$7,$8,$9,$10,'uploaded',$11)",
+                    sub_id, org_id, assignment_id, subject_id, batch_id, type, stdin_text, url, filename, name, now,
+                )
+                staged.append({"submissionId":sub_id,"fileName":entry["archive_name"],"extractedName":name})
+    return {"batch_id":batch_id,"total_files":len(staged),"students":staged,
+            "message":f"Staged {len(staged)} submissions. Review names, then start grading."}
 
 
 # ---- Batch name confirmation + processing trigger ---------------------------
@@ -828,23 +715,28 @@ async def confirm_batch_names(
 @router.post("/batch/{batch_id}/process")
 async def process_batch(batch_id: str, user: dict = Depends(_get_instructor)):
     """Trigger grading for an already-uploaded batch (called after name confirmation)."""
-    if settings.DOCUMENT_DEMO:
-        raise HTTPException(503, "Batch processing is paused in this demo. Use single document upload.")
+    from app.services.batch_ingestion import batch_file_limit
     org_id = str(user["org_id"])
+    submission_ids = []
     async with get_conn(org_id) as conn:
-        row = await conn.fetchrow(
-            "SELECT id FROM batches WHERE id = $1 AND instructor_id = $2",
-            batch_id, user["uid"],
-        )
-    if not row:
-        raise HTTPException(404, "Batch not found.")
-    
-    # Set status to processing
-    async with get_conn(org_id) as conn:
-        await conn.execute("UPDATE batches SET status = 'processing' WHERE id = $1", batch_id)
+        row = await conn.fetchrow("SELECT id,status FROM batches WHERE id=$1 AND instructor_id=$2 FOR UPDATE", batch_id, user["uid"])
+        if not row:
+            raise HTTPException(404, "Batch not found.")
+        if row["status"] != "uploaded":
+            return {"status":row["status"],"batch_id":batch_id}
+        rows = await conn.fetch("SELECT id FROM submissions WHERE batch_id=$1 AND status='uploaded' ORDER BY created_at,id", batch_id)
+        if not 1 <= len(rows) <= batch_file_limit():
+            raise HTTPException(400, f"A batch must contain 1-{batch_file_limit()} unprocessed submissions.")
+        await conn.execute("UPDATE batches SET status='processing' WHERE id=$1", batch_id)
+        for row in rows:
+            submission_ids.append(str(row["id"]))
+            await dispatch("tasks.grade_submission", [str(row["id"]),org_id], conn=conn)
+    notify()
+    if not settings.DOCUMENT_DEMO:
+        for sid in submission_ids:
+            await dispatch("tasks.grade_submission", [sid,org_id])
+    return {"status":"processing_started","batch_id":batch_id,"total_files":len(submission_ids)}
 
-    await dispatch("tasks.run_batch_grading", args=[batch_id, org_id])
-    return {"status": "processing_started", "batch_id": batch_id}
 
 
 class UpdateStudentNamePayload(BaseModel):
@@ -1399,3 +1291,4 @@ async def submit_faculty_application(
         )
 
     return {"status": "submitted", "message": "Application submitted. An admin will review it shortly."}
+

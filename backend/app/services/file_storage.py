@@ -15,13 +15,13 @@ from app.services.demo_limits import validate_document
 PREFIX = "/api/files/"
 
 
-async def save_file(content: bytes, blob_name: str, *, org_id, owner_uid: str, kind: str = "text") -> str:
+async def save_file(content: bytes, blob_name: str, *, org_id, owner_uid: str, kind: str = "text", conn=None) -> str:
     if not settings.DOCUMENT_DEMO:
         return local_storage.save_file(content, blob_name)
     filename = Path(blob_name).name
     validate_document(content, filename, kind=kind)
     file_id = uuid.uuid4()
-    async with get_conn(str(org_id)) as conn:
+    async def persist(conn):
         # Global budget row serializes concurrent uploads; files themselves enforce RLS.
         used = await conn.fetchval("SELECT bytes_used FROM demo_storage_budget WHERE id = 1 FOR UPDATE")
         if used is None:
@@ -33,6 +33,11 @@ async def save_file(content: bytes, blob_name: str, *, org_id, owner_uid: str, k
             file_id, org_id, owner_uid, filename, content,
         )
         await conn.execute("UPDATE demo_storage_budget SET bytes_used = bytes_used + $1 WHERE id = 1", len(content))
+    if conn is not None:
+        await persist(conn)
+    else:
+        async with get_conn(str(org_id)) as transaction:
+            await persist(transaction)
     return f"{PREFIX}{file_id}/{quote(filename, safe='')}"
 
 
@@ -66,3 +71,4 @@ async def materialize(file_url: str, filename: str, org_id):
         yield path
     finally:
         Path(path).unlink(missing_ok=True)
+

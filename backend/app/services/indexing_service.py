@@ -26,7 +26,7 @@ from app.db.postgres import get_conn
 from app.db.vectors import upsert_reference_chunks
 from app.db.graph import upsert_concept
 from app.services.ocr_service import ocr_service
-from app.services.llm_provider import build_llm_from_env, ChatMessage
+from app.services.llm_provider import build_llm_from_env, build_embedding_llm_from_env, ChatMessage
 from app.utils.prompt_templates import utility_concept_extraction_user
 
 logger = logging.getLogger(__name__)
@@ -137,16 +137,17 @@ async def run_indexing(reference_id: str, org_id: str, subject_id: str) -> None:
             concept_ids_per_chunk.append([])
 
         # Pace calls to stay within DO serverless RPM limit (~10 RPM)
-        await _asyncio.sleep(6)
+        if not settings.DOCUMENT_DEMO:
+            await _asyncio.sleep(6)
 
 
 
     # ---- Step 5: Embed all chunks in one batch ------------------------------
     try:
-        embeddings = await llm.embed(
-            texts=raw_chunks,
-            model=settings.GRADIENT_EMBED_MODEL,
-        )
+        embedder = None if settings.DOCUMENT_DEMO else build_embedding_llm_from_env()
+        embeddings = await embedder.embed(texts=raw_chunks,model=settings.GRADIENT_EMBED_MODEL) if embedder else [None] * len(raw_chunks)
+        if len(embeddings) != len(raw_chunks):
+            raise RuntimeError("Embedding count does not match indexed chunks")
     except Exception as e:
         logger.error("Embedding failed for reference %s: %s", reference_id, e)
         await _mark_failed(org_id, reference_id)
@@ -176,10 +177,10 @@ async def run_indexing(reference_id: str, org_id: str, subject_id: str) -> None:
         await conn.execute(
             """
             UPDATE reference_materials
-            SET index_status = 'embedded', chunk_count = $1
+            SET index_status = 'embedded', chunk_count = $1, index_method = $3
             WHERE id = $2
             """,
-            inserted, reference_id,
+            inserted, reference_id, "semantic" if embedder else "full_text",
         )
         # Check if all references for this subject are embedded
         pending = await conn.fetchval(
@@ -206,3 +207,4 @@ async def _mark_failed(org_id: str, reference_id: str) -> None:
             "UPDATE reference_materials SET index_status = 'failed' WHERE id = $1",
             reference_id,
         )
+
