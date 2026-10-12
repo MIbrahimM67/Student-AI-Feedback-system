@@ -22,8 +22,8 @@ const monoFont = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "GradeWise | Thoughtful grading. Clearer feedback.",
-  description: "Rubric-based assignment feedback, class batches, course knowledge bases and internal similarity checks, with the educator in control.",
+  title: "GradeWise | Evidence-led grading for educators",
+  description: "Grade documents and code against your rubric, use cited course material, review internal similarity, and approve every final report.",
 };
 
 export const viewport: Viewport = {
