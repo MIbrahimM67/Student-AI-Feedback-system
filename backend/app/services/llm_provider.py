@@ -401,3 +401,12 @@ def build_vision_llm_from_env() -> ResilientLLM | None:
         )
 
     return None
+
+
+
+def build_embedding_llm_from_env() -> ResilientLLM | None:
+    """Embedding APIs are independent from the Groq/chat-model factory."""
+    from app.config import settings
+    if not settings.GRADIENT_API_KEY:
+        return None
+    return ResilientLLM(primary=GradientProvider(api_key=settings.GRADIENT_API_KEY,base_url=settings.GRADIENT_BASE_URL),max_retries=2)

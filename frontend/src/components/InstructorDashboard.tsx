@@ -34,6 +34,7 @@ interface Reference {
   title: string;
   type: string;
   index_status: string;
+  index_method?: string;
   chunk_count: number;
   created_at: string;
 }
@@ -235,15 +236,15 @@ const VerificationForm: React.FC<{ isPending: boolean }> = ({ isPending }) => {
           </span>
           <h3 className="text-2xl font-bold tracking-normal text-[var(--color-paper)]">Classroom grading operations</h3>
           <p className="text-xs text-[oklch(82%_0.012_92)] leading-relaxed">
-            {DOCUMENT_DEMO ? "Verification lets faculty create classrooms and grade individual document and code submissions." : "Verification lets faculty create classrooms, attach reference material, and process student submissions in batches."}
+            {DOCUMENT_DEMO ? "Verification lets faculty create classrooms, index references, and grade batches of up to 30 submissions." : "Verification lets faculty create classrooms, attach reference material, and process student submissions in batches."}
           </p>
         </div>
         <div className="border-t border-[oklch(96%_0.012_92_/_0.14)] my-4" />
         <div className="space-y-4">
           <h4 className="text-[10px] font-extrabold text-[oklch(78%_0.014_92)] uppercase tracking-wider">Available after approval</h4>
           <ul className="space-y-3.5 text-xs text-[oklch(86%_0.012_92)]">
-            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" /> Staged bulk uploads {DOCUMENT_DEMO && <span className="text-[9px] font-bold uppercase text-amber-200">Coming soon</span>}</li>
-            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" /> Cross-submission plagiarism matching {DOCUMENT_DEMO && <span className="text-[9px] font-bold uppercase text-amber-200">Coming soon</span>}</li>
+            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" /> Staged bulk uploads · up to 30 files</li>
+            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" /> Internal text-similarity checks</li>
             <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" /> Excel summaries export</li>
             <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" /> Isolated subject classrooms</li>
           </ul>
@@ -505,9 +506,9 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
   const [rubric, setRubric] = useState("");
   const [minimumMarks, setMinimumMarks] = useState(0);
   const [totalMarks, setTotalMarks] = useState(100);
-  const [internalSimilarityEnabled, setInternalSimilarityEnabled] = useState(!DOCUMENT_DEMO);
+  const [internalSimilarityEnabled, setInternalSimilarityEnabled] = useState(true);
   const [internetPlagiarismEnabled, setInternetPlagiarismEnabled] = useState(false);
-  const [useSubjectKb, setUseSubjectKb] = useState(!DOCUMENT_DEMO);
+  const [useSubjectKb, setUseSubjectKb] = useState(true);
   const [courseMaterialWeight, setCourseMaterialWeight] = useState(60);
 
   // Refs state
@@ -526,6 +527,12 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
       fetchReferences();
     }
   }, [tab, subject.id]);
+
+  useEffect(() => {
+    if (tab !== "references" || !references.some(ref => ["pending", "chunking"].includes(ref.index_status))) return;
+    const timer = setInterval(() => { void fetchReferences(); }, 5000);
+    return () => clearInterval(timer);
+  }, [tab, references]);
 
   const fetchReferences = async () => {
     setLoadingRefs(true);
@@ -553,9 +560,9 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
         rubric,
         minimum_marks: minimumMarks,
         total_marks: totalMarks,
-        internal_similarity_enabled: !DOCUMENT_DEMO && internalSimilarityEnabled,
+        internal_similarity_enabled: internalSimilarityEnabled,
         internet_plagiarism_enabled: !DOCUMENT_DEMO && internetPlagiarismEnabled,
-        use_subject_kb: !DOCUMENT_DEMO && useSubjectKb,
+        use_subject_kb: useSubjectKb,
         course_material_weight: courseMaterialWeight,
       };
       if (editingAssignment) {
@@ -574,9 +581,9 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
     setRubric("");
     setMinimumMarks(0);
     setTotalMarks(100);
-    setInternalSimilarityEnabled(!DOCUMENT_DEMO);
+    setInternalSimilarityEnabled(true);
     setInternetPlagiarismEnabled(false);
-    setUseSubjectKb(!DOCUMENT_DEMO);
+    setUseSubjectKb(true);
     setCourseMaterialWeight(60);
     setEditingAssignment(null);
     setCreating(false);
@@ -589,9 +596,9 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
     setRubric(assignment.rubric || "");
     setMinimumMarks(assignment.minimum_marks || 0);
     setTotalMarks(assignment.total_marks || 100);
-    setInternalSimilarityEnabled(!DOCUMENT_DEMO && (assignment.internal_similarity_enabled ?? true));
+    setInternalSimilarityEnabled(assignment.internal_similarity_enabled ?? true);
     setInternetPlagiarismEnabled(!DOCUMENT_DEMO && (assignment.internet_plagiarism_enabled ?? false));
-    setUseSubjectKb(!DOCUMENT_DEMO && (assignment.use_subject_kb ?? true));
+    setUseSubjectKb(assignment.use_subject_kb ?? true);
     setCourseMaterialWeight(assignment.course_material_weight ?? 60);
     setCreating(true);
     setTab("assignments");
@@ -634,7 +641,7 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
         <button onClick={()=>setTab("assignments")} className={`pb-2 text-sm font-bold ${tab === "assignments" ? "text-indigo-600 border-b-2 border-indigo-600" : "text-slate-500 hover:text-slate-800"}`}>
           Assignments
         </button>
-        {!DOCUMENT_DEMO && <button onClick={()=>setTab("references")} className={`pb-2 text-sm font-bold ${tab === "references" ? "text-indigo-600 border-b-2 border-indigo-600" : "text-slate-500 hover:text-slate-800"}`}>
+        {<button onClick={()=>setTab("references")} className={`pb-2 text-sm font-bold ${tab === "references" ? "text-indigo-600 border-b-2 border-indigo-600" : "text-slate-500 hover:text-slate-800"}`}>
           Subject Knowledge Base
         </button>}
       </div>
@@ -711,8 +718,7 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
                     className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:font-medium placeholder:text-slate-400" 
                   />
                 </div>
-                {DOCUMENT_DEMO && <p className="text-xs text-slate-500">Knowledge-base search and plagiarism checks <span className="ml-1 border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-800">Coming soon</span></p>}
-                {!DOCUMENT_DEMO && <div className="border border-slate-200 bg-slate-50 p-4 space-y-4">
+                {<div className="border border-slate-200 bg-slate-50 p-4 space-y-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
                       <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Use Subject Knowledge Base</label>
@@ -744,7 +750,7 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
                     />
                   </div>
                 </div>}
-                {!DOCUMENT_DEMO && <div className="border border-slate-200 bg-slate-50 p-4 space-y-4">
+                {<div className="border border-slate-200 bg-slate-50 p-4 space-y-4">
                   <div>
                     <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Academic Integrity Checks</label>
                     <p className="mt-1 text-[11px] font-semibold text-slate-500">Similarity flags are shown for instructor review and do not automatically deduct marks.</p>
@@ -752,7 +758,7 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
                   <label className="flex items-start justify-between gap-4 border border-slate-200 bg-white p-3">
                     <span>
                       <span className="block text-xs font-black text-slate-700">Internal similarity check</span>
-                      <span className="mt-1 block text-[11px] font-semibold text-slate-500">Compare against classmates in the same batch and previous submissions.</span>
+                      <span className="mt-1 block text-[11px] font-semibold text-slate-500">Measure text overlap within this batch, or recent submissions to the same assignment. A flag is not proof of plagiarism.</span>
                     </span>
                     <input
                       type="checkbox"
@@ -764,11 +770,12 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
                   <label className="flex items-start justify-between gap-4 border border-slate-200 bg-white p-3">
                     <span>
                       <span className="block text-xs font-black text-slate-700">Internet plagiarism check</span>
-                      <span className="mt-1 block text-[11px] font-semibold text-slate-500">Search online sources when a search provider is configured.</span>
+                      <span className="mt-1 block text-[11px] font-semibold text-slate-500">Search online sources when a search provider is configured. Coming soon in the hosted demo.</span>
                     </span>
                     <input
                       type="checkbox"
                       checked={internetPlagiarismEnabled}
+                      disabled={DOCUMENT_DEMO}
                       onChange={e => setInternetPlagiarismEnabled(e.target.checked)}
                       className="mt-1 h-5 w-5 accent-indigo-600"
                     />
@@ -845,7 +852,7 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
                 subject.kb_status === "indexing" ? "bg-amber-50 text-amber-600 border-amber-200" :
                 "bg-slate-100 text-slate-500 border-slate-200"
               }`}>
-                {subject.kb_status === "ready" ? "Knowledge Graph: Ready" : subject.kb_status === "indexing" ? "Knowledge Graph: Indexing" : "Knowledge Graph: Empty"}
+                {subject.kb_status === "ready" ? "Knowledge Base: Ready" : subject.kb_status === "indexing" ? "Knowledge Base: Indexing" : "Knowledge Base: Empty"}
               </span>
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                 {subject.reference_count} References
@@ -862,8 +869,8 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
                 <input type="text" placeholder="Chapter 1: Intro to C++" value={refTitle} onChange={e=>setRefTitle(e.target.value)} className="w-full py-2.5 px-3 rounded-xl bg-white border border-slate-200 text-xs font-semibold focus:outline-none" />
              </div>
              <div className="space-y-1.5">
-                <label className="text-[10px] font-extrabold text-slate-500 uppercase">Document (PDF/TXT)</label>
-                <input type="file" accept="application/pdf,text/plain" onChange={e=>setRefFile(e.target.files?.[0]||null)} className="w-full py-2 px-3 rounded-xl bg-white border border-slate-200 text-xs text-slate-500" />
+                <label className="text-[10px] font-extrabold text-slate-500 uppercase">Reference document (PDF/DOCX/TXT, up to 5 MB)</label>
+                <input type="file" accept=".pdf,.docx,.txt" onChange={e=>setRefFile(e.target.files?.[0]||null)} className="w-full py-2 px-3 rounded-xl bg-white border border-slate-200 text-xs text-slate-500" />
              </div>
              <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-xs font-bold transition-all">Upload & Index</button>
              {refStatus && <div className="text-xs font-bold text-indigo-600 bg-indigo-50 p-3 rounded-xl border border-indigo-100">{refStatus}</div>}
@@ -902,7 +909,7 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
                             ref.index_status === 'failed' ? 'bg-rose-50 text-rose-600' :
                             'bg-amber-50 text-amber-600'
                           }`}>
-                            {ref.index_status}
+                            {ref.index_status === "embedded" ? (ref.index_method === "full_text" ? "Indexed · text retrieval" : "Indexed · semantic") : ref.index_status}
                           </span>
                         </td>
                         <td className="py-3 px-4 text-right text-xs font-bold text-slate-500">
@@ -1071,6 +1078,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
   const handleStageBatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if(!batchFile) return setError("ZIP file required.");
+    if (batchFile.size > 100 * 1024 * 1024) return setError("ZIP must be at most 100 MB, containing up to 30 files.");
     setLoading(true); setError(null);
     try {
       const fd = new FormData();
@@ -1293,7 +1301,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
   return (
     <div className="space-y-6">
       
-      {DOCUMENT_DEMO && <p className="text-sm text-[var(--color-muted)]">Demo: upload one file at a time, up to 5 MB and 20 PDF pages. {codeExecution ? "Python, C++ and Java execution is available." : "Code execution is unavailable."} Keep this page open while grading.</p>}
+      {DOCUMENT_DEMO && <p className="text-sm text-[var(--color-muted)]">Upload individually or stage a ZIP with up to 30 files. Each file: 5 MB / 20 PDF pages. {codeExecution ? "Python, C++ and Java execution is available." : "Code execution is unavailable."} Jobs are queued one at a time; progress and reports are saved.</p>}
       {/* Current Assignment Context */}
       <div className="glass-panel p-5 border border-[var(--color-rule)] bg-[var(--color-surface)] flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
         <div>
@@ -1309,8 +1317,8 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
          <button onClick={()=>setUploadMode("single")} className={`flex-1 py-4 border font-bold text-sm transition-all ${uploadMode === "single" ? "border-[var(--color-accent)] bg-blue-50 text-[var(--color-accent)]" : "border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-rule-2)]"}`}>
             Single Submission Upload
          </button>
-         <button disabled={DOCUMENT_DEMO} title={DOCUMENT_DEMO ? "ZIP batch grading is coming soon. Upload one file at a time in this demo." : undefined} onClick={()=>setUploadMode("batch")} className={`flex-1 py-4 border font-bold text-sm transition-all ${uploadMode === "batch" ? "border-[var(--color-success)] bg-green-50 text-[var(--color-success)]" : "border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-rule-2)]"}`}>
-            Classroom Batch (Master ZIP) {DOCUMENT_DEMO && <span className="ml-1 border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-800">Coming soon</span>}
+         <button onClick={()=>setUploadMode("batch")} className={`flex-1 py-4 border font-bold text-sm transition-all ${uploadMode === "batch" ? "border-[var(--color-success)] bg-green-50 text-[var(--color-success)]" : "border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-rule-2)]"}`}>
+            Classroom Batch (ZIP · up to 30 files)
          </button>
          <button onClick={()=>setUploadMode("history")} className={`flex-1 py-4 border font-bold text-sm transition-all ${uploadMode === "history" ? "border-[var(--color-warning)] bg-amber-50 text-[var(--color-warning)]" : "border-[var(--color-rule)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-rule-2)]"}`}>
             Grading History
@@ -1519,7 +1527,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                                     {Number(report.plagiarism_similarity_score).toFixed(1)}%
                                   </span>
                                 ) : (
-                                  <span className="text-xs text-slate-400">{DOCUMENT_DEMO ? "Coming soon" : "Pending"}</span>
+                                  <span className="text-xs text-slate-400">{"Awaiting comparison"}</span>
                                 )}
                               </td>
                               <td className="p-4">
@@ -1603,7 +1611,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                                                 <div className="mt-2 text-xl font-black text-slate-900">
                                                   {detail.plagiarism_similarity_score !== null && detail.plagiarism_similarity_score !== undefined
                                                     ? `${Number(detail.plagiarism_similarity_score).toFixed(1)}%`
-                                                    : DOCUMENT_DEMO ? "Coming soon" : "Pending"}
+                                                    : "Awaiting comparison"}
                                                 </div>
                                                 <div className="mt-1 text-[10px] font-bold text-slate-400 uppercase">Similarity</div>
                                               </div>
@@ -1932,3 +1940,4 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
     </div>
   );
 };
+

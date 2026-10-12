@@ -169,7 +169,12 @@ async def capabilities():
     return {
         "document_demo": settings.DOCUMENT_DEMO,
         "code_execution": code_execution_available(),
-        "batch_grading": not settings.DOCUMENT_DEMO,
+        "batch_grading": True,
+        "max_batch_files": min(30, settings.INSTRUCTOR_BATCH_MAX_FILES),
+        "internal_similarity": True,
+        "internal_similarity_method": "tfidf_and_word_trigrams" if settings.DOCUMENT_DEMO else "semantic",
+        "knowledge_base": True,
+        "knowledge_base_method": "full_text" if settings.DOCUMENT_DEMO else "semantic",
         "max_file_mb": settings.DEMO_MAX_FILE_MB if settings.DOCUMENT_DEMO else settings.STUDENT_MAX_FILE_MB,
     }
 
@@ -236,3 +241,4 @@ async def download_demo_file(file_id: UUID, filename: str, user=Depends(_get_stu
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(row['filename'], safe='')}",
                  "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
     )
+

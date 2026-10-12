@@ -410,11 +410,11 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                 <div className="border-t border-[var(--color-rule)] pt-4 space-y-2.5">
                   <div className="text-[10px] font-extrabold uppercase tracking-wider text-[var(--color-accent)]">Everything in Free plus:</div>
                   {[
-                    { text: "Unlimited submissions & batch uploads (up to 30 files)", future: DOCUMENT_DEMO },
+                    { text: "Batch uploads up to 30 files within hosting limits", future: false },
                     { text: "3-Stage Evaluation Pipeline (Specialist + Judge + Senior)", future: false },
                     { text: "Deep Vision Multi-Modal OCR for diagrams & math", future: false },
                     { text: "Internet Web Search & Cross-Batch Plagiarism matching", future: DOCUMENT_DEMO },
-                    { text: "Subject Knowledge Graph & Reference indexing", future: DOCUMENT_DEMO },
+                    { text: "Subject knowledge base & reference indexing", future: false },
                     { text: "PDF Reports & Excel Gradebooks", future: false },
                     { text: "Automatic student name extraction", future: DOCUMENT_DEMO },
                     { text: "Inline student name editing", future: false },
@@ -543,3 +543,4 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
     </div>
   );
 };
+

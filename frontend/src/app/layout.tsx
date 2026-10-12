@@ -22,8 +22,8 @@ const monoFont = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "GradeWise | Academic Grading Workbench",
-  description: "A focused workbench for assignment submission, faculty batch review, rubric feedback, sandboxed code checks, OCR, and academic audit workflows.",
+  title: "GradeWise | Thoughtful grading. Clearer feedback.",
+  description: "Rubric-based assignment feedback, class batches, course knowledge bases and internal similarity checks, with the educator in control.",
 };
 
 export const viewport: Viewport = {
@@ -49,3 +49,4 @@ export default function RootLayout({
     </html>
   );
 }
+

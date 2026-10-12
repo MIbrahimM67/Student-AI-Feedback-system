@@ -70,23 +70,6 @@ export default function Home() {
   if (!user) {
     return (
       <main className="min-h-screen bg-[var(--color-paper)] text-[var(--color-ink)]">
-        <header className="sticky top-0 z-50 border-b border-[var(--color-rule)] bg-[var(--color-paper)]/95 px-4 py-3 backdrop-blur sm:px-6 lg:px-10">
-          <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center border border-[var(--color-ink)] bg-[var(--color-ink)] text-[var(--color-paper)]">
-                <Archive className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="block text-sm font-extrabold text-[var(--color-ink)]">GradeWise</span>
-                <span className="block text-[10px] font-semibold text-[var(--color-muted)]">Academic grading workbench</span>
-              </div>
-            </div>
-            <span className="hidden border border-[var(--color-rule)] bg-[var(--color-surface)] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-muted)] sm:inline-flex">
-              Secure Google session
-            </span>
-          </div>
-        </header>
-
         <LandingSection />
       </main>
     );
@@ -252,3 +235,4 @@ export default function Home() {
     </>
   );
 }
+

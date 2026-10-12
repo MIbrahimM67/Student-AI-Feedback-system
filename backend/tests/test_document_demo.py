@@ -200,6 +200,7 @@ async def db(monkeypatch):
     await owner.execute((root / "postgres/init.sql").read_text())
     await owner.execute("ALTER ROLE app_user PASSWORD 'test-only-local-password'")
     await owner.execute((root / "backend/demo_schema.sql").read_text())
+    await owner.execute((root / "backend/core_features_schema.sql").read_text())
     from urllib.parse import urlsplit, urlunsplit
     parts = urlsplit(owner_url)
     app_url = urlunsplit(parts._replace(netloc="app_user:test-only-local-password@" + parts.netloc.rsplit("@", 1)[-1]))
@@ -416,3 +417,4 @@ async def test_failed_transaction_does_not_leave_a_job(db):
             await task_dispatch.dispatch("tasks.grade_submission", [sid, org], conn=conn)
             raise RuntimeError("Submission transaction rolled back")
     assert await owner.fetchval("SELECT count(*) FROM demo_jobs WHERE target_id=$1", sid) == 0
+

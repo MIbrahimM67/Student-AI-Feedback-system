@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 
 from app.db.vectors import similarity_search
 from app.config import settings
+from app.db.postgres import get_conn
+from app.services.llm_provider import build_embedding_llm_from_env
 
 if TYPE_CHECKING:
     from app.services.llm_provider import ResilientLLM
@@ -33,11 +35,10 @@ async def retrieve_and_rerank(
     3. Rerank with BGE Reranker — keep top_k.
     Returns chunk dicts with id, text, score, concept_ids.
     """
-    # Step 1: embed query
-    embeddings = await llm.embed(
-        texts=[query_text],
-        model=settings.GRADIENT_EMBED_MODEL,
-    )
+    embedder = build_embedding_llm_from_env()
+    if settings.DOCUMENT_DEMO or embedder is None:
+        return await retrieve_text_chunks(org_id,subject_id,query_text,top_k,candidate_limit)
+    embeddings = await embedder.embed(texts=[query_text],model=settings.GRADIENT_EMBED_MODEL)
     query_vec = embeddings[0]
 
     # Step 2: pgvector search (local DB call — fast)
@@ -55,7 +56,7 @@ async def retrieve_and_rerank(
     # Step 3: rerank
     try:
         doc_texts = [c["text"] for c in candidates]
-        ranked = await llm.rerank(
+        ranked = await embedder.rerank(
             query=query_text,
             documents=doc_texts,
             model=settings.GRADIENT_RERANK_MODEL,
@@ -109,3 +110,23 @@ async def retrieve_for_all_questions(
 
     results = await asyncio.gather(*[_fetch(q) for q in questions])
     return dict(results)
+
+
+
+async def retrieve_text_chunks(org_id: str, subject_id: str, query_text: str, top_k: int=6, candidate_limit: int=30) -> list[dict]:
+    """Subject-scoped, cited full-text retrieval; no synthetic semantic vectors."""
+    import re
+    terms = list(dict.fromkeys(re.findall(r"[^\W_]+",query_text.lower())))[:80]
+    if not terms:
+        return []
+    query = " | ".join(terms)
+    async with get_conn(org_id) as conn:
+        rows = await conn.fetch(
+            "SELECT rc.id,rc.text,rc.concept_ids,rm.title,rm.id as reference_id,rm.index_method,"
+            "ts_rank_cd(to_tsvector('simple',rc.text),to_tsquery('simple',$2)) as score "
+            "FROM reference_chunks rc JOIN reference_materials rm ON rm.id=rc.reference_id "
+            "WHERE rc.subject_id=$1 AND rm.index_status='embedded' "
+            "AND to_tsvector('simple',rc.text) @@ to_tsquery('simple',$2) "
+            "ORDER BY score DESC,rc.id LIMIT $3",subject_id,query,min(candidate_limit,30),
+        )
+    return [dict(row, id=str(row['id']),method='full_text') for row in rows[:top_k]]
