@@ -360,7 +360,7 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
                 f"{raw_rubric}"
             )
         if subject_id and assignment_dict.get("use_subject_kb", True):
-            course_weight = int(assignment_dict.get("course_material_weight") or 60)
+            course_weight = int(assignment_dict.get("course_material_weight", 60))
             ai_weight = int(assignment_dict.get("ai_expertise_weight") or (100 - course_weight))
             await progress(
                 "retrieving_reference",

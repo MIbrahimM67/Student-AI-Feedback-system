@@ -10,9 +10,9 @@ still require working credentials and may cost money.
 ## Scope and limits
 
 - Student text/PDF/DOCX/image submission and instructor **single-document** grading.
-- Subject references, feedback, instructor review and PDF reports remain available.
+- Subject reference indexing, cited text retrieval, internal text similarity, instructor review and PDF reports are available.
 - Python, C++17 and Java (`Main` class) single-file coding use real Vercel Sandbox
-  microVMs. ZIP projects/batches, embedding-backed KB and plagiarism remain paused.
+  microVMs. Batches of up to 30 individual files are available. Multi-file ZIP code projects and internet plagiarism remain paused. Hosted KB retrieval uses full-text search; embeddings remain available for full deployments with a configured provider.
   Execution failures never fall back to simulation.
 - One grading/indexing job at a time, 20-minute job timeout, 5 MB/file, 20 PDF pages,
   60,000 extracted characters/document, 100 MB total original-file storage.
@@ -207,3 +207,13 @@ Provider docs checked 2026-10-05:
 - https://vercel.com/docs/vercel-sandbox/pricing
 - https://vercel.com/docs/vercel-sandbox
 - https://render.com/docs/free
+
+
+
+## Core instructor features (October 2026)
+
+Apply `backend/core_features_schema.sql` as the database owner before deploying this version. It preserves existing vectors, permits text-only chunks and adds a full-text index. Instructors can upload a ZIP of 1–30 individual submissions (100 MB archive/expanded total; each file 5 MB and at most 20 PDF pages), review names and start durable sequential jobs. Mixed unsupported files, encrypted archives and unsafe paths are rejected before storage. Multi-file code projects are still outside this deployment.
+
+Reference uploads and internal similarity are available without a plan upgrade. Hosted knowledge-base retrieval uses subject-scoped full-text search with passage IDs and source titles; it does not pretend these are semantic embeddings. The existing embedding/reranking path is retained for full deployments with a valid provider. Internal similarity measures TF-IDF and word-trigram overlap within a batch, or the 30 most recent graded submissions to the same assignment for single uploads. Scores and source matches refresh for earlier submissions too; they are review signals and never change rubric marks.
+
+Existing assignments saved by the old demo may have these options switched off. Enable Internal similarity and Use subject knowledge base in their settings. New assignments default to both enabled. Model stages and remote code execution remain unchanged. Internet plagiarism, multi-file projects and institution/billing integrations remain unavailable.

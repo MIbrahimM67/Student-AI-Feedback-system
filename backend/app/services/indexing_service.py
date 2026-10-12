@@ -144,7 +144,7 @@ async def run_indexing(reference_id: str, org_id: str, subject_id: str) -> None:
 
     # ---- Step 5: Embed all chunks in one batch ------------------------------
     try:
-        embedder = build_embedding_llm_from_env()
+        embedder = None if settings.DOCUMENT_DEMO else build_embedding_llm_from_env()
         embeddings = await embedder.embed(texts=raw_chunks,model=settings.GRADIENT_EMBED_MODEL) if embedder else [None] * len(raw_chunks)
         if len(embeddings) != len(raw_chunks):
             raise RuntimeError("Embedding count does not match indexed chunks")

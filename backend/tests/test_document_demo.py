@@ -356,10 +356,12 @@ async def test_instructor_single_upload_grades_and_approval_persists(db, monkeyp
     await owner.execute("INSERT INTO subjects(id,org_id,instructor_id,title) VALUES ($1,$2,'tester','Course')", subject, org)
     await owner.execute("INSERT INTO assignments(id,org_id,subject_id,title) VALUES ($1,$2,$3,'Assignment')", assignment, org, subject)
     monkeypatch.setattr(grading_task, "_run_integrity_checks", AsyncMock(side_effect=AssertionError("Demo attempted embedding-backed integrity checks")))
-    monkeypatch.setattr(grading_task, "_retrieve_subject_kb_context", AsyncMock(side_effect=AssertionError("Demo attempted embedding-backed knowledge-base search")))
+    kb_context = AsyncMock(return_value="Cited course material for instructor review")
+    monkeypatch.setattr(grading_task, "_retrieve_subject_kb_context", kb_context)
     app.dependency_overrides[_get_instructor] = lambda: {"uid": "tester", "org_id": org, "role": "instructor"}
     async def fake_pipeline(**kwargs):
         assert Path(kwargs["submission_path"]).read_text() == "Instructor uploaded answer"
+        assert "Cited course material" in Path(kwargs["reference_path"]).read_text()
         return GradingResult(score=75, max_score=100, per_criterion={"quality": 75}, feedback="Instructor review draft", tier_used=Tier.CONTEXT, reference_sections_used=[])
     monkeypatch.setattr(grading_task, "route_and_grade", fake_pipeline)
     try:
@@ -380,6 +382,7 @@ async def test_instructor_single_upload_grades_and_approval_persists(db, monkeyp
             assert saved["approved_by"] == "tester"
             assert saved["final_overall_score"] == 75
             assert saved["published_at"] is not None
+            kb_context.assert_awaited_once()
     finally:
         app.dependency_overrides.clear()
 

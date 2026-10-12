@@ -122,7 +122,7 @@ async def test_branch_batch_30_storage_queue_and_reciprocal_similarity(branch_db
                 assert len(scores)==30 and all(float(r['similarity_score'])==100 for r in scores)
                 assert await conn.fetchval('SELECT status FROM batches WHERE id=$1',batch)=='completed'
                 assert await conn.fetchval('SELECT count(*) FROM submissions WHERE batch_id=$1 AND status=\'graded\'',batch)==30
-            reports=await client.get(f'/api/instructor/batch/{batch}/reports');assert len(reports.json())==30
+            reports=await client.get(f'/api/instructor/batch/{batch}/reports');assert len(reports.json()['reports'])==30
     finally:
         app.dependency_overrides.clear()
 
@@ -146,3 +146,7 @@ async def test_branch_reference_index_and_cited_retrieval(branch_db,monkeypatch)
         ref=await conn.fetchrow('SELECT index_status,index_method,chunk_count FROM reference_materials WHERE id=$1',result['reference_id'])
     assert dict(ref)=={'index_status':'embedded','index_method':'full_text','chunk_count':1}
     assert not await retrieve_text_chunks(str(uuid.uuid4()),d['subject'],'ice density')
+    from app.services.grading_task import _retrieve_subject_kb_context
+    context=await _retrieve_subject_kb_context(llm=llm,org_id=d['org'],subject_id=d['subject'],assignment_prompt='Explain the density of ice',raw_rubric='Accuracy',submission_text='Ice floats',course_weight=60,ai_weight=40)
+    assert 'Ice and density' in context and 'lower density' in context
+    assert chunks[0]['id'] in context

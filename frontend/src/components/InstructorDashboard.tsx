@@ -1822,15 +1822,15 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
               <div className="space-y-1.5">
                  <label className="text-[10px] font-extrabold text-slate-500 uppercase">Submissions Format</label>
                  <select value={fileType} onChange={e=>setFileType(e.target.value)} className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none">
-                    <option value="text">Digital Documents (PDF/TXT/DOCX folders)</option>
+                    <option value="text">Digital Documents (PDF/TXT/DOCX files)</option>
                     <option value="handwritten">Handwritten Scans (OCR)</option>
-                    {codeExecution && <option value="coding">Programming Code Projects</option>}
+                    {codeExecution && <option value="coding">Single-file Programs (Python/C++/Java)</option>}
                  </select>
               </div>
               <div className="space-y-1.5">
                  <label className="text-[10px] font-extrabold text-slate-500 uppercase">Master ZIP File</label>
                  <input type="file" accept=".zip" onChange={e=>setBatchFile(e.target.files?.[0]||null)} className="w-full py-8 px-4 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 text-slate-500 text-sm font-bold text-center file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
-                 <p className="text-[10px] text-slate-400 mt-2">Upload a single .zip file containing folders for each student. Max 30 folders / 100MB.</p>
+                 <p className="text-[10px] text-slate-400 mt-2">Upload one ZIP containing up to 30 individual submission files, optionally inside student folders. Total 100 MB; each file 5 MB. Multi-file projects are unavailable.</p>
               </div>
               <button type="submit" disabled={loading} className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-lg active:scale-98 transition-all disabled:opacity-50">
                  {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto"/> : "Stage Batch & Extract Names"}
