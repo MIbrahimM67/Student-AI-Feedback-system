@@ -198,7 +198,7 @@
 .outputGrid h3{margin-top:auto;font-size:19px;line-height:1.12;letter-spacing:-.025em}
 .outputGrid p{margin-top:11px;color:var(--muted);font-size:12px;line-height:1.55}
 
-.evidenceStory{padding:112px max(24px,calc((100vw - 1180px)/2));display:grid;grid-template-columns:1.08fr .92fr;gap:76px;align-items:center;
+.evidenceStory{padding:112px max(24px,calc((100vw - 1180px)/2));display:grid;grid-template-columns:1.08fr .92fr;gap:76px;align-items:center;background:#1a1a1a;color:var(--ink)}
 .codePane{border:1px solid #ffffff2b;background:#202020;box-shadow:0 30px 70px oklch(5% .014 82/.25)}
 .paneTop{min-height:49px;padding:0 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #ffffff22;color:var(--muted);font-size:9px}
 .paneTop span:first-child{display:flex;align-items:center;gap:7px;color:var(--ink);font-weight:750}
