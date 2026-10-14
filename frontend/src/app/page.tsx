@@ -218,7 +218,7 @@ export default function Home() {
               </button>
 
               <button
-                onClick={() => setSubscriptionOpen(true)
+                onClick={() => setSubscriptionOpen(true)}
                 className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider border border-[var(--color-rule)] bg-[var(--color-surface)] hover:bg-[var(--color-paper-2)] text-[var(--color-ink)] transition-colors cursor-pointer"
               >
                 <Crown className="w-3.5 h-3.5 text-amber-500" />
