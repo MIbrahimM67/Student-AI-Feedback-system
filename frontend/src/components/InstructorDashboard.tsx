@@ -1598,7 +1598,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                               </td>
                             </tr>
                             {isExpanded && (
-                              <tr key={`${report.submission_id}-detail`} className="bg-indigo-50/50 border-b border-indigo-100">
+                              <tr key={`${report.submission_id}-detail`} className="bg-[var(--color-accent-soft)] border-b border-[var(--color-accent-border)]">
                                 <td colSpan={6} className="px-6 py-5">
                                   {!detail ? (
                                     <div className="text-xs text-slate-400 animate-pulse">Loading feedback...</div>

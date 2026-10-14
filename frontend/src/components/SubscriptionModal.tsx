@@ -240,14 +240,14 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
           )}
 
           {/* Discount / Promo Code Banner */}
-          <div className="p-4 border border-indigo-200 bg-indigo-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="p-4 border border-[var(--color-accent-border)] bg-[var(--color-surface-2)] text-[var(--color-ink)] flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-indigo-600 text-white rounded-none">
                 <Tag className="w-4 h-4" />
               </div>
               <div>
                 <div className="text-xs font-bold text-slate-800">Faculty Voucher / Promo Code{DOCUMENT_DEMO && <ComingSoon />}</div>
-                <div className="text-[11px] text-slate-500">
+                <div className="text-[11px] text-[var(--color-ink-2)]">
                   {DOCUMENT_DEMO ? "Voucher activation is coming soon. Available demo grading features do not require an upgrade." : "Have a promotional access key or institution voucher? Enter your code below."}
                 </div>
               </div>
@@ -260,12 +260,12 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                 onChange={(e) => setPromoCode(e.target.value)}
                 placeholder="Enter promo code"
                 disabled={DOCUMENT_DEMO || applyingPromo || !isEligible}
-                className="py-1.5 px-3 border border-slate-300 bg-white text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-600 w-full sm:w-44"
+                className="py-1.5 px-3 border border-[var(--color-rule-2)] bg-[var(--color-paper)] text-xs font-bold text-[var(--color-ink)] placeholder:text-[var(--color-muted)] focus:outline-none focus:border-[var(--color-accent)] disabled:opacity-100 w-full sm:w-44"
               />
               <button
                 type="submit"
                 disabled={DOCUMENT_DEMO || applyingPromo || !promoCode.trim() || !isEligible}
-                className="py-1.5 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer shrink-0"
+                className="py-1.5 px-4 bg-[var(--color-accent)] hover:bg-[var(--color-accent-2)] disabled:opacity-100 disabled:bg-[#afa46c] text-[var(--color-accent-ink)] font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer shrink-0"
               >
                 {applyingPromo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Apply Code"}
               </button>
