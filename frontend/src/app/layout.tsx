@@ -23,7 +23,7 @@ const monoFont = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "GradeWise | Evidence-led grading for educators",
-  description: "Grade documents and code against your rubric, use cited course material, review internal similarity, and approve every final report.",
+  description: "Grade documents and code against a rubric, connect feedback to course evidence, and keep every final decision in the instructor’s hands.",
 };
 
 export const viewport: Viewport = {

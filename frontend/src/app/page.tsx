@@ -11,6 +11,7 @@ import {
   Archive,
   ChevronRight,
   GraduationCap,
+  House,
   Landmark,
   LogOut,
   Shield,
@@ -31,6 +32,7 @@ const roleStyles: Record<string, string> = {
 export default function Home() {
   const { user, loading, logout, refreshProfile } = useAuth();
   const [profileOpen, setProfileOpen] = React.useState(false);
+  const [showLanding, setShowLanding] = React.useState(false);
   const [subscriptionOpen, setSubscriptionOpen] = React.useState(false);
   const [toastMessage, setToastMessage] = React.useState<string | null>(null);
 
@@ -85,6 +87,14 @@ export default function Home() {
     );
   }
 
+  if (showLanding) {
+    return (
+      <main className="min-h-screen bg-[var(--color-paper)] text-[var(--color-ink)]">
+        <LandingSection onOpenWorkspace={() => setShowLanding(false)} />
+      </main>
+    );
+  }
+
   const getSidebarMeta = (role: string) => {
     switch (role) {
       case "admin":
@@ -120,6 +130,13 @@ export default function Home() {
                 Console
               </div>
               <div className="space-y-2">
+                <button
+                  onClick={() => setShowLanding(true)}
+                  className="flex w-full items-center gap-3 border border-[oklch(96%_0.012_92_/_0.14)] bg-[oklch(24%_0.014_82)] px-3 py-3 text-left text-xs font-bold text-[var(--color-paper)] hover:border-[var(--color-accent-2)] hover:bg-[oklch(28%_0.02_82)] cursor-pointer"
+                >
+                  <House className="h-4 w-4 text-[var(--color-accent-2)]" />
+                  Homepage
+                </button>
                 <div className="flex w-full items-center gap-3 border border-[var(--color-accent-2)] bg-[oklch(30%_0.045_255)] px-3 py-3 text-xs font-bold">
                   {currentMeta.icon}
                   {currentMeta.label}
@@ -192,7 +209,16 @@ export default function Home() {
 
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setSubscriptionOpen(true)}
+                onClick={() => setShowLanding(true)}
+                className="inline-flex h-11 items-center justify-center gap-2 border border-[var(--color-rule)] bg-[var(--color-surface)] px-3 text-[10px] font-black uppercase tracking-wider text-[var(--color-ink)] hover:bg-[var(--color-paper-2)] cursor-pointer"
+                title="Open homepage"
+              >
+                <House className="h-3.5 w-3.5 text-[var(--color-accent)]" />
+                <span className="hidden sm:inline">Home</span>
+              </button>
+
+              <button
+                onClick={() => setSubscriptionOpen(true)
                 className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider border border-[var(--color-rule)] bg-[var(--color-surface)] hover:bg-[var(--color-paper-2)] text-[var(--color-ink)] transition-colors cursor-pointer"
               >
                 <Crown className="w-3.5 h-3.5 text-amber-500" />

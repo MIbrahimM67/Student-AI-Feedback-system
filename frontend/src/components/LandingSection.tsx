@@ -4,277 +4,310 @@ import React from "react";
 import {
   ArrowRight,
   BookOpen,
+  Braces,
   Check,
   CheckCircle2,
+  ChevronRight,
   Code2,
-  Database,
-  FileText,
+  FileCheck2,
   Files,
-  Fingerprint,
   GraduationCap,
+  Home,
   Layers3,
+  LockKeyhole,
   ScanSearch,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import styles from "./LandingSection.module.css";
 
-type PreviewTab = "report" | "batch" | "knowledge";
+type LandingSectionProps = {
+  onOpenWorkspace?: () => void;
+};
 
-const capabilities = [
-  { icon: Files, label: "Batch grading", value: "Up to 30 files", text: "Stage a class, confirm student names and follow every report from one queue." },
-  { icon: BookOpen, label: "Course knowledge", value: "Cited references", text: "Ground feedback in your lecture notes, chapters and marking schemes." },
-  { icon: Fingerprint, label: "Internal similarity", value: "Reviewable matches", text: "See overlapping passages and their sources before making an academic judgement." },
-  { icon: Code2, label: "Code assessment", value: "Python · C++ · Java", text: "Run supported single-file submissions in an isolated execution environment." },
+const outputs = [
+  {
+    icon: FileCheck2,
+    number: "01",
+    title: "Rubric-level grading",
+    text: "Every mark is tied to a named criterion.",
+  },
+  {
+    icon: BookOpen,
+    number: "02",
+    title: "Cited course evidence",
+    text: "Feedback points back to the material you supplied.",
+  },
+  {
+    icon: Code2,
+    number: "03",
+    title: "Document and code review",
+    text: "PDF, DOCX, scans, Python, C++ and Java.",
+  },
+  {
+    icon: ShieldCheck,
+    number: "04",
+    title: "Instructor approval",
+    text: "Nothing becomes final before educator review.",
+  },
 ];
 
-const workflow = [
-  ["01", "Set the standard", "Create the assignment, define the rubric and add course references."],
-  ["02", "Bring in the work", "Upload one submission or stage a ZIP containing up to 30 files."],
-  ["03", "Build the evidence", "GradeWise extracts the work, retrieves references and prepares criterion-level feedback."],
-  ["04", "Review and approve", "Inspect the report, similarity evidence and execution output before publishing."],
+const process = [
+  ["01", "Define", "Add the assignment, rubric and course material."],
+  ["02", "Upload", "Submit one file or stage a class of up to 30."],
+  ["03", "Evaluate", "Build criterion marks, citations and feedback."],
+  ["04", "Decide", "Review the evidence and approve the final report."],
 ];
 
-export const LandingSection: React.FC = () => {
-  const { loginWithGoogle, error, loading } = useAuth();
-  const [previewTab, setPreviewTab] = React.useState<PreviewTab>("report");
-  const signIn = () => void loginWithGoogle();
+export const LandingSection: React.FC<LandingSectionProps> = ({ onOpenWorkspace }) => {
+  const { loginWithGoogle, error, loading, user } = useAuth();
+
+  const openWorkspace = () => {
+    if (user && onOpenWorkspace) {
+      onOpenWorkspace();
+      return;
+    }
+    void loginWithGoogle();
+  };
+
+  React.useEffect(() => {
+    const nodes = Array.from(document.querySelectorAll<HTMLElement>("[data-reveal]"));
+    if (!("IntersectionObserver" in window)) {
+      nodes.forEach((node) => { node.dataset.visible = "true"; });
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            (entry.target as HTMLElement).dataset.visible = "true";
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.16, rootMargin: "0px 0px -8% 0px" },
+    );
+    nodes.forEach((node) => observer.observe(node));
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <div className={styles.site}>
       <div className={styles.heroShell} id="top">
         <header className={styles.header}>
-          <a className={styles.brand} href="#top" aria-label="GradeWise home">
-            <span className={styles.brandMark}><GraduationCap size={21} /></span>
+          <a className={styles.brand} href="#top" aria-label="GradeWise homepage">
+            <span className={styles.brandMark}><GraduationCap size={20} /></span>
             <span>GradeWise</span>
           </a>
-          <nav aria-label="Main navigation">
-            <a href="#capabilities">Capabilities</a>
-            <a href="#workflow">How it works</a>
-            <a href="#assurance">Grading process</a>
-            <a href="#questions">FAQ</a>
+
+          <nav aria-label="Landing page navigation">
+            <a href="#product">Product</a>
+            <a href="#evidence">Evidence</a>
+            <a href="#process">Process</a>
+            <a href="#future">Future</a>
           </nav>
-          <button className={styles.headerCta} onClick={signIn} disabled={loading}>
-            Open workspace <ArrowRight size={16} />
+
+          <button className={styles.headerCta} onClick={openWorkspace} disabled={loading}>
+            {user ? <Home size={15} /> : null}
+            {user ? "Return to workspace" : "Open workspace"}
+            <ArrowRight size={15} />
           </button>
         </header>
 
         <section className={styles.hero} aria-labelledby="landing-title">
           <div className={styles.heroCopy}>
-            <div className={styles.eyebrow}><span /> AI-assisted assessment for educators</div>
-            <h1 id="landing-title">Grade a class without losing the <em>evidence.</em></h1>
-            <p className={styles.heroIntro}>
-              Evaluate documents and code against your rubric, ground feedback in course material,
-              review internal similarity, and keep the final decision in the instructor&apos;s hands.
-            </p>
-            <div className={styles.heroActions}>
-              <button className={styles.primary} onClick={signIn} disabled={loading}>
-                {loading ? "Opening workspace…" : "Continue with Google"}
-                <ArrowRight size={18} />
-              </button>
-              <a className={styles.secondary} href="#workflow">See how grading works</a>
+            <div className={styles.eyebrow}>
+              <span>AI-assisted assessment</span>
+              <i />
+              <span>Instructor controlled</span>
             </div>
-            <p className={styles.accessNote}>
-              <ShieldCheck size={15} /> Invitation-only demo · Instructor review required before approval
+
+            <h1 id="landing-title" aria-label="Grade student work. Keep every decision explainable.">
+              <span className={styles.heroLine}><span>Grade student work.</span></span>
+              <span className={styles.heroLine}><span>Keep every decision</span></span>
+              <span className={styles.heroLine}><span><em>explainable.</em></span></span>
+            </h1>
+
+            <p className={styles.heroIntro}>
+              Upload a rubric, course material and up to 30 submissions. GradeWise prepares
+              criterion-level feedback, cited evidence and review-ready reports—while the instructor
+              stays in control.
             </p>
+
+            <div className={styles.heroActions}>
+              <button className={styles.primary} onClick={openWorkspace} disabled={loading}>
+                {loading ? "Opening…" : user ? "Return to workspace" : "Continue with Google"}
+                <ArrowRight size={17} />
+              </button>
+              <a className={styles.textLink} href="#evidence">
+                See a graded example <ChevronRight size={16} />
+              </a>
+            </div>
+
+            <div className={styles.trustLine}>
+              <LockKeyhole size={14} />
+              Invitation-only demo
+              <span />
+              Instructor approval required
+            </div>
             {error && <p role="alert" className={styles.error}>{error}</p>}
           </div>
 
-          <div className={styles.productStage} aria-label="Interactive GradeWise product preview">
-            <div className={styles.glowOne} />
-            <div className={styles.glowTwo} />
-            <div className={styles.productWindow}>
-              <div className={styles.windowTopbar}>
-                <div className={styles.windowBrand}><GraduationCap size={15} /> GradeWise</div>
-                <div className={styles.windowContext}>Foundations of Science <span>·</span> Assignment 03</div>
-                <span className={styles.previewBadge}>Sample data</span>
-              </div>
-              <div className={styles.previewTabs} role="tablist" aria-label="Product preview">
-                <button role="tab" aria-selected={previewTab === "report"} onClick={() => setPreviewTab("report")}>
-                  <FileText size={15} /> Evidence report
-                </button>
-                <button role="tab" aria-selected={previewTab === "batch"} onClick={() => setPreviewTab("batch")}>
-                  <Files size={15} /> Class batch
-                </button>
-                <button role="tab" aria-selected={previewTab === "knowledge"} onClick={() => setPreviewTab("knowledge")}>
-                  <Database size={15} /> Course knowledge
-                </button>
+          <div className={styles.demoStage} aria-label="Concrete GradeWise report example">
+            <div className={styles.demoWindow}>
+              <div className={styles.demoTopbar}>
+                <div className={styles.demoBrand}><GraduationCap size={14} /> GradeWise</div>
+                <div className={styles.demoCourse}>Data Structures · Assignment 04</div>
+                <span>Sample report</span>
               </div>
 
-              {previewTab === "report" && (
-                <div className={styles.reportPanel} role="tabpanel">
-                  <div className={styles.reportSummary}>
-                    <div>
-                      <span>REPORT FOR REVIEW</span>
-                      <h2>Properties of water</h2>
-                      <p>Student 08 · Document submission</p>
-                    </div>
-                    <div className={styles.scoreRing}><strong>17</strong><span>/20</span></div>
-                  </div>
-                  <div className={styles.reportGrid}>
-                    <div className={styles.criteria}>
-                      <div><span><CheckCircle2 size={15} /> Freezing point</span><strong>5/5</strong></div>
-                      <div><span><CheckCircle2 size={15} /> Boiling point</span><strong>5/5</strong></div>
-                      <div><span><ScanSearch size={15} /> Density explanation</span><strong>3/5</strong></div>
-                      <div><span><CheckCircle2 size={15} /> Scientific language</span><strong>4/5</strong></div>
-                    </div>
-                    <aside className={styles.evidenceCard}>
-                      <span>COURSE EVIDENCE · [2]</span>
-                      <p>Ice forms an open crystal structure, making it less dense than liquid water.</p>
-                      <small>Lecture 04 · States of matter</small>
-                    </aside>
-                  </div>
-                  <div className={styles.feedbackBar}>
-                    <div><Fingerprint size={16} /><span><strong>12% similarity</strong><small>1 passage to review</small></span></div>
-                    <span className={styles.reportAction}>Review report <ArrowRight size={14} /></span>
-                  </div>
+              <div className={styles.demoHeading}>
+                <div>
+                  <small>REPORT READY FOR REVIEW</small>
+                  <h2>Dijkstra&apos;s shortest path</h2>
+                  <p>Student 12 · Python submission</p>
                 </div>
-              )}
+                <div className={styles.score}><strong>19</strong><span>/25</span></div>
+              </div>
 
-              {previewTab === "batch" && (
-                <div className={styles.batchPanel} role="tabpanel">
-                  <div className={styles.batchHeader}>
-                    <div><span>CLASS BATCH</span><h2>Assignment 03</h2></div>
-                    <strong>18 of 30 reports ready</strong>
-                  </div>
-                  <div className={styles.progress}><span /></div>
-                  <div className={styles.fileRows}>
-                    <div><span className={styles.fileIcon}>AK</span><p><strong>Ayesha Khan</strong><small>submission-08.pdf</small></p><em className={styles.complete}>Complete</em></div>
-                    <div><span className={styles.fileIcon}>HU</span><p><strong>Hamza Umar</strong><small>submission-09.docx</small></p><em className={styles.reviewing}>Reviewing</em></div>
-                    <div><span className={styles.fileIcon}>SA</span><p><strong>Sara Ahmed</strong><small>solution.py</small></p><em className={styles.queued}>Queued</em></div>
-                  </div>
-                  <div className={styles.batchFooter}><Check size={15} /> Names confirmed before processing</div>
+              <div className={styles.demoBody}>
+                <div className={styles.criteriaList}>
+                  <div><span><CheckCircle2 size={14} /> Relaxation logic</span><strong>8/10</strong></div>
+                  <div><span><CheckCircle2 size={14} /> Complexity analysis</span><strong>4/5</strong></div>
+                  <div><span><ScanSearch size={14} /> Edge cases</span><strong>3/5</strong></div>
+                  <div><span><CheckCircle2 size={14} /> Code clarity</span><strong>4/5</strong></div>
                 </div>
-              )}
 
-              {previewTab === "knowledge" && (
-                <div className={styles.knowledgePanel} role="tabpanel">
-                  <div className={styles.knowledgeHeader}>
-                    <div><span>SUBJECT KNOWLEDGE BASE</span><h2>Foundations of Science</h2></div>
-                    <span className={styles.ready}><Check size={13} /> Ready</span>
-                  </div>
-                  <div className={styles.referenceList}>
-                    <article><BookOpen size={20} /><div><strong>Lecture 04 — States of matter</strong><p>12 cited passages indexed</p></div><span>PDF</span></article>
-                    <article><FileText size={20} /><div><strong>Assignment 03 marking guide</strong><p>8 cited passages indexed</p></div><span>DOCX</span></article>
-                  </div>
-                  <div className={styles.retrievalExample}>
-                    <span>RETRIEVED FOR THIS REPORT</span>
-                    <p>“Ice forms an open crystal structure…”</p>
-                    <small>Lecture 04 · passage 2 of 12</small>
-                  </div>
-                </div>
-              )}
+                <aside className={styles.evidencePanel}>
+                  <span>COURSE EVIDENCE · LECTURE 07</span>
+                  <code>if d[u] + w(u,v) &lt; d[v]: d[v] = d[u] + w(u,v)</code>
+                  <p>Correct relaxation step. The explanation must state why negative edge weights are unsupported.</p>
+                </aside>
+              </div>
+
+              <div className={styles.execution}>
+                <div><Braces size={16} /><span><strong>6 of 7 tests passed</strong><small>Disconnected graph case failed</small></span></div>
+                <span className={styles.reviewState}><ShieldCheck size={15} /> Instructor review</span>
+              </div>
             </div>
-            <div className={styles.floatingStatus}><span><CheckCircle2 size={17} /></span><div><strong>Evidence linked</strong><small>Ready for instructor review</small></div></div>
+
+            <div className={styles.floatingCard}>
+              <span><Check size={15} /></span>
+              <div><strong>Evidence linked</strong><small>Rubric + lecture + execution</small></div>
+            </div>
+            <div className={styles.orbitOne} />
+            <div className={styles.orbitTwo} />
           </div>
         </section>
 
-        <div className={styles.proofStrip} aria-label="GradeWise availability">
-          <span>Available in the hosted demo</span>
-          <strong><Check size={14} /> Documents & scans</strong>
-          <strong><Check size={14} /> Python, C++ & Java</strong>
-          <strong><Check size={14} /> 30-file batches</strong>
-          <strong><Check size={14} /> Internal similarity</strong>
+        <div className={styles.proofBar}>
+          <span>Built for real coursework</span>
+          <strong><Files size={14} /> 30-file batches</strong>
+          <strong><BookOpen size={14} /> Subject knowledge base</strong>
+          <strong><Code2 size={14} /> Code execution</strong>
+          <strong><ShieldCheck size={14} /> Human approval</strong>
         </div>
       </div>
 
-      <section className={styles.capabilities} id="capabilities">
-        <div className={styles.sectionIntro}>
-          <div className={styles.kicker}>A complete review workspace</div>
-          <h2>Move from submission to defensible feedback.</h2>
-          <p>GradeWise keeps the rubric, student work, course evidence and instructor decision in one connected assessment process.</p>
-        </div>
-        <div className={styles.capabilityGrid}>
-          {capabilities.map(({ icon: Icon, label, value, text }, index) => (
-            <article key={label}>
-              <div className={styles.capabilityNumber}>0{index + 1}</div>
-              <div className={styles.capabilityIcon}><Icon size={21} /></div>
-              <span>{label}</span>
-              <h3>{value}</h3>
-              <p>{text}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+      <main>
+        <section className={styles.product} id="product" data-reveal>
+          <div className={styles.sectionHeading}>
+            <span>One review workspace</span>
+            <h2>The grading trail stays visible.</h2>
+            <p>Rubric, evidence, execution output and the instructor&apos;s decision live in the same report.</p>
+          </div>
 
-      <section className={styles.featureStory}>
-        <div className={styles.storyVisual} aria-label="Illustration of rubric-based evidence">
-          <div className={styles.visualHeader}><span>Criterion 03</span><span>Evidence trace</span></div>
-          <h3>Explain why ice floats on water.</h3>
-          <div className={styles.sourceQuote}><span>STUDENT SUBMISSION</span><p>Ice floats because it is lighter than water.</p></div>
-          <div className={styles.connectionLine} />
-          <div className={styles.sourceQuoteAccent}><span>COURSE REFERENCE · [2]</span><p>Solid water is less dense because hydrogen bonds hold molecules in an open structure.</p></div>
-          <div className={styles.visualOutcome}><CheckCircle2 size={17} /><span><strong>Partial evidence</strong> · Explanation needs the molecular reason</span></div>
-        </div>
-        <div className={styles.storyCopy}>
-          <div className={styles.kicker}>Feedback with a traceable basis</div>
-          <h2>See why the report reached its conclusion.</h2>
-          <p>Each report brings together the rubric criterion, relevant student evidence, retrieved course passages and a specific improvement step.</p>
-          <ul>
-            <li><Check size={16} /> Criterion-level marks and reasoning</li>
-            <li><Check size={16} /> Source citations from subject material</li>
-            <li><Check size={16} /> Actionable feedback for the student</li>
-          </ul>
-        </div>
-      </section>
+          <div className={styles.outputGrid}>
+            {outputs.map(({ icon: Icon, number, title, text }, index) => (
+              <article key={title} style={{ "--delay": `${index * 70}ms` } as React.CSSProperties}>
+                <div className={styles.outputTop}><span>{number}</span><Icon size={19} /></div>
+                <h3>{title}</h3>
+                <p>{text}</p>
+              </article>
+            ))}
+          </div>
+        </section>
 
-      <section className={styles.workflow} id="workflow">
-        <div className={styles.workflowIntro}>
-          <div className={styles.kicker}>How it works</div>
-          <h2>Four steps. One accountable assessment.</h2>
-        </div>
-        <ol>
-          {workflow.map(([number, title, text]) => (
-            <li key={number}>
-              <span>{number}</span>
-              <div><h3>{title}</h3><p>{text}</p></div>
-            </li>
-          ))}
-        </ol>
-      </section>
+        <section className={styles.evidenceStory} id="evidence" data-reveal>
+          <div className={styles.codePane}>
+            <div className={styles.paneTop}>
+              <span><Braces size={16} /> student_12.py</span>
+              <span>Python</span>
+            </div>
+            <pre><code>{`def relax(u, v, weight):
+    if distance[u] + weight < distance[v]:
+        distance[v] = distance[u] + weight
+        parent[v] = u`}</code></pre>
+            <div className={styles.testRows}>
+              <div><CheckCircle2 size={14} /><span>Standard weighted graph</span><strong>Passed</strong></div>
+              <div><CheckCircle2 size={14} /><span>Single source node</span><strong>Passed</strong></div>
+              <div className={styles.failed}><ScanSearch size={14} /><span>Disconnected graph</span><strong>Review</strong></div>
+            </div>
+          </div>
 
-      <section className={styles.assurance} id="assurance">
-        <div className={styles.assuranceCopy}>
-          <div className={styles.kickerLight}>Designed for academic review</div>
-          <h2>AI prepares the case.<br />The educator makes the call.</h2>
-          <p>Three distinct grading stages examine the work before the report reaches the instructor. Similarity is shown as review evidence and never deducts marks automatically.</p>
-          <button className={styles.lightCta} onClick={signIn} disabled={loading}>Open faculty workspace <ArrowRight size={17} /></button>
-        </div>
-        <div className={styles.pipeline} aria-label="GradeWise grading pipeline">
-          <article><span>01</span><div><strong>Specialist</strong><p>Checks the submission against the rubric and available evidence.</p></div><CheckCircle2 size={18} /></article>
-          <i />
-          <article><span>02</span><div><strong>Judge</strong><p>Audits consistency, fairness and unsupported conclusions.</p></div><CheckCircle2 size={18} /></article>
-          <i />
-          <article><span>03</span><div><strong>Senior</strong><p>Synthesizes the final criterion-level report for review.</p></div><CheckCircle2 size={18} /></article>
-          <div className={styles.instructorGate}><ShieldCheck size={19} /><span><strong>Instructor approval</strong><small>Required before the assessment is final</small></span></div>
-        </div>
-      </section>
+          <div className={styles.evidenceCopy}>
+            <span className={styles.kicker}>A specific result, not a vague score</span>
+            <h2>“Correct algorithm. Incomplete reasoning.”</h2>
+            <p>
+              The report identifies the working relaxation step, cites the matching lecture rule,
+              and isolates the failed edge case. The instructor sees exactly why the draft received
+              19/25 before approving or changing it.
+            </p>
+            <div className={styles.evidenceFacts}>
+              <span><strong>19/25</strong> rubric score</span>
+              <span><strong>1</strong> cited lecture passage</span>
+              <span><strong>6/7</strong> tests passed</span>
+            </div>
+          </div>
+        </section>
 
-      <section className={styles.questions} id="questions">
-        <div className={styles.questionsIntro}>
-          <div className={styles.kicker}>Clear answers</div>
-          <h2>What instructors should know.</h2>
-          <p>The hosted project is built for a controlled demonstration, with explicit limits and instructor oversight.</p>
-        </div>
-        <div className={styles.questionList}>
-          <details><summary>Does GradeWise replace the instructor?</summary><p>No. It prepares evidence and feedback for review. The instructor approves the final assessment, and similarity flags never change rubric marks automatically.</p></details>
-          <details><summary>What can an instructor upload?</summary><p>PDF, DOCX, text and supported image documents, or single Python, C++ and Java files. A batch ZIP can contain up to 30 files and total up to 100 MB. Each file is limited to 5 MB and PDFs to 20 pages. Multi-file code projects are not supported in this demo.</p></details>
-          <details><summary>How does the course knowledge base work?</summary><p>Course material is extracted into cited passages. This hosted deployment uses subject-scoped full-text retrieval to select relevant passages for grading.</p></details>
-          <details><summary>What does the similarity percentage mean?</summary><p>It measures text overlap within the batch or recent work for the same assignment. It is evidence for instructor review, not a plagiarism verdict.</p></details>
-          <details><summary>Who can access the workspace?</summary><p>Access is invitation-only through an approved Google account. Student, instructor and administrator roles open their respective workspaces.</p></details>
-        </div>
-      </section>
+        <section className={styles.process} id="process" data-reveal>
+          <div className={styles.sectionHeadingCompact}>
+            <span>Four deliberate steps</span>
+            <h2>From coursework to an approved report.</h2>
+          </div>
+          <ol>
+            {process.map(([number, title, text], index) => (
+              <li key={number} style={{ "--delay": `${index * 70}ms` } as React.CSSProperties}>
+                <span>{number}</span>
+                <div><h3>{title}</h3><p>{text}</p></div>
+                {index < process.length - 1 && <i />}
+              </li>
+            ))}
+          </ol>
+        </section>
 
-      <section className={styles.finalCta}>
-        <div className={styles.finalIcon}><Layers3 size={26} /></div>
-        <div><span>Ready for the next assessment?</span><h2>Bring the work, the rubric and the evidence together.</h2></div>
-        <button className={styles.primary} onClick={signIn} disabled={loading}>Continue with Google <ArrowRight size={18} /></button>
-      </section>
+        <section className={styles.future} id="future" data-reveal>
+          <div className={styles.futureIcon}><Layers3 size={25} /></div>
+          <div>
+            <span className={styles.futureBadge}>Future enhancement</span>
+            <h2>Batch cross-checking</h2>
+            <p>
+              A planned cohort view will compare a complete submission set and surface repeated
+              solution patterns for instructor investigation. It will remain a review signal—not an
+              automatic plagiarism verdict.
+            </p>
+          </div>
+          <Sparkles size={28} className={styles.futureSpark} />
+        </section>
+
+        <section className={styles.finalCta} data-reveal>
+          <div>
+            <span>Evidence before automation.</span>
+            <h2>Make grading faster without making it opaque.</h2>
+          </div>
+          <button className={styles.primaryLight} onClick={openWorkspace} disabled={loading}>
+            {user ? "Return to workspace" : "Open GradeWise"}
+            <ArrowRight size={17} />
+          </button>
+        </section>
+      </main>
 
       <footer className={styles.footer}>
-        <a className={styles.footerBrand} href="#top"><GraduationCap size={19} /> GradeWise</a>
-        <p>AI-assisted feedback for student assignments, with the educator in control.</p>
-        <span>Created by Muhammad Ibrahim · QAU</span>
+        <a href="#top"><GraduationCap size={18} /> GradeWise</a>
+        <p>AI-assisted grading with the educator in control.</p>
+        <span>QAU · Final Year Project</span>
       </footer>
     </div>
   );
