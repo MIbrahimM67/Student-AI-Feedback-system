@@ -224,6 +224,20 @@ export const LandingSection: React.FC<LandingSectionProps> = ({ onOpenWorkspace 
         </section>
 
         <section className={styles.evidenceStory} id="evidence" data-reveal>
+          <div className={styles.evidenceCopy}>
+            <span className={styles.kicker}>A specific result, not a vague score</span>
+            <h2>“Correct algorithm. Incomplete reasoning.”</h2>
+            <p>
+              The report identifies the working relaxation step, cites the matching lecture rule,
+              and isolates the failed edge case. The instructor sees exactly why the draft received
+              19/25 before approving or changing it.
+            </p>
+            <div className={styles.evidenceFacts}>
+              <span><strong>19/25</strong> rubric score</span>
+              <span><strong>1</strong> cited lecture passage</span>
+              <span><strong>6/7</strong> tests passed</span>
+            </div>
+          </div>
           <div className={styles.codePane}>
             <div className={styles.paneTop}>
               <span><Braces size={16} /> student_12.py</span>
@@ -240,20 +254,6 @@ export const LandingSection: React.FC<LandingSectionProps> = ({ onOpenWorkspace 
             </div>
           </div>
 
-          <div className={styles.evidenceCopy}>
-            <span className={styles.kicker}>A specific result, not a vague score</span>
-            <h2>“Correct algorithm. Incomplete reasoning.”</h2>
-            <p>
-              The report identifies the working relaxation step, cites the matching lecture rule,
-              and isolates the failed edge case. The instructor sees exactly why the draft received
-              19/25 before approving or changing it.
-            </p>
-            <div className={styles.evidenceFacts}>
-              <span><strong>19/25</strong> rubric score</span>
-              <span><strong>1</strong> cited lecture passage</span>
-              <span><strong>6/7</strong> tests passed</span>
-            </div>
-          </div>
         </section>
 
         <section className={styles.process} id="process" data-reveal>
