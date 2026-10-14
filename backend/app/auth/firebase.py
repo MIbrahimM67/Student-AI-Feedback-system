@@ -93,8 +93,23 @@ def verify_id_token(token: str) -> dict[str, Any]:
         raise ValueError(f"Invalid Firebase token: {e}") from e
     from app.config import settings
     if settings.DOCUMENT_DEMO:
-        allowed = {uid.strip() for uid in settings.DEMO_ALLOWED_UIDS.split(",") if uid.strip()}
-        if claims.get("uid") not in allowed:
+        allowed_uids = {
+            uid.strip()
+            for uid in settings.DEMO_ALLOWED_UIDS.split(",")
+            if uid.strip()
+        }
+        allowed_emails = {
+            email.strip().lower()
+            for email in settings.DEMO_ALLOWED_EMAILS.split(",")
+            if email.strip()
+        }
+        claim_email = str(claims.get("email") or "").strip().lower()
+        email_allowed = (
+            bool(claim_email)
+            and claims.get("email_verified") is True
+            and claim_email in allowed_emails
+        )
+        if claims.get("uid") not in allowed_uids and not email_allowed:
             raise DemoAccessDenied(claims.get("uid", ""))
     return claims
 

@@ -27,7 +27,10 @@ class Settings(BaseSettings):
     DEMO_MAX_TEXT_CHARS: int = 60000
     DEMO_STORAGE_MB: int = 100
     # Restrict the public demo to explicitly invited Firebase users.
+    # UIDs support existing testers; verified emails allow invitations before first sign-in.
     DEMO_ALLOWED_UIDS: str = ""
+    DEMO_ALLOWED_EMAILS: str = ""
+    DEMO_INSTRUCTOR_EMAILS: str = ""
 
     # Database — ONE Postgres for relational + vectors + graph
     DATABASE_URL: str = "postgresql+asyncpg://app_user:change_me@postgres:5432/feedback"

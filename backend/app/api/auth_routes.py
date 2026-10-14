@@ -21,6 +21,7 @@ from pydantic import BaseModel
 import asyncpg
 
 from app.auth.firebase import DemoAccessDenied, verify_id_token
+from app.config import settings
 from app.db.postgres import get_conn
 
 logger = logging.getLogger(__name__)
@@ -29,18 +30,25 @@ router = APIRouter()
 DEV_ORG_ID = "00000000-0000-0000-0000-000000000001"  # seeded in init.sql
 
 
-async def _get_verified_uid(authorization: Annotated[str, Header()]) -> str:
-    """Dependency: verify Firebase token, return uid."""
+async def _get_verified_claims(
+    authorization: Annotated[str, Header()],
+) -> dict:
+    """Dependency: verify a Firebase token and return its trusted claims."""
     if not authorization.startswith("Bearer "):
         raise HTTPException(401, "Missing Bearer token")
     token = authorization.removeprefix("Bearer ")
     try:
-        claims = verify_id_token(token)
-        return claims["uid"]
+        return verify_id_token(token)
     except DemoAccessDenied as e:
         raise HTTPException(403, str(e)) from e
     except Exception as e:
         raise HTTPException(401, f"Invalid token: {e}") from e
+
+
+async def _get_verified_uid(authorization: Annotated[str, Header()]) -> str:
+    """Dependency: verify Firebase token, return uid."""
+    claims = await _get_verified_claims(authorization)
+    return claims["uid"]
 
 
 async def _get_user_row(uid: str, org_id: str) -> dict | None:
@@ -61,22 +69,33 @@ class SyncUserRequest(BaseModel):
 @router.post("/sync-user")
 async def sync_user(
     body: SyncUserRequest,
-    uid: str = Depends(_get_verified_uid),
+    claims: dict = Depends(_get_verified_claims),
 ):
     """
     Called by the frontend immediately after Google Sign-In.
-    Creates the user if new (role = '', triggers onboarding).
+    Creates the user if new and applies any verified demo invitation.
     Returns the full user profile so the frontend knows the role immediately.
     """
-    email = body.email
-    display_name = body.displayName
-    photo_url = body.photoURL
+    uid = claims["uid"]
+    email = str(claims.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(400, "The signed-in Google account did not provide an email address.")
+
+    display_name = body.displayName or str(claims.get("name") or "")
+    photo_url = body.photoURL or str(claims.get("picture") or "")
     now = datetime.now(timezone.utc)
 
-    # Determine org_id (single-org for MVP — each user is their own org on first login)
-    # In a multi-tenant build, look up the org by email domain or invite token.
+    instructor_emails = {
+        value.strip().lower()
+        for value in settings.DEMO_INSTRUCTOR_EMAILS.split(",")
+        if value.strip()
+    }
+    invited_instructor = settings.DOCUMENT_DEMO and email in instructor_emails
+    initial_role = "instructor" if invited_instructor else "student"
+    initial_faculty_status = "approved" if invited_instructor else "none"
+
+    # Determine org_id (single-org for MVP).
     async with get_conn() as conn:
-        # Check if user exists (bypass RLS using the SECURITY DEFINER helper function)
         existing = await conn.fetchrow("SELECT get_user_org_id($1) AS org_id", uid)
         org_id = str(existing["org_id"]) if existing and existing["org_id"] else DEV_ORG_ID
 
@@ -86,35 +105,55 @@ async def sync_user(
                 """
                 INSERT INTO users (uid, org_id, email, display_name, photo_url, role,
                                    faculty_status, pro_status, warning_count, created_at, updated_at)
-                VALUES ($1, $2::uuid, $3, $4, $5, 'student', 'none', 'inactive', 0, $6, $6)
+                VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, 'inactive', 0, $8, $8)
                 ON CONFLICT (uid) DO UPDATE
-                  SET display_name = EXCLUDED.display_name,
+                  SET email        = EXCLUDED.email,
+                      display_name = EXCLUDED.display_name,
                       photo_url    = EXCLUDED.photo_url,
+                      role         = CASE
+                                       WHEN users.role = 'admin' THEN users.role
+                                       WHEN EXCLUDED.role = 'instructor' THEN 'instructor'
+                                       ELSE users.role
+                                     END,
+                      faculty_status = CASE
+                                         WHEN EXCLUDED.faculty_status = 'approved' THEN 'approved'
+                                         ELSE users.faculty_status
+                                       END,
                       updated_at   = EXCLUDED.updated_at
                 """,
-                uid, org_id, email, display_name, photo_url, now,
+                uid, org_id, email, display_name, photo_url,
+                initial_role, initial_faculty_status, now,
             )
         except asyncpg.exceptions.UniqueViolationError:
             # The user recreated their Firebase account (new UID) but with the same email.
-            # Since email is UNIQUE, the insert fails. We delete the old orphaned row
-            # (which cascades) and retry the insert.
-            logger.warning("Email %s already exists with a different UID. Deleting orphaned row.", email)
+            logger.warning("Email %s already exists with a different UID. Replacing orphaned row.", email)
             await conn.execute("DELETE FROM users WHERE email = $1", email)
             await conn.execute(
                 """
                 INSERT INTO users (uid, org_id, email, display_name, photo_url, role,
                                    faculty_status, pro_status, warning_count, created_at, updated_at)
-                VALUES ($1, $2::uuid, $3, $4, $5, 'student', 'none', 'inactive', 0, $6, $6)
+                VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, 'inactive', 0, $8, $8)
                 """,
-                uid, org_id, email, display_name, photo_url, now,
+                uid, org_id, email, display_name, photo_url,
+                initial_role, initial_faculty_status, now,
             )
-            
+
+        if invited_instructor:
+            await conn.execute(
+                """
+                INSERT INTO instructor_profiles (uid, org_id, created_at, updated_at)
+                VALUES ($1, $2::uuid, $3, $3)
+                ON CONFLICT (uid) DO UPDATE
+                  SET org_id = EXCLUDED.org_id,
+                      updated_at = EXCLUDED.updated_at
+                """,
+                uid, org_id, now,
+            )
+
         row = await conn.fetchrow("SELECT * FROM users WHERE uid = $1", uid)
 
     response_user = dict(row)
-    if not existing or existing["org_id"] is None:
-        # For completely new users, trick the frontend into showing the Role Selection screen
-        # even though they are safely defaulted to 'student' in the database.
+    if (not existing or existing["org_id"] is None) and not invited_instructor:
         response_user["role"] = ""
 
     return {"user": response_user}
