@@ -76,7 +76,7 @@ export const BatchUploadTutorialModal: React.FC<TutorialModalProps> = ({ isOpen,
                 {slides[step].description}
               </p>
 
-              <div className="w-full border border-[var(--color-ink)] bg-[var(--color-ink)] p-4 text-left font-mono text-xs leading-6 text-[var(--color-paper)]">
+              <div className="w-full border border-[var(--color-ink)] bg-[#171717] p-4 text-left font-mono text-xs leading-6 text-[var(--color-ink)]">
                 <pre className="whitespace-pre-wrap font-mono">{slides[step].example}</pre>
               </div>
             </motion.div>
@@ -105,7 +105,7 @@ export const BatchUploadTutorialModal: React.FC<TutorialModalProps> = ({ isOpen,
             )}
             <button
               onClick={handleNext}
-              className="flex items-center gap-1.5 bg-[var(--color-ink)] px-6 py-2.5 text-xs font-extrabold text-[var(--color-paper)] hover:bg-[var(--color-ink-2)]"
+              className="flex items-center gap-1.5 bg-[var(--color-accent)] px-6 py-2.5 text-xs font-extrabold text-[var(--color-accent-ink)] hover:bg-[var(--color-accent-2)]"
             >
               {step === slides.length - 1 ? "Done" : "Next"}
               {step !== slides.length - 1 && <ChevronRight className="w-4 h-4" />}

@@ -217,7 +217,7 @@ export const StudentDashboard: React.FC = () => {
                   onClick={() => setType(opt.value)}
                   className={`flex min-h-[76px] flex-col items-center justify-center gap-1.5 border px-2 py-3 text-[10px] font-bold transition-all cursor-pointer
                     ${type === opt.value
-                      ? "border-[var(--color-ink)] bg-[var(--color-ink)] text-[var(--color-paper)]"
+                      ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-accent-ink)]"
                       : "border-[var(--color-rule)] bg-[var(--color-paper)] text-[var(--color-muted)] hover:bg-[var(--color-paper-2)] hover:text-[var(--color-ink)]"
                     }`}
                 >

@@ -111,33 +111,33 @@ export default function Home() {
   return (
     <>
       <div className="flex min-h-screen overflow-hidden bg-[var(--color-paper)] text-[var(--color-ink)]">
-        <aside className="hidden w-[264px] shrink-0 select-none flex-col border-r border-[var(--color-rule)] bg-[var(--color-ink)] text-[var(--color-paper)] lg:flex">
-          <div className="border-b border-[oklch(96%_0.012_92_/_0.14)] p-5">
+        <aside className="hidden w-[264px] shrink-0 select-none flex-col border-r border-[var(--color-rule)] bg-[#101010] text-[var(--color-ink)] lg:flex">
+          <div className="border-b border-[#ffffff26] p-5">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center border border-[oklch(96%_0.012_92_/_0.22)] bg-[oklch(24%_0.014_82)]">
+              <div className="flex h-9 w-9 items-center justify-center border border-[#ffffff38] bg-[#252525]">
                 <Archive className="w-4 h-4 text-[var(--color-accent-2)]" />
               </div>
               <div>
                 <span className="block text-sm font-extrabold">GradeWise</span>
-                <span className="block text-[10px] text-[oklch(78%_0.014_92)]">Workbench</span>
+                <span className="block text-[10px] text-[#bbb]">Workbench</span>
               </div>
             </div>
           </div>
 
           <nav className="flex-1 p-4 space-y-4">
             <div>
-              <div className="mb-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[oklch(72%_0.018_92)]">
+              <div className="mb-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[#aaa]">
                 Console
               </div>
               <div className="space-y-2">
                 <button
                   onClick={() => setShowLanding(true)}
-                  className="flex w-full items-center gap-3 border border-[oklch(96%_0.012_92_/_0.14)] bg-[oklch(24%_0.014_82)] px-3 py-3 text-left text-xs font-bold text-[var(--color-paper)] hover:border-[var(--color-accent-2)] hover:bg-[oklch(28%_0.02_82)] cursor-pointer"
+                  className="flex w-full items-center gap-3 border border-[oklch(96%_0.012_92_/_0.14)] bg-[oklch(24%_0.014_82)] px-3 py-3 text-left text-xs font-bold text-[var(--color-ink)] hover:border-[var(--color-accent-2)] hover:bg-[#333333] cursor-pointer"
                 >
                   <House className="h-4 w-4 text-[var(--color-accent-2)]" />
                   Homepage
                 </button>
-                <div className="flex w-full items-center gap-3 border border-[var(--color-accent-2)] bg-[oklch(30%_0.045_255)] px-3 py-3 text-xs font-bold">
+                <div className="flex w-full items-center gap-3 border border-[var(--color-accent-border)] bg-[var(--color-accent-soft)] px-3 py-3 text-xs font-bold">
                   {currentMeta.icon}
                   {currentMeta.label}
                 </div>
@@ -152,15 +152,15 @@ export default function Home() {
                 onClick={() => setSubscriptionOpen(true)}
                 className={`flex w-full items-center justify-between border px-3 py-2.5 text-xs font-bold transition-all cursor-pointer ${
                   user.proStatus === "active"
-                    ? "border-amber-400/40 bg-amber-950/20 text-amber-300 hover:bg-amber-900/30"
-                    : "border-[oklch(96%_0.012_92_/_0.14)] bg-[oklch(24%_0.014_82)] text-[var(--color-paper)] hover:bg-[oklch(28%_0.02_82)]"
+                    ? "border-[var(--color-accent-border)] bg-[var(--color-accent-soft)] text-[var(--color-accent)] hover:bg-[#49432b]"
+                    : "border-[oklch(96%_0.012_92_/_0.14)] bg-[oklch(24%_0.014_82)] text-[var(--color-ink)] hover:bg-[oklch(28%_0.02_82)]"
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <Crown className="w-4 h-4 text-amber-400 shrink-0" />
+                  <Crown className="w-4 h-4 text-[var(--color-accent)] shrink-0" />
                   <span>{user.proStatus === "active" ? "Pro Plan" : "Upgrade Plan"}</span>
                 </div>
-                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-[#f2e58f26] text-[var(--color-accent)] border border-[#f2e58f55]">
                   {user.proStatus === "active" ? "ACTIVE" : "FREE"}
                 </span>
               </button>
@@ -176,20 +176,20 @@ export default function Home() {
               {user.photoURL ? (
                 <img src={user.photoURL} alt={user.displayName} className="h-9 w-9 object-cover" />
               ) : (
-                <div className="flex h-9 w-9 items-center justify-center bg-[var(--color-paper)] text-xs font-extrabold text-[var(--color-ink)]">
+                <div className="flex h-9 w-9 items-center justify-center bg-[var(--color-accent)] text-xs font-extrabold text-[var(--color-accent-ink)]">
                   {user.displayName.substring(0, 1).toUpperCase()}
                 </div>
               )}
               <div className="min-w-0 flex-1">
                 <span className="block truncate text-xs font-bold">{user.displayName}</span>
-                <span className="block truncate font-mono text-[9px] text-[oklch(76%_0.012_92)]">{user.email}</span>
+                <span className="block truncate font-mono text-[9px] text-[#b9b9b3]">{user.email}</span>
               </div>
-              <UserCog className="h-4 w-4 shrink-0 text-[oklch(76%_0.012_92)]" />
+              <UserCog className="h-4 w-4 shrink-0 text-[#b9b9b3]" />
             </button>
 
             <button
               onClick={logout}
-              className="flex w-full items-center justify-center gap-2 border border-[oklch(96%_0.012_92_/_0.14)] px-3 py-2.5 text-xs font-bold text-[oklch(86%_0.012_92)] hover:bg-[oklch(24%_0.014_82)] cursor-pointer"
+              className="flex w-full items-center justify-center gap-2 border border-[oklch(96%_0.012_92_/_0.14)] px-3 py-2.5 text-xs font-bold text-[#e5e5e1] hover:bg-[oklch(24%_0.014_82)] cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
               Sign out

@@ -140,7 +140,7 @@ export const StudentFeedbackDetails: React.FC<StudentFeedbackDetailsProps> = ({ 
           <button
             onClick={handleDownloadPdf}
             disabled={downloadingPdf}
-            className="inline-flex items-center gap-2 border border-[var(--color-ink)] bg-[var(--color-ink)] px-4 py-2 text-xs font-bold text-[var(--color-paper)] hover:bg-[var(--color-ink-2)] transition-all cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center gap-2 border border-[var(--color-ink)] bg-[var(--color-accent)] px-4 py-2 text-xs font-bold text-[var(--color-accent-ink)] hover:bg-[var(--color-accent-2)] transition-all cursor-pointer disabled:opacity-50"
           >
             {downloadingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
             {downloadingPdf ? "Generating PDF..." : "Export PDF Sheet"}
@@ -152,7 +152,7 @@ export const StudentFeedbackDetails: React.FC<StudentFeedbackDetailsProps> = ({ 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 min-h-[500px]">
         
         {/* LEFT PANE: Premium IDE-Style File / Code Viewer */}
-        <div className="lg:col-span-5 border border-[var(--color-rule)] bg-[var(--color-ink)] overflow-hidden flex flex-col min-h-[400px]">
+        <div className="lg:col-span-5 border border-[var(--color-rule)] bg-[#171717] overflow-hidden flex flex-col min-h-[400px]">
           <div className="py-3 px-4 border-b border-[oklch(96%_0.012_92_/_0.14)] bg-[oklch(24%_0.014_82)] flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Terminal className="w-4 h-4 text-[var(--color-accent-2)]" />

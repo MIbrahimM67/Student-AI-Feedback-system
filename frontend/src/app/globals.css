@@ -5,25 +5,27 @@
 @import "tailwindcss";
 
 :root {
-  --color-paper: oklch(96.5% 0.012 92);
-  --color-paper-2: oklch(92.5% 0.014 92);
-  --color-paper-3: oklch(86% 0.018 92);
-  --color-surface: oklch(98.2% 0.009 92);
-  --color-surface-2: oklch(94.5% 0.012 92);
-  --color-ink: oklch(18% 0.014 82);
-  --color-ink-2: oklch(31% 0.014 82);
-  --color-muted: oklch(49% 0.014 82);
-  --color-rule: oklch(78% 0.018 92);
-  --color-rule-2: oklch(67% 0.02 92);
-  --color-accent: oklch(47% 0.17 255);
-  --color-accent-2: oklch(58% 0.15 255);
-  --color-accent-ink: oklch(96% 0.012 92);
-  --color-success: oklch(47% 0.14 155);
-  --color-warning: oklch(61% 0.16 68);
-  --color-error: oklch(51% 0.18 28);
-  --color-focus: oklch(54% 0.18 255);
-  --shadow-panel: 0 1px 0 oklch(100% 0.005 92 / 0.65), 0 18px 44px oklch(18% 0.014 82 / 0.08);
-  --shadow-soft: 0 10px 28px oklch(18% 0.014 82 / 0.07);
+  --color-paper: #151515;
+  --color-paper-2: #202020;
+  --color-paper-3: #303030;
+  --color-surface: #292929;
+  --color-surface-2: #353535;
+  --color-ink: #f5f5f1;
+  --color-ink-2: #d5d5d0;
+  --color-muted: #aaa9a3;
+  --color-rule: #444442;
+  --color-rule-2: #666660;
+  --color-accent: #f2e58f;
+  --color-accent-2: #fff0aa;
+  --color-accent-ink: #191915;
+  --color-accent-soft: #393522;
+  --color-accent-border: #7d7443;
+  --color-success: #8ad7a5;
+  --color-warning: #efc777;
+  --color-error: #f3a4a0;
+  --color-focus: #f2e58f;
+  --shadow-panel: 0 1px 0 #ffffff0d, 0 18px 44px #00000040;
+  --shadow-soft: 0 10px 28px #00000033;
 
   --space-3xs: 0.25rem;
   --space-2xs: 0.5rem;
@@ -46,8 +48,8 @@
   --dur-short: 220ms;
   --dur-long: 420ms;
 
-  --font-sans: var(--font-body-face), "IBM Plex Sans", system-ui, -apple-system, sans-serif;
-  --font-display: var(--font-display-face), "Space Grotesk", system-ui, -apple-system, sans-serif;
+  --font-sans: var(--font-body-face), "DM Sans", system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-display-face), "Bricolage Grotesque", system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-mono-face), "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
@@ -73,10 +75,7 @@ body {
 }
 
 body {
-  background:
-    linear-gradient(90deg, oklch(18% 0.014 82 / 0.035) 1px, transparent 1px) 0 0 / 24px 24px,
-    linear-gradient(0deg, oklch(18% 0.014 82 / 0.03) 1px, transparent 1px) 0 0 / 24px 24px,
-    var(--color-paper);
+  background: var(--color-paper);
   color: var(--color-ink);
   font-family: var(--font-sans);
   letter-spacing: 0;
@@ -92,7 +91,7 @@ h4,
   color: var(--color-ink);
   font-family: var(--font-display);
   font-style: normal;
-  font-weight: 760;
+  font-weight: 650;
   letter-spacing: 0;
   overflow-wrap: anywhere;
 }
@@ -266,14 +265,14 @@ textarea {
 .bg-violet-50,
 .bg-violet-100,
 .bg-cyan-50 {
-  background-color: oklch(94% 0.035 255) !important;
+  background-color: var(--color-accent-soft) !important;
 }
 
 .border-indigo-200,
 .border-indigo-300,
 .border-blue-200,
 .border-violet-200 {
-  border-color: oklch(72% 0.08 255) !important;
+  border-color: var(--color-accent-border) !important;
 }
 
 .bg-indigo-600,
@@ -283,15 +282,16 @@ textarea {
 .bg-violet-600,
 .bg-violet-700,
 .bg-\[\#1c1c18\] {
-  background-color: var(--color-ink) !important;
-  color: var(--color-paper) !important;
+  background-color: var(--color-accent) !important;
+  color: var(--color-accent-ink) !important;
 }
 
 .hover\:bg-indigo-700:hover,
 .hover\:bg-violet-700:hover,
 .hover\:bg-\[\#33332f\]:hover,
 .hover\:bg-\[\#2c2c28\]:hover {
-  background-color: var(--color-ink-2) !important;
+  background-color: var(--color-accent-2) !important;
+  color: var(--color-accent-ink) !important;
 }
 
 .text-emerald-400,
@@ -306,12 +306,12 @@ textarea {
 .bg-emerald-50,
 .bg-green-50,
 .bg-green-100 {
-  background-color: oklch(94% 0.04 155) !important;
+  background-color: #21382a !important;
 }
 
 .border-emerald-200,
 .border-green-200 {
-  border-color: oklch(73% 0.08 155) !important;
+  border-color: #39694d !important;
 }
 
 .text-amber-400,
@@ -328,20 +328,20 @@ textarea {
 .bg-amber-100,
 .bg-yellow-50,
 .bg-orange-50 {
-  background-color: oklch(93% 0.055 68) !important;
+  background-color: #40331e !important;
 }
 
 .border-amber-200,
 .border-yellow-200,
 .border-orange-200 {
-  border-color: oklch(75% 0.09 68) !important;
+  border-color: #765b2d !important;
 }
 
 .bg-amber-500,
 .bg-amber-600,
 .bg-emerald-600 {
-  background-color: var(--color-ink) !important;
-  color: var(--color-paper) !important;
+  background-color: var(--color-accent) !important;
+  color: var(--color-accent-ink) !important;
 }
 
 .text-rose-400,
@@ -360,13 +360,13 @@ textarea {
 .bg-rose-50,
 .bg-red-50,
 .bg-red-100 {
-  background-color: oklch(94% 0.045 28) !important;
+  background-color: #432828 !important;
 }
 
 .border-rose-200,
 .border-rose-300,
 .border-red-200 {
-  border-color: oklch(74% 0.09 28) !important;
+  border-color: #784040 !important;
 }
 
 .shadow-xl,
@@ -415,3 +415,16 @@ textarea {
     animation: none !important;
   }
 }
+
+/* Keep old light-utility surfaces and inputs legible in the dark workbench. */
+.bg-slate-100,.bg-slate-200 { background-color: var(--color-surface-2) !important; }
+.border-slate-300 { border-color: var(--color-rule-2) !important; }
+.text-white.bg-indigo-600,.text-white.bg-indigo-700,
+button[class*="bg-[var(--color-accent)]"] {
+  color: var(--color-accent-ink) !important;
+}
+input, textarea, select { background-color: var(--color-surface); color: var(--color-ink); }
+
+.text-\[\#1c1c18\],.text-\[\#1e1e1a\] { color: var(--color-ink) !important; }
+.text-\[\#8e8b80\],.placeholder-\[\#8e8b80\] { color: var(--color-muted) !important; }
+.bg-\[\#1c1c18\] { background-color: var(--color-accent) !important; color: var(--color-accent-ink) !important; }

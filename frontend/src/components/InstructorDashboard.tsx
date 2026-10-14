@@ -229,20 +229,20 @@ const VerificationForm: React.FC<{ isPending: boolean }> = ({ isPending }) => {
         )}
       </div>
 
-      <div className="lg:col-span-5 border border-[oklch(96%_0.012_92_/_0.16)] bg-[var(--color-ink)] text-[var(--color-paper)] p-6 shadow-[var(--shadow-panel)] relative overflow-hidden space-y-6">
+      <div className="lg:col-span-5 border border-[var(--color-rule)] bg-[#1c1c1c] text-[var(--color-ink)] p-6 shadow-[var(--shadow-panel)] relative overflow-hidden space-y-6">
         <div className="space-y-2">
-          <span className="py-1 px-3.5 bg-[oklch(30%_0.045_255)] text-[var(--color-paper)] border border-[var(--color-accent-2)] text-[10px] font-extrabold uppercase tracking-widest">
+          <span className="py-1 px-3.5 bg-[var(--color-accent-soft)] text-[var(--color-accent)] border border-[var(--color-accent-2)] text-[10px] font-extrabold uppercase tracking-widest">
             Faculty access
           </span>
-          <h3 className="text-2xl font-bold tracking-normal text-[var(--color-paper)]">Classroom grading operations</h3>
-          <p className="text-xs text-[oklch(82%_0.012_92)] leading-relaxed">
+          <h3 className="text-2xl font-bold tracking-normal text-[var(--color-ink)]">Classroom grading operations</h3>
+          <p className="text-xs text-[var(--color-ink-2)] leading-relaxed">
             {DOCUMENT_DEMO ? "Verification lets faculty create classrooms, index references, and grade batches of up to 30 submissions." : "Verification lets faculty create classrooms, attach reference material, and process student submissions in batches."}
           </p>
         </div>
-        <div className="border-t border-[oklch(96%_0.012_92_/_0.14)] my-4" />
+        <div className="border-t border-[var(--color-rule)] my-4" />
         <div className="space-y-4">
-          <h4 className="text-[10px] font-extrabold text-[oklch(78%_0.014_92)] uppercase tracking-wider">Available after approval</h4>
-          <ul className="space-y-3.5 text-xs text-[oklch(86%_0.012_92)]">
+          <h4 className="text-[10px] font-extrabold text-[var(--color-muted)] uppercase tracking-wider">Available after approval</h4>
+          <ul className="space-y-3.5 text-xs text-[var(--color-ink-2)]">
             <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" /> Staged bulk uploads · up to 30 files</li>
             <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" /> Internal text-similarity checks</li>
             <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" /> Excel summaries export</li>
@@ -360,17 +360,48 @@ const SubjectsView: React.FC<{ subjects: Subject[], onSelect: (s: Subject) => vo
     }
   };
 
+  const { user } = useAuth();
+  const assignmentCount = subjects.reduce((total, subject) => total + subject.assignment_count, 0);
+  const referenceCount = subjects.reduce((total, subject) => total + subject.reference_count, 0);
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-bold text-[var(--color-ink)]">Your Classrooms</h3>
-        <button 
-          onClick={() => setCreating(!creating)}
-          className="bg-[var(--color-ink)] hover:bg-[var(--color-ink-2)] text-[var(--color-paper)] px-4 py-2 text-xs font-bold inline-flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" /> New Classroom
-        </button>
-      </div>
+      <section className="rounded-[24px] border border-[var(--color-rule)] bg-[#1b1b1b] p-5 sm:p-7 lg:p-9">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 text-[11px] text-[var(--color-muted)]">
+          <span>Workspace / Classrooms</span>
+          <span className="rounded-full border border-[var(--color-rule)] px-3 py-1.5">Instructor overview</span>
+        </div>
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:items-stretch">
+          <div className="flex flex-col justify-between">
+            <div>
+              <h3 className="font-display text-3xl font-semibold tracking-tight text-[var(--color-ink)] sm:text-4xl">
+                Welcome, {user?.displayName?.split(" ")[0] || "Instructor"}.
+              </h3>
+              <p className="mt-3 max-w-md text-sm text-[var(--color-muted)]">
+                Manage your classrooms, course evidence and grading from one desk.
+              </p>
+            </div>
+            <div className="mt-8 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[var(--color-accent)] p-4 text-[var(--color-accent-ink)]">
+              <div><strong className="block text-sm">Ready to grade a class?</strong><span className="text-xs">Create a classroom and add your course material.</span></div>
+              <button onClick={() => setCreating(!creating)} className="inline-flex items-center gap-2 rounded-xl bg-[#191915] px-4 py-2.5 text-xs font-bold text-[var(--color-accent)] hover:bg-[#303029]">
+                <Plus className="h-4 w-4" /> New Classroom
+              </button>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[
+              { label: "Classrooms", value: subjects.length, icon: Layers },
+              { label: "Assignments", value: assignmentCount, icon: ClipboardList },
+              { label: "References", value: referenceCount, icon: BookOpen },
+            ].map(({ label, value, icon: Icon }) => (
+              <div key={label} className="flex min-h-[170px] flex-col justify-between rounded-2xl border border-[var(--color-rule)] bg-[var(--color-surface-2)] p-4">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#454545] text-[var(--color-accent)]"><Icon className="h-4 w-4" /></span>
+                <div><span className="block text-xs text-[var(--color-muted)]">{label}</span><strong className="mt-1 block font-display text-3xl text-[var(--color-ink)]">{value}</strong></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {creating && (
         <div className="glass-panel p-6 border border-[var(--color-rule)] bg-[var(--color-surface)] shadow-[var(--shadow-panel)] mb-8 relative overflow-hidden">
@@ -649,7 +680,7 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
       {tab === "assignments" && (
         <div className="space-y-6">
           <div className="flex justify-end">
-            <button onClick={()=> creating ? resetAssignmentForm() : setCreating(true)} className="bg-[var(--color-ink)] hover:bg-[var(--color-ink-2)] text-[var(--color-paper)] px-4 py-2 text-xs font-bold inline-flex items-center gap-2">
+            <button onClick={()=> creating ? resetAssignmentForm() : setCreating(true)} className="bg-[var(--color-accent)] hover:bg-[var(--color-accent-2)] text-[var(--color-accent-ink)] px-4 py-2 text-xs font-bold inline-flex items-center gap-2">
               <Plus className="w-4 h-4"/> Create Assignment
             </button>
           </div>

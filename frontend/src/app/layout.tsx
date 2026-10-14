@@ -1,15 +1,15 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Sans, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import { Bricolage_Grotesque, DM_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 
-const displayFont = Space_Grotesk({
+const displayFont = Bricolage_Grotesque({
   subsets: ["latin"],
   variable: "--font-display-face",
-  weight: ["500", "600", "700"],
+  weight: ["500", "600", "700", "800"],
 });
 
-const sansFont = IBM_Plex_Sans({
+const sansFont = DM_Sans({
   subsets: ["latin"],
   variable: "--font-body-face",
   weight: ["400", "500", "600", "700"],

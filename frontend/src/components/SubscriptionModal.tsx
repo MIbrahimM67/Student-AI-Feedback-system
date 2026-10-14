@@ -178,9 +178,9 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
       <div className="relative w-full max-w-5xl border border-[var(--color-rule)] bg-[var(--color-surface)] shadow-2xl rounded-none flex flex-col max-h-[92vh] overflow-hidden">
         
         {/* Header Banner */}
-        <div className="flex items-center justify-between border-b border-[var(--color-rule)] bg-[var(--color-ink)] px-6 py-4 text-[var(--color-paper)]">
+        <div className="flex items-center justify-between border-b border-[var(--color-rule)] bg-[#171717] px-6 py-4 text-[var(--color-ink)]">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center bg-[var(--color-accent)] text-white">
+            <div className="flex h-9 w-9 items-center justify-center bg-[var(--color-accent)] text-[var(--color-accent-ink)]">
               <Crown className="w-5 h-5" />
             </div>
             <div>
@@ -284,7 +284,7 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                 onClick={() => setBillingCycle("monthly")}
                 className={`px-4 py-1.5 text-xs font-bold transition-all cursor-pointer ${
                   billingCycle === "monthly"
-                    ? "bg-[var(--color-ink)] text-[var(--color-paper)] shadow-sm"
+                    ? "bg-[var(--color-accent)] text-[var(--color-accent-ink)] shadow-sm"
                     : "text-[var(--color-muted)] hover:text-[var(--color-ink)]"
                 }`}
               >
@@ -294,12 +294,12 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                 onClick={() => setBillingCycle("yearly")}
                 className={`px-4 py-1.5 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                   billingCycle === "yearly"
-                    ? "bg-[var(--color-ink)] text-[var(--color-paper)] shadow-sm"
+                    ? "bg-[var(--color-accent)] text-[var(--color-accent-ink)] shadow-sm"
                     : "text-[var(--color-muted)] hover:text-[var(--color-ink)]"
                 }`}
               >
                 <span>Annual Billing</span>
-                <span className="px-1.5 py-0.2 bg-[var(--color-accent)] text-white text-[9px] font-black uppercase rounded-sm">Save 17%</span>
+                <span className="px-1.5 py-0.2 bg-[var(--color-accent)] text-[var(--color-accent-ink)] text-[9px] font-black uppercase rounded-sm">Save 17%</span>
               </button>
             </div>
           </div>
@@ -376,7 +376,7 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                 : "border-[var(--color-ink)] bg-[var(--color-surface)] shadow-lg"
             }`}>
               {/* Highlight Badge */}
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-[var(--color-ink)] text-[var(--color-paper)] text-[10px] font-black uppercase tracking-widest flex items-center gap-1 shadow-sm">
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-[var(--color-accent)] text-[var(--color-accent-ink)] text-[10px] font-black uppercase tracking-widest flex items-center gap-1 shadow-sm">
                 <Sparkles className="w-3 h-3 text-[var(--color-accent-2)]" />
                 Faculty Standard
               </div>
@@ -432,7 +432,7 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                   <button
                     onClick={handleOpenPortal}
                     disabled={demoBillingPaused || actionPlan === "portal"}
-                    className="w-full py-2.5 text-xs font-bold border border-[var(--color-ink)] bg-[var(--color-ink)] text-[var(--color-paper)] hover:bg-[var(--color-ink-2)] transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full py-2.5 text-xs font-bold border border-[var(--color-ink)] bg-[var(--color-accent)] text-[var(--color-accent-ink)] hover:bg-[var(--color-accent-2)] transition-colors flex items-center justify-center gap-2 cursor-pointer"
                   >
                     {actionPlan === "portal" ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />}
                     {demoBillingPaused ? "Billing — Coming soon" : "Manage Subscription (Stripe)"}
@@ -441,7 +441,7 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
                   <button
                     onClick={() => handleCheckout("pro")}
                     disabled={demoBillingPaused || actionPlan === "pro" || !isEligible}
-                    className="w-full py-3 text-xs font-black uppercase tracking-wider border border-[var(--color-ink)] bg-[var(--color-ink)] text-[var(--color-paper)] hover:bg-[var(--color-accent)] hover:border-[var(--color-accent)] disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer"
+                    className="w-full py-3 text-xs font-black uppercase tracking-wider border border-[var(--color-ink)] bg-[var(--color-accent)] text-[var(--color-accent-ink)] hover:bg-[var(--color-accent)] hover:border-[var(--color-accent)] disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer"
                   >
                     {actionPlan === "pro" ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
                     {demoBillingPaused ? "Payments — Coming soon" : isStripeLive ? "Subscribe with Stripe" : "Activate Pro Plan"}

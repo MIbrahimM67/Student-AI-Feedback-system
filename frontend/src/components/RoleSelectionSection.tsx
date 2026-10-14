@@ -47,7 +47,7 @@ export const RoleSelectionSection: React.FC = () => {
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-8">
       <div className="grid w-full max-w-5xl grid-cols-1 border border-[var(--color-rule)] bg-[var(--color-surface)] shadow-[var(--shadow-panel)] lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="border-b border-[var(--color-rule)] bg-[var(--color-ink)] p-6 text-[var(--color-paper)] lg:border-b-0 lg:border-r lg:border-[oklch(96%_0.012_92_/_0.14)]">
+        <aside className="border-b border-[var(--color-rule)] bg-[#101010] p-6 text-[var(--color-ink)] lg:border-b-0 lg:border-r lg:border-[oklch(96%_0.012_92_/_0.14)]">
           <div className="flex h-full flex-col justify-between gap-10">
             <div className="space-y-5">
               <div className="flex h-10 w-10 items-center justify-center border border-[oklch(96%_0.012_92_/_0.22)] bg-[oklch(24%_0.014_82)] font-mono text-sm font-black">
@@ -57,7 +57,7 @@ export const RoleSelectionSection: React.FC = () => {
                 <p className="text-xs font-bold uppercase tracking-[0.14em] text-[oklch(78%_0.014_92)]">
                   Setup
                 </p>
-                <h1 className="mt-3 text-3xl leading-tight text-[var(--color-paper)]">
+                <h1 className="mt-3 text-3xl leading-tight text-[var(--color-ink)]">
                   Choose the desk you work from.
                 </h1>
               </div>

@@ -117,12 +117,6 @@ export const LandingSection: React.FC<LandingSectionProps> = ({ onOpenWorkspace 
 
         <section className={styles.hero} aria-labelledby="landing-title">
           <div className={styles.heroCopy}>
-            <div className={styles.eyebrow}>
-              <span>AI-assisted assessment</span>
-              <i />
-              <span>Instructor controlled</span>
-            </div>
-
             <h1 id="landing-title" aria-label="Grade student work. Keep every decision explainable.">
               <span className={styles.heroLine}><span>Grade student work.</span></span>
               <span className={styles.heroLine}><span>Keep every decision</span></span>
