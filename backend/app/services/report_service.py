@@ -40,7 +40,7 @@ class ReportService:
         from reportlab.lib.pagesizes import letter
         from reportlab.lib import colors
         from reportlab.platypus import (
-            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether, HRFlowable
+            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether, HRFlowable
         )
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
@@ -48,41 +48,42 @@ class ReportService:
         doc = SimpleDocTemplate(
             buffer,
             pagesize=letter,
-            rightMargin=36,
-            leftMargin=36,
-            topMargin=36,
-            bottomMargin=36,
+            rightMargin=42,
+            leftMargin=42,
+            topMargin=48,
+            bottomMargin=50,
         )
         story = []
+        content_width = letter[0] - doc.leftMargin - doc.rightMargin
 
         styles = getSampleStyleSheet()
 
         # Theme Colors
-        navy = colors.HexColor("#0F172A")
-        indigo = colors.HexColor("#3B82F6")
-        indigo_dark = colors.HexColor("#1E3A8A")
-        emerald = colors.HexColor("#059669")
-        rose = colors.HexColor("#DC2626")
-        amber = colors.HexColor("#D97706")
-        light_slate = colors.HexColor("#F8FAFC")
-        border_color = colors.HexColor("#CBD5E1")
-        text_dark = colors.HexColor("#1E293B")
-        text_muted = colors.HexColor("#64748B")
+        charcoal = colors.HexColor("#1B1B1B")
+        butter = colors.HexColor("#F2E58F")
+        paper = colors.HexColor("#F7F6F2")
+        silver = colors.HexColor("#EAE9E4")
+        border_color = colors.HexColor("#D7D6CF")
+        text_dark = colors.HexColor("#282824")
+        text_muted = colors.HexColor("#65655F")
+        success = colors.HexColor("#2E684A")
+        danger = colors.HexColor("#A04440")
 
         # Custom text styles
         title_style = ParagraphStyle(
             'ReportTitle',
             parent=styles['Heading1'],
             fontSize=18,
-            leading=22,
-            textColor=navy,
+            leading=23,
+            textColor=charcoal,
             fontName='Helvetica-Bold',
+            spaceAfter=2,
         )
         subtitle_style = ParagraphStyle(
             'ReportSubtitle',
             parent=styles['Normal'],
-            fontSize=9,
-            leading=12,
+            fontSize=8,
+            leading=11,
             textColor=text_muted,
             fontName='Helvetica',
         )
@@ -91,57 +92,72 @@ class ReportService:
             parent=styles['Heading2'],
             fontSize=11,
             leading=14,
-            textColor=indigo_dark,
+            textColor=charcoal,
             fontName='Helvetica-Bold',
-            spaceBefore=10,
-            spaceAfter=4,
+            spaceBefore=15,
+            spaceAfter=7,
+            keepWithNext=False,
         )
         body_style = ParagraphStyle(
             'BodyText',
             parent=styles['Normal'],
-            fontSize=8.5,
-            leading=12,
+            fontSize=9,
+            leading=13.5,
             textColor=text_dark,
             fontName='Helvetica',
         )
         bullet_style = ParagraphStyle(
             'BulletItem',
             parent=body_style,
-            leftIndent=12,
-            bulletIndent=4,
-            spaceAfter=3,
+            leftIndent=14,
+            bulletIndent=5,
+            spaceAfter=5,
         )
         table_hdr = ParagraphStyle(
             'TableHdr',
             parent=styles['Normal'],
             fontSize=8,
-            leading=10,
-            textColor=colors.white,
+            leading=11,
+            textColor=charcoal,
             fontName='Helvetica-Bold',
         )
         table_cell = ParagraphStyle(
             'TableCell',
             parent=styles['Normal'],
-            fontSize=8,
-            leading=11,
+            fontSize=8.2,
+            leading=12,
             textColor=text_dark,
             fontName='Helvetica',
         )
         table_cell_bold = ParagraphStyle(
             'TableCellBold',
             parent=styles['Normal'],
-            fontSize=8,
-            leading=11,
-            textColor=navy,
+            fontSize=8.2,
+            leading=12,
+            textColor=charcoal,
             fontName='Helvetica-Bold',
         )
 
-        # Header Title
-        story.append(Paragraph("GRADEWISE AI FEEDBACK REPORT", title_style))
-        gen_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        story.append(Paragraph(f"Automated Multi-Stage Rubric & Evidence Assessment • Generated on {gen_time}", subtitle_style))
-        story.append(Spacer(1, 6))
-        story.append(HRFlowable(width="100%", thickness=1.5, color=indigo, spaceAfter=8))
+        # The quiet editorial header mirrors the dark workbench and yellow controls.
+        masthead = Table([[
+            Paragraph('<font color="#F2E58F"><b>G /</b></font>  <font color="#F5F5F1"><b>GRADEWISE</b></font>',
+                      ParagraphStyle('Brand', fontName='Helvetica-Bold', fontSize=12, leading=16)),
+            Paragraph('<font color="#F2E58F">ASSESSMENT REPORT</font>',
+                      ParagraphStyle('Kicker', fontName='Helvetica-Bold', fontSize=8, leading=12, alignment=2)),
+        ]], colWidths=[content_width * .58, content_width * .42])
+        masthead.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), charcoal),
+            ('TOPPADDING', (0, 0), (-1, -1), 14),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 14),
+            ('LEFTPADDING', (0, 0), (-1, -1), 15),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 15),
+        ]))
+        story.append(masthead)
+        story.append(Spacer(1, 17))
+        story.append(Paragraph("Student feedback report", title_style))
+        gen_time = datetime.now().strftime("%d %b %Y · %H:%M")
+        story.append(Paragraph(f"Rubric assessment and evidence  /  Generated {gen_time}", subtitle_style))
+        story.append(Spacer(1, 15))
 
         # Extract Core Scores & Verdict
         score = float(report_data.get("score") if report_data.get("score") is not None else report_data.get("overallScore", 0))
@@ -150,13 +166,13 @@ class ReportService:
 
         raw_verdict = str(report_data.get("verdict") or report_data.get("status") or "completed").upper()
         if pct >= 80:
-            verdict_color = "#059669"
+            verdict_color = "#2E684A"
             verdict_label = "EXCELLENT / PASS" if "PASS" in raw_verdict or "EXCELLENT" in raw_verdict else raw_verdict
         elif pct >= 60:
-            verdict_color = "#0284C7"
+            verdict_color = "#645B28"
             verdict_label = "GOOD / SATISFACTORY"
         else:
-            verdict_color = "#DC2626"
+            verdict_color = "#A04440"
             verdict_label = "NEEDS IMPROVEMENT" if "IMPROVEMENT" in raw_verdict or "FAIL" in raw_verdict else raw_verdict
 
         # Metadata & Score Table
@@ -167,7 +183,6 @@ class ReportService:
         similarity_score = report_data.get("plagiarism_similarity_score", report_data.get("plagiarismScore"))
         integrity_display = (
             f"{similarity_score}% Similarity" if similarity_score is not None
-            else "Not checked (coming soon)" if settings and settings.DOCUMENT_DEMO
             else "Not checked"
         )
 
@@ -178,7 +193,7 @@ class ReportService:
             ],
             [
                 Paragraph(f"<b>Submission File:</b> {f_name}", body_style),
-                Paragraph(f'<font size=13 color="#1E3A8A"><b>{score:.1f} / {max_score:.1f}</b></font> <font size=9 color="#64748B">({pct:.1f}%)</font>', body_style),
+                Paragraph(f'<font size=16 color="#1B1B1B"><b>{score:.1f} / {max_score:.1f}</b></font> <font size=9 color="#65655F">({pct:.1f}%)</font>', body_style),
             ],
             [
                 Paragraph(f"<b>Assignment:</b> {a_title}", body_style),
@@ -190,17 +205,21 @@ class ReportService:
             ],
         ]
 
-        meta_table = Table(meta_rows, colWidths=[340, 200])
+        meta_table = Table(meta_rows, colWidths=[content_width * .64, content_width * .36])
         meta_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), light_slate),
-            ('BACKGROUND', (1, 0), (1, -1), colors.HexColor("#EFF6FF")),
-            ('BOX', (0, 0), (-1, -1), 0.5, border_color),
-            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
-            ('PADDING', (0, 0), (-1, -1), 4.5),
+            ('BACKGROUND', (0, 0), (0, -1), paper),
+            ('BACKGROUND', (1, 0), (1, -1), silver),
+            ('LINEBELOW', (0, 0), (-1, 0), 2, butter),
+            ('BOX', (0, 0), (-1, -1), 0.6, border_color),
+            ('INNERGRID', (0, 0), (-1, -1), 0.35, border_color),
+            ('LEFTPADDING', (0, 0), (-1, -1), 12),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ]))
         story.append(meta_table)
-        story.append(Spacer(1, 10))
+        story.append(Spacer(1, 12))
 
         # Executive Summary / Feedback
         summary_text = (
@@ -243,7 +262,7 @@ class ReportService:
                     if notes.get("evidence"):
                         evidence_parts.append(f"<b>Evidence:</b> {_clean_text(notes['evidence'])}")
                     if notes.get("deduction_reason"):
-                        evidence_parts.append(f"<b>Deduction:</b> <font color='#DC2626'>{_clean_text(notes['deduction_reason'])}</font>")
+                        evidence_parts.append(f"<b>Deduction:</b> <font color='#A04440'>{_clean_text(notes['deduction_reason'])}</font>")
                     if notes.get("note") and not notes.get("evidence"):
                         evidence_parts.append(_clean_text(notes["note"]))
                     if not evidence_parts:
@@ -269,12 +288,17 @@ class ReportService:
                         Paragraph("See detailed recommendations below.", table_cell),
                     ])
 
-            r_tab = Table(r_rows, colWidths=[120, 65, 235, 120])
+            r_tab = Table(r_rows, colWidths=[content_width * .21, content_width * .12, content_width * .40, content_width * .27], repeatRows=1, splitInRow=1, hAlign='LEFT')
             r_tab.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), indigo_dark),
+                ('BACKGROUND', (0, 0), (-1, 0), butter),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, paper]),
+                ('LINEBELOW', (0, 0), (-1, 0), 1, charcoal),
                 ('BOX', (0, 0), (-1, -1), 0.5, border_color),
-                ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
-                ('PADDING', (0, 0), (-1, -1), 4.5),
+                ('LINEBELOW', (0, 1), (-1, -2), 0.35, border_color),
+                ('LEFTPADDING', (0, 0), (-1, -1), 7),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 7),
+                ('TOPPADDING', (0, 0), (-1, -1), 7),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ]))
             story.append(r_tab)
@@ -322,7 +346,7 @@ class ReportService:
             ]
             for i, log in enumerate(sandbox_logs):
                 passed = log.get("passed", False)
-                status_color = "#059669" if passed else "#DC2626"
+                status_color = "#2E684A" if passed else "#A04440"
                 status_str = "PASS" if passed else "FAIL"
                 s_rows.append([
                     Paragraph(f"Test #{i+1}", table_cell_bold),
@@ -331,12 +355,17 @@ class ReportService:
                     Paragraph(_clean_text(log.get("expected_output", "")), table_cell),
                     Paragraph(_clean_text(log.get("actual_output", log.get("error", ""))), table_cell),
                 ])
-            s_tab = Table(s_rows, colWidths=[60, 50, 140, 145, 145])
+            s_tab = Table(s_rows, colWidths=[content_width * .11, content_width * .10, content_width * .23, content_width * .28, content_width * .28], repeatRows=1, splitInRow=1, hAlign='LEFT')
             s_tab.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#334155")),
+                ('BACKGROUND', (0, 0), (-1, 0), butter),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, paper]),
+                ('LINEBELOW', (0, 0), (-1, 0), 1, charcoal),
                 ('BOX', (0, 0), (-1, -1), 0.5, border_color),
-                ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
-                ('PADDING', (0, 0), (-1, -1), 4),
+                ('LINEBELOW', (0, 1), (-1, -2), 0.35, border_color),
+                ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                ('TOPPADDING', (0, 0), (-1, -1), 7),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ]))
             story.append(s_tab)
@@ -349,8 +378,21 @@ class ReportService:
             story.append(Paragraph(_clean_text(final_comments), body_style))
             story.append(Spacer(1, 6))
 
-        # Build PDF
-        doc.build(story)
+        def draw_page(canvas, document):
+            canvas.saveState()
+            width, _ = letter
+            canvas.setStrokeColor(border_color)
+            canvas.setLineWidth(.6)
+            canvas.line(document.leftMargin, 35, width - document.rightMargin, 35)
+            canvas.setFont('Helvetica-Bold', 7)
+            canvas.setFillColor(charcoal)
+            canvas.drawString(document.leftMargin, 23, 'GRADEWISE  /  FEEDBACK REPORT')
+            canvas.setFont('Helvetica', 7)
+            canvas.setFillColor(text_muted)
+            canvas.drawRightString(width - document.rightMargin, 23, f'PAGE {document.page}')
+            canvas.restoreState()
+
+        doc.build(story, onFirstPage=draw_page, onLaterPages=draw_page)
         pdf_bytes = buffer.getvalue()
         buffer.close()
         return pdf_bytes
@@ -510,3 +552,4 @@ class ReportService:
 
 # Initialize global instance
 report_service = ReportService()
+
