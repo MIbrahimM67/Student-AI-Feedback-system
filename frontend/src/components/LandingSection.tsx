@@ -62,6 +62,16 @@ const process = [
 
 export const LandingSection: React.FC<LandingSectionProps> = ({ onOpenWorkspace }) => {
   const { loginWithGoogle, error, loading, user } = useAuth();
+  const [activeOutput, setActiveOutput] = React.useState(0);
+
+  const scrollToSection = (event: React.MouseEvent<HTMLAnchorElement>, id: string) => {
+    event.preventDefault();
+    document.getElementById(id)?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      block: "start",
+    });
+    window.history.replaceState(null, "", `#${id}`);
+  };
 
   const openWorkspace = () => {
     if (user && onOpenWorkspace) {
@@ -102,10 +112,10 @@ export const LandingSection: React.FC<LandingSectionProps> = ({ onOpenWorkspace 
           </a>
 
           <nav aria-label="Landing page navigation">
-            <a href="#product">Product</a>
-            <a href="#evidence">Evidence</a>
-            <a href="#process">Process</a>
-            <a href="#future">Future</a>
+            <a href="#product" onClick={(event) => scrollToSection(event, "product")}>Product</a>
+            <a href="#evidence" onClick={(event) => scrollToSection(event, "evidence")}>Evidence</a>
+            <a href="#process" onClick={(event) => scrollToSection(event, "process")}>Process</a>
+            <a href="#future" onClick={(event) => scrollToSection(event, "future")}>Future</a>
           </nav>
 
           <button className={styles.headerCta} onClick={openWorkspace} disabled={loading}>
@@ -207,25 +217,94 @@ export const LandingSection: React.FC<LandingSectionProps> = ({ onOpenWorkspace 
       <main>
         <section className={styles.product} id="product" data-reveal>
           <div className={styles.sectionHeading}>
-            <span>One review workspace</span>
-            <h2>The grading trail stays visible.</h2>
-            <p>Rubric, evidence, execution output and the instructor&apos;s decision live in the same report.</p>
+            <span>Inside GradeWise</span>
+            <h2>Follow a mark from rubric to approval.</h2>
+            <p>Choose a step to see what the instructor can inspect in a sample report.</p>
           </div>
 
-          <div className={styles.outputGrid}>
-            {outputs.map(({ icon: Icon, number, title, text }, index) => (
-              <article key={title} style={{ "--delay": `${index * 70}ms` } as React.CSSProperties}>
-                <div className={styles.outputTop}><span>{number}</span><Icon size={19} /></div>
-                <h3>{title}</h3>
-                <p>{text}</p>
-              </article>
-            ))}
+          <div className={styles.productShowcase}>
+            <div className={styles.featureNav} role="group" aria-label="Explore GradeWise features">
+              {outputs.map(({ icon: Icon, number, title, text }, index) => (
+                <button
+                  key={title}
+                  type="button"
+                  className={activeOutput === index ? styles.featureActive : ""}
+                  aria-pressed={activeOutput === index}
+                  onClick={() => setActiveOutput(index)}
+                >
+                  <span className={styles.featureIcon}><Icon size={20} /></span>
+                  <span className={styles.featureWords}>
+                    <small>{number} / 04</small>
+                    <strong>{title}</strong>
+                    <span>{text}</span>
+                  </span>
+                  <ChevronRight size={17} className={styles.featureArrow} />
+                </button>
+              ))}
+            </div>
+
+            <div className={styles.featurePreview} aria-live="polite">
+              <div className={styles.previewBar}>
+                <span><GraduationCap size={15} /> GradeWise / Sample report</span>
+                <span>Data Structures · Assignment 04</span>
+              </div>
+              <div className={styles.previewContent} key={activeOutput}>
+                <span className={styles.previewLabel}>What the instructor sees · {outputs[activeOutput].number}</span>
+                {activeOutput === 0 && (
+                  <>
+                    <h3>Every point has a reason.</h3>
+                    <p>Relaxation logic is assessed against a named rubric criterion.</p>
+                    <div className={styles.previewCriterion}>
+                      <div><span>Criterion 01</span><strong>Relaxation logic</strong><small>Correct update rule; explanation misses a constraint.</small></div>
+                      <strong>8<span>/10</span></strong>
+                    </div>
+                    <div className={styles.previewFoot}><FileCheck2 size={16} /> Linked to the assignment rubric <CheckCircle2 size={16} /></div>
+                  </>
+                )}
+                {activeOutput === 1 && (
+                  <>
+                    <h3>Feedback points to the source.</h3>
+                    <p>Inspect the course passage behind a grading comment.</p>
+                    <div className={styles.previewQuote}>
+                      <span>Lecture 07 · Shortest paths</span>
+                      <code>if d[u] + w(u,v) &lt; d[v]: d[v] = d[u] + w(u,v)</code>
+                      <small>Matching course evidence attached to the criterion.</small>
+                    </div>
+                    <div className={styles.previewFoot}><BookOpen size={16} /> 1 cited passage <CheckCircle2 size={16} /></div>
+                  </>
+                )}
+                {activeOutput === 2 && (
+                  <>
+                    <h3>See the submission and its tests.</h3>
+                    <p>Review documents or code alongside the grading evidence.</p>
+                    <div className={styles.previewTests}>
+                      <div><CheckCircle2 size={16} /><span>Standard weighted graph</span><strong>Passed</strong></div>
+                      <div><CheckCircle2 size={16} /><span>Single source node</span><strong>Passed</strong></div>
+                      <div><ScanSearch size={16} /><span>Disconnected graph</span><strong>Review</strong></div>
+                    </div>
+                    <div className={styles.previewFoot}><Code2 size={16} /> 6 of 7 tests passed <CheckCircle2 size={16} /></div>
+                  </>
+                )}
+                {activeOutput === 3 && (
+                  <>
+                    <h3>The final decision stays human.</h3>
+                    <p>The instructor reviews the draft before approving or editing it.</p>
+                    <div className={styles.previewApproval}>
+                      <ShieldCheck size={24} />
+                      <div><strong>Draft ready for review</strong><span>Criterion marks, cited evidence and test output are attached.</span></div>
+                      <span>19/25</span>
+                    </div>
+                    <div className={styles.previewFoot}><ShieldCheck size={16} /> Instructor approval required <CheckCircle2 size={16} /></div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </section>
 
         <section className={styles.evidenceStory} id="evidence" data-reveal>
           <div className={styles.evidenceCopy}>
-            <span className={styles.kicker}>A specific result, not a vague score</span>
+            <span className={styles.kicker}>Graded example · Python submission</span>
             <h2>“Correct algorithm. Incomplete reasoning.”</h2>
             <p>
               The report identifies the working relaxation step, cites the matching lecture rule,
