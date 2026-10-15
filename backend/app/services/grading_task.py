@@ -253,11 +253,12 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
 
     # ---- Code sandbox -------------------------------------------------------
     code_execution_result = None
+    execution_checks = []
     if sub["type"] == "coding" and code_execution_available():
         try:
             await progress("code_checks", 40, "Generating and running code checks before grading.")
             from app.services.code_sandbox_service import code_sandbox_service
-            from app.utils.prompt_templates import utility_test_case_generator_user
+            from app.grading.rubric import _extract_json
             from app.services.llm_provider import ChatMessage
             
             if detected_lang:
@@ -272,48 +273,79 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
                 # 1. Generate autonomous test cases via LLM
                 llm = build_llm_from_env()
                 is_batch = sub["mode"] == "batch"
-                test_gen_prompt = utility_test_case_generator_user(extracted_text, sub.get("stdin_text", ""), is_batch)
-            
-                resp = await llm.chat(
-                    messages=[ChatMessage(role="user", content=test_gen_prompt)],
-                    model=settings.GRADIENT_MODEL_UTILITY,
-                    temperature=0.4,
-                    max_tokens=800,
+                question_text = "\n".join(str(q.get("text") or "") for q in questions) or str(sub.get("question_text") or "")
+                rubric_text = "\n".join(str(c.get("description") or "") for c in rubric_criteria) or str(sub.get("rubric_text") or "")
+                supplied_input = str(sub.get("stdin_text") or "")
+                test_gen_prompt = (
+                    "Generate up to three concrete stdin test cases for this program and assignment. "
+                    "Return only JSON: {\"test_cases\":[{\"name\":\"...\",\"input\":\"...\"}]}. "
+                    "Use the assignment's input format. Each case must be executable as stdin. "
+                    "Do not invent a correctness verdict or expected output. "
+                    "If input is provided by the instructor, include it as the first case.\n"
+                    f"Assignment:\n{question_text[:4000]}\nRubric:\n{rubric_text[:2000]}\n"
+                    f"Instructor stdin:\n{supplied_input[:8000]}\n"
+                    f"Student source:\n{extracted_text[:5000]}"
                 )
-            
-                # Safely parse JSON from LLM response
-                json_str = resp.text.strip()
-                if json_str.startswith("```json"):
-                    json_str = json_str[7:-3]
-                elif json_str.startswith("```"):
-                    json_str = json_str[3:-3]
-                
-                test_cases = [{"name": "Default Test", "input": sub.get("stdin_text", "")}]
-                try:
-                    parsed = json.loads(json_str)
-                    if "test_cases" in parsed and isinstance(parsed["test_cases"], list) and len(parsed["test_cases"]) > 0:
-                        test_cases = parsed["test_cases"]
-                except Exception as e:
-                    logger.warning("Failed to parse test cases from LLM: %s", e)
+                test_cases = []
+                for attempt in range(2):
+                    resp = await llm.chat(
+                        messages=[ChatMessage(role="user", content=test_gen_prompt)],
+                        model=settings.GRADIENT_MODEL_UTILITY,
+                        temperature=0.2,
+                        max_tokens=1400 if attempt else 1000,
+                    )
+                    try:
+                        parsed = _extract_json(resp.text)
+                        raw_cases = parsed.get("test_cases")
+                        if not isinstance(raw_cases, list):
+                            raise ValueError("missing test_cases list")
+                        test_cases = [
+                            {"name": str(tc.get("name") or f"Test {idx + 1}")[:100],
+                             "input": str(tc["input"])[:8000]}
+                            for idx, tc in enumerate(raw_cases[:3])
+                            if isinstance(tc, dict) and isinstance(tc.get("input"), str)
+                        ]
+                        if test_cases:
+                            break
+                    except (ValueError, TypeError, KeyError, AttributeError) as exc:
+                        logger.warning("Code test generation incomplete on attempt %d: %s", attempt + 1, exc)
+                if supplied_input and all(tc["input"] != supplied_input for tc in test_cases):
+                    test_cases.insert(0, {"name": "Instructor input", "input": supplied_input[:8000]})
+                expects_stdin = bool(re.search(r"cin\s*>>|scanf\s*\(|getline\s*\(|input\s*\(|System\.in|\bstdin\b", extracted_text))
+                if not test_cases or (expects_stdin and not any(tc["input"].strip() for tc in test_cases)):
+                    raise RuntimeError("No valid stdin test case was generated for an input-reading program")
             
                 # 2. Execute test cases sequentially
                 if code_execution_result is None:  # Ensure we didn't skip it (like web)
-                    execution_results = []
                     test_cases = [tc for tc in test_cases if isinstance(tc, dict)][:5]
                     if not test_cases:
                         raise RuntimeError("No usable code checks were generated")
                     inputs = [str(tc.get("input", ""))[:8000] for tc in test_cases]
                     results = await code_sandbox_service.execute_tests(extracted_text, lang, inputs, zip_path=tmp_zip_path)
+                    if len(results) != len(test_cases):
+                        raise RuntimeError("Sandbox returned fewer results than submitted test cases")
+                    execution_results = []
                     for tc, result in zip(test_cases, results):
                         tc_name = tc.get("name", "Test Case")
                         tc_input = tc.get("input", "")
-                    
-                        # Apply user requested formatting: Passed/Failed with capped output
-                        if result.get("exitCode") == 0:
-                            out_str = f"=== Test Case: {tc_name} ===\nStatus: EXECUTED (exit code 0; correctness judged against the rubric)\nInput:\n{str(tc_input)[:8000]}\nOutput:\n{result.get('stdout', '').strip()[:4000]}\nStderr:\n{result.get('stderr', '').strip()[:1000]}"
-                        else:
-                            out_str = f"=== Test Case: {tc_name} ===\nStatus: FAILED (exit code {result.get('exitCode')})\nInput:\n{str(tc_input)[:8000]}\nOutput:\n{result.get('stdout', '').strip()[:4000]}\nErrors/Reasons:\n{result.get('stderr', '').strip()[:1000]}"
-                    
+                        exit_code = result.get("exitCode")
+                        stdout = str(result.get("stdout") or "").strip()[:4000]
+                        stderr = str(result.get("stderr") or "").strip()[:1000]
+                        status = "Executed" if exit_code == 0 else "Runtime/compile error"
+                        if exit_code == 0 and not stdout:
+                            status = "Executed; no output"
+                        execution_checks.append({
+                            "name": str(tc_name)[:100], "input": str(tc_input)[:8000],
+                            "actual_output": stdout, "stderr": stderr,
+                            "exit_code": exit_code, "status": status,
+                        })
+                        out_str = (
+                            f"=== Test Case: {tc_name} ===\nStatus: {status} (exit code {exit_code}; "
+                            "correctness requires comparison with the assignment)\n"
+                            f"Input:\n{str(tc_input)[:8000] or '[empty stdin]'}\n"
+                            f"Observed output:\n{stdout or '[no output]'}\n"
+                            f"Errors:\n{stderr or '[none]'}"
+                        )
                         execution_results.append(out_str)
                     
                     code_execution_result = "\n\n".join(execution_results)
@@ -472,6 +504,7 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
         "est_cost_usd": report.est_cost_usd,
         "code_execution_result": code_execution_result,
         "sandbox_logs": code_execution_result,
+        "code_execution_checks": execution_checks,
         "integrity_report": integrity_report,
     }
     
@@ -482,25 +515,50 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
 
     report_id = str(uuid.uuid4())
     async with get_conn(org_id) as conn:
-        await conn.execute(
-            """
-            INSERT INTO feedback_reports
-              (id, org_id, submission_id, batch_id,
-               ai_overall_score, ai_max_score, ai_status,
-               ai_payload, ai_overall_confidence, ai_generated_at,
-               ai_model_versions)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-            """,
-            report_id, org_id, submission_id, batch_id,
-            report.score, report.max_score, ai_status,
-            json.dumps(report_dict),
-            avg_confidence, now,
-            json.dumps({
-                "specialist": settings.GRADIENT_MODEL_SPECIALIST,
-                "judge": settings.GRADIENT_MODEL_JUDGE,
-                "senior": settings.GRADIENT_MODEL_SENIOR,
-            }),
+        model_versions = json.dumps({
+            "specialist": settings.GRADIENT_MODEL_SPECIALIST,
+            "judge": settings.GRADIENT_MODEL_JUDGE,
+            "senior": settings.GRADIENT_MODEL_SENIOR,
+        })
+        existing = await conn.fetchrow(
+            "SELECT id, ai_payload, approved_at, published_at FROM feedback_reports "
+            "WHERE submission_id=$1 FOR UPDATE", submission_id,
         )
+        replaced_invalid = False
+        if existing:
+            old_payload = existing["ai_payload"]
+            if isinstance(old_payload, str):
+                old_payload = json.loads(old_payload)
+            invalid = (
+                isinstance(old_payload, dict)
+                and old_payload.get("student_feedback") == "No feedback provided."
+                and not old_payload.get("criteria_notes")
+                and not existing["approved_at"]
+                and not existing["published_at"]
+            )
+            if not invalid:
+                raise RuntimeError("Refusing to overwrite an existing reviewed or complete grading report")
+            report_id = str(existing["id"])
+            report_dict["regraded_due_to_incomplete_prior_output"] = True
+            await conn.execute(
+                """UPDATE feedback_reports SET ai_overall_score=$2, ai_max_score=$3,
+                   ai_status=$4, ai_payload=$5, ai_overall_confidence=$6,
+                   ai_generated_at=$7, ai_model_versions=$8 WHERE id=$1""",
+                report_id, report.score, report.max_score, ai_status,
+                json.dumps(report_dict), avg_confidence, now, model_versions,
+            )
+            replaced_invalid = True
+        else:
+            await conn.execute(
+                """INSERT INTO feedback_reports
+                  (id, org_id, submission_id, batch_id, ai_overall_score,
+                   ai_max_score, ai_status, ai_payload, ai_overall_confidence,
+                   ai_generated_at, ai_model_versions)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)""",
+                report_id, org_id, submission_id, batch_id,
+                report.score, report.max_score, ai_status,
+                json.dumps(report_dict), avg_confidence, now, model_versions,
+            )
         await conn.execute(
             "UPDATE submissions SET status = 'graded' WHERE id = $1", submission_id
         )
@@ -526,7 +584,7 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
                 """,
                 submission_id, now,
             )
-        else:
+        elif not replaced_invalid:
             col = "needs_review_count" if needs_review else "processed_files"
             await conn.execute(
                 f"UPDATE batches SET {col} = {col} + 1 WHERE id = $1", batch_id
@@ -958,4 +1016,5 @@ async def _mark_failed(org_id: str, submission_id: str, batch_id: str | None) ->
         100,
         "Grading failed before a report could be generated.",
     )
+
 

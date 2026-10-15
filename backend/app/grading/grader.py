@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 from typing import Any, Awaitable, Callable
 
@@ -167,6 +168,71 @@ def _string_list(value: Any) -> list[str]:
     return [str(item).strip() for item in value if str(item).strip()]
 
 
+def _stage_issues(data: Any, criteria: list[Criterion], stage: str) -> list[str]:
+    """Reject incomplete AI output before missing fields become fabricated zeroes."""
+    if not isinstance(data, dict):
+        return ["response is not a JSON object"]
+    field = "per_criterion_review" if stage == "Judge" else "per_criterion"
+    rows = data.get(field)
+    if not isinstance(rows, dict):
+        return [f"missing {field} object"]
+    issues = []
+    for criterion in criteria:
+        row = rows.get(criterion.id)
+        if not isinstance(row, dict):
+            issues.append(f"missing {criterion.id}")
+            continue
+        score = row.get("final_score" if stage == "Judge" else "score")
+        try:
+            numeric = float(score)
+            if not math.isfinite(numeric) or not 0 <= numeric <= criterion.max_points:
+                raise ValueError("out of range")
+        except (TypeError, ValueError):
+            issues.append(f"invalid score for {criterion.id}")
+            continue
+        if stage != "Judge":
+            if not str(row.get("evidence") or "").strip():
+                issues.append(f"missing evidence for {criterion.id}")
+            if numeric < criterion.max_points and not str(row.get("deduction_reason") or "").strip():
+                issues.append(f"missing deduction for {criterion.id}")
+    if stage == "Senior":
+        for field in ("instructor_brief", "student_feedback", "score_rationale"):
+            if not str(data.get(field) or "").strip():
+                issues.append(f"missing {field}")
+    return issues
+
+
+async def _complete_stage(llm, *, stage: str, messages: list[ChatMessage],
+                          model: str, temperature: float, criteria: list[Criterion],
+                          json_mode: bool):
+    """Retry a malformed stage once; never score absent criteria as zero."""
+    last_issues: list[str] = []
+    for attempt in range(2):
+        stage_messages = messages
+        if attempt:
+            stage_messages = [*messages, ChatMessage(
+                role="user",
+                content=("Your previous response was incomplete. Return one complete JSON object. "
+                         "Include every criterion ID and the required evidence, deductions, "
+                         "scores and feedback. Required IDs: "
+                         + ", ".join(c.id for c in criteria)),
+            )]
+        response = await llm.chat(
+            messages=stage_messages, model=model, temperature=temperature,
+            max_tokens=6144 if attempt else (3072 if stage == "Judge" else 4096),
+            response_format="json_object" if json_mode else None,
+        )
+        try:
+            data = _extract_json(response.text)
+            last_issues = _stage_issues(data, criteria, stage)
+        except (ValueError, TypeError) as exc:
+            last_issues = [f"invalid JSON: {type(exc).__name__}"]
+        if not last_issues:
+            return data, response
+        logger.warning("%s output incomplete on attempt %d: %s", stage, attempt + 1, "; ".join(last_issues[:5]))
+    raise ValueError(f"{stage} output incomplete after retry: {'; '.join(last_issues[:5])}")
+
+
 # ---------------------------------------------------------------------------
 # Core 3-stage grading function
 # ---------------------------------------------------------------------------
@@ -201,6 +267,7 @@ async def grade(
 
     from app.config import settings
     model_name = settings.DEDICATED_MODEL if (dedicated and llm is dedicated) else config.GEMINI_MODEL
+    json_mode = llm.primary.name == "dedicated"
 
     doc_context = _build_document_context(submission, reference_pages, criteria, reference_text)
     total_input_tokens = 0
@@ -218,7 +285,8 @@ async def grade(
                 "Specialist agent is matching evidence to each rubric criterion.",
             )
         logger.info("Stage 1/3 — Specialist: performing evidence-based assessment")
-        specialist_resp = await llm.chat(
+        specialist_data, specialist_resp = await _complete_stage(
+            llm, stage="Specialist", criteria=criteria, json_mode=json_mode,
             messages=[
                 ChatMessage(role="system", content=SPECIALIST_SYSTEM),
                 ChatMessage(role="user", content=doc_context),
@@ -226,7 +294,6 @@ async def grade(
             model=model_name,
             temperature=0.3,
         )
-        specialist_data = _extract_json(specialist_resp.text)
         total_input_tokens += specialist_resp.input_tokens
         total_output_tokens += specialist_resp.output_tokens
         logger.info("Stage 1 complete — Specialist identified %d criteria scores",
@@ -248,7 +315,8 @@ async def grade(
             f"=== SPECIALIST ASSESSMENT TO REVIEW ===\n"
             f"{json.dumps(specialist_data, indent=2)}"
         )
-        judge_resp = await llm.chat(
+        judge_data, judge_resp = await _complete_stage(
+            llm, stage="Judge", criteria=criteria, json_mode=json_mode,
             messages=[
                 ChatMessage(role="system", content=JUDGE_SYSTEM),
                 ChatMessage(role="user", content=judge_user),
@@ -256,7 +324,6 @@ async def grade(
             model=model_name,
             temperature=0.1,
         )
-        judge_data = _extract_json(judge_resp.text)
         total_input_tokens += judge_resp.input_tokens
         total_output_tokens += judge_resp.output_tokens
         verdict = judge_data.get("overall_verdict", "FAIR")
@@ -283,7 +350,8 @@ async def grade(
             + f"\n\n=== SPECIALIST ANALYSIS ===\n{json.dumps(specialist_data, indent=2)}"
             + f"\n\n=== JUDGE REVIEW ===\n{json.dumps(judge_data, indent=2)}"
         )
-        senior_resp = await llm.chat(
+        senior_data, senior_resp = await _complete_stage(
+            llm, stage="Senior", criteria=criteria, json_mode=json_mode,
             messages=[
                 ChatMessage(role="system", content=SENIOR_SYSTEM),
                 ChatMessage(role="user", content=senior_user),
@@ -291,7 +359,6 @@ async def grade(
             model=model_name,
             temperature=0.1,
         )
-        senior_data = _extract_json(senior_resp.text)
         total_input_tokens += senior_resp.input_tokens
         total_output_tokens += senior_resp.output_tokens
         logger.info("Stage 3 complete — Senior produced final report")
@@ -401,3 +468,4 @@ async def grade(
             latency_ms=int((time.time() - t_start) * 1000),
             est_cost_usd=0.0,
         )
+

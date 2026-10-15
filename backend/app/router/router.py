@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 SERVERLESS_INPUT_CAP = 2_000
 TIER0_BUDGET = SERVERLESS_INPUT_CAP  # DigitalOcean serverless ceiling for grading calls
 DEDICATED_CONTEXT_CAP = 120_000  # Groq/Llama-3.3-70B: 128k window, leave headroom
+DEMO_CHUNK_THRESHOLD = 8_000
 
 
 def _dedicated_available() -> bool:
@@ -32,6 +33,11 @@ def route(sub_payload: DocumentPayload, ref_payload: DocumentPayload) -> Tier:
     combined = sub_payload.est_tokens + ref_payload.est_tokens
     from app.config import settings
     if settings.DOCUMENT_DEMO:
+        # Review long submissions in chunks, carrying open evidence questions
+        # forward. The final three-stage grade runs only after the last chunk.
+        if sub_payload.est_tokens > DEMO_CHUNK_THRESHOLD:
+            logger.info("Demo routing: chunk review for %d submission tokens", sub_payload.est_tokens)
+            return Tier.MAP_REDUCE
         # Uploaded references are not necessarily indexed. Grade from the actual
         # document, and fail explicitly when the configured model is too small.
         budget = DEDICATED_CONTEXT_CAP if _dedicated_available() else TIER0_BUDGET
@@ -62,3 +68,4 @@ def route(sub_payload: DocumentPayload, ref_payload: DocumentPayload) -> Tier:
 
     logger.info("Decision: Tier 2 (Vector Fallback)")
     return Tier.VECTOR
+

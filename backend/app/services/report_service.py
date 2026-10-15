@@ -331,31 +331,43 @@ class ReportService:
                     story.append(Paragraph(f"• {_clean_text(item)}", bullet_style))
             story.append(Spacer(1, 6))
 
-        # Code Sandbox Test Cases (for coding submissions)
+        # Show observed sandbox data. Exit code 0 means execution, not correctness.
         sandbox_logs = report_data.get("sandbox_logs") or report_data.get("code_execution_result") or []
-        if isinstance(sandbox_logs, list) and len(sandbox_logs) > 0:
-            story.append(Paragraph("Code Sandbox Test Suite Results", h2_style))
-            s_rows = [
-                [
-                    Paragraph("Test Case", table_hdr),
-                    Paragraph("Status", table_hdr),
-                    Paragraph("Input", table_hdr),
-                    Paragraph("Expected Output", table_hdr),
-                    Paragraph("Actual Output", table_hdr),
-                ]
-            ]
-            for i, log in enumerate(sandbox_logs):
-                passed = log.get("passed", False)
-                status_color = "#2E684A" if passed else "#A04440"
-                status_str = "PASS" if passed else "FAIL"
+        checks = report_data.get("code_execution_checks") or (sandbox_logs if isinstance(sandbox_logs, list) else [])
+        if checks or isinstance(sandbox_logs, str) and sandbox_logs.strip():
+            story.append(Paragraph("Program Execution Evidence", h2_style))
+            story.append(Paragraph(
+                "Inputs and outputs below were observed in the sandbox. Execution alone does not establish correctness; compare the output with the assignment and rubric.",
+                subtitle_style,
+            ))
+            story.append(Spacer(1, 8))
+        if checks:
+            s_rows = [[
+                Paragraph("Test / result", table_hdr),
+                Paragraph("Input provided", table_hdr),
+                Paragraph("Observed output / errors", table_hdr),
+            ]]
+            for i, log in enumerate(checks):
+                if not isinstance(log, dict):
+                    continue
+                status = str(log.get("status") or ("Executed" if log.get("passed") else "Failed"))
+                exit_code = log.get("exit_code")
+                status_color = "#A04440" if "error" in status.lower() or "fail" in status.lower() else "#2E684A"
+                input_text = str(log.get("input") or "[empty stdin]")[:1200]
+                output_text = str(log.get("actual_output") or log.get("stdout") or "[no output]")[:1800]
+                error_text = str(log.get("stderr") or log.get("error") or "")[:800]
+                if error_text:
+                    output_text += "\nErrors: " + error_text
+                def lines(value):
+                    return _clean_text(value).replace("\n", "<br/>")
                 s_rows.append([
-                    Paragraph(f"Test #{i+1}", table_cell_bold),
-                    Paragraph(f'<font color="{status_color}"><b>{status_str}</b></font>', table_cell_bold),
-                    Paragraph(_clean_text(log.get("input", "")), table_cell),
-                    Paragraph(_clean_text(log.get("expected_output", "")), table_cell),
-                    Paragraph(_clean_text(log.get("actual_output", log.get("error", ""))), table_cell),
+                    Paragraph(f"<b>{_clean_text(log.get('name') or f'Test {i + 1}')}</b><br/>"
+                              f'<font color="{status_color}">{_clean_text(status)}</font>'
+                              + (f"<br/>Exit code: {_clean_text(exit_code)}" if exit_code is not None else ""), table_cell),
+                    Paragraph(lines(input_text), table_cell),
+                    Paragraph(lines(output_text), table_cell),
                 ])
-            s_tab = Table(s_rows, colWidths=[content_width * .11, content_width * .10, content_width * .23, content_width * .28, content_width * .28], repeatRows=1, splitInRow=1, hAlign='LEFT')
+            s_tab = Table(s_rows, colWidths=[content_width * .24, content_width * .32, content_width * .44], repeatRows=1, splitInRow=1, hAlign='LEFT')
             s_tab.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), butter),
                 ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, paper]),
@@ -370,6 +382,15 @@ class ReportService:
             ]))
             story.append(s_tab)
             story.append(Spacer(1, 8))
+        elif isinstance(sandbox_logs, str) and sandbox_logs.strip():
+            # Historical reports stored the execution trace as one string.
+            for block in sandbox_logs.split("\n\n"):
+                if block.strip():
+                    story.append(Paragraph(
+                        _clean_text(block[:2800]).replace("\n", "<br/>"),
+                        table_cell,
+                    ))
+                    story.append(Spacer(1, 7))
 
         # Final Comments
         final_comments = report_data.get("finalComments") or report_data.get("score_rationale") or ""

@@ -102,7 +102,11 @@ async def grade_tier3(
             unresolved_missing=unresolved_missing,
         )
         reviews.append(review)
-        unresolved_missing = _dedupe(review.unresolved_missing_sections)
+        found = {item.casefold() for item in review.found_requested_sections}
+        unresolved_missing = _dedupe([
+            item for item in [*unresolved_missing, *review.unresolved_missing_sections]
+            if item.casefold() not in found
+        ])
         total_latency += review.latency_ms
         total_cost += review.est_cost_usd
 
@@ -198,17 +202,34 @@ async def _review_chunk(
     )
 
     t0 = time.perf_counter()
-    resp = await llm.chat(
-        messages=[
-            ChatMessage(role="system", content=CHUNK_REVIEW_SYSTEM),
-            ChatMessage(role="user", content=prompt),
-        ],
-        model=model_name,
-        temperature=0.1,
-        max_tokens=1800,
-        response_format="json_object",
-    )
-    data = _safe_json(resp.text)
+    for attempt in range(2):
+        resp = await llm.chat(
+            messages=[
+                ChatMessage(role="system", content=CHUNK_REVIEW_SYSTEM),
+                ChatMessage(role="user", content=prompt + (
+                    "\nReturn a complete JSON object with all five required fields."
+                    if attempt else ""
+                )),
+            ],
+            model=model_name,
+            temperature=0.1,
+            max_tokens=4096 if attempt else 3072,
+            response_format="json_object" if llm.primary.name == "dedicated" else None,
+        )
+        try:
+            data = _extract_json(resp.text)
+            if not isinstance(data.get("evidence_by_criterion"), dict):
+                raise ValueError("missing evidence_by_criterion")
+            for key in ("mistakes_or_shortcomings", "found_requested_sections", "unresolved_missing_sections"):
+                if not isinstance(data.get(key), list):
+                    raise ValueError(f"missing {key}")
+            if not str(data.get("summary") or "").strip():
+                raise ValueError("missing chunk summary")
+            break
+        except (ValueError, TypeError, AttributeError) as exc:
+            logger.warning("Chunk %d review incomplete on attempt %d: %s", chunk_index + 1, attempt + 1, exc)
+            if attempt:
+                raise ValueError(f"Chunk {chunk_index + 1} review incomplete after retry") from exc
 
     latency_ms = int((time.perf_counter() - t0) * 1000)
     est_cost = (resp.input_tokens * 0.075 / 1e6) + (resp.output_tokens * 0.3 / 1e6)
@@ -317,20 +338,6 @@ def _chunk_label(chunk: DocumentPayload, chunk_index: int) -> str:
     return f"Submission text chunk {chunk_index + 1}"
 
 
-def _safe_json(text: str) -> dict[str, Any]:
-    try:
-        return _extract_json(text)
-    except Exception:
-        logger.warning("Tier 3 chunk review returned non-JSON output; preserving as summary")
-        return {
-            "evidence_by_criterion": {},
-            "mistakes_or_shortcomings": [],
-            "found_requested_sections": [],
-            "unresolved_missing_sections": [],
-            "summary": text.strip(),
-        }
-
-
 def _normalise_evidence(value: Any) -> dict[str, list[str]]:
     if not isinstance(value, dict):
         return {}
@@ -355,3 +362,4 @@ def _dedupe(items: list[str]) -> list[str]:
         seen.add(key)
         result.append(item)
     return result
+
