@@ -9,10 +9,11 @@ No Firestore. No mock data.
 """
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Tuple
+from typing import Optional, Tuple
 
 from app.db.postgres import get_conn
 
@@ -25,21 +26,29 @@ SENSITIVE_TERMS = [
 ]
 
 
+def find_policy_terms(text: str) -> list[str]:
+    text_lower = (text or "").lower()
+    return [t for t in SENSITIVE_TERMS if t in text_lower]
+
+
 class WarningService:
 
     async def scan_and_enforce(
         self,
         org_id: str,
-        user_id: str,
+        user_id: Optional[str],
         submission_id: str,
         text: str,
     ) -> Tuple[bool, str]:
         """
         Scan submission text for policy violations.
         Returns (is_violated, reason_message).
+
+        user_id is None for instructor uploads (single-upload or batch). Those
+        submissions are still stopped and audited, but no student account
+        receives a warning or a block.
         """
-        text_lower = text.lower()
-        matched = [t for t in SENSITIVE_TERMS if t in text_lower]
+        matched = find_policy_terms(text)
 
         if not matched:
             return False, ""
@@ -52,6 +61,18 @@ class WarningService:
         now = datetime.now(timezone.utc)
 
         async with get_conn(org_id) as conn:
+            if user_id is None:
+                await conn.execute(
+                    """
+                    INSERT INTO audit_logs (org_id, actor_uid, action, target, meta, created_at)
+                    VALUES ($1, NULL, 'POLICY_VIOLATION', $2, $3, $4)
+                    """,
+                    org_id, submission_id,
+                    json.dumps({"submission_id": submission_id, "reason": reason, "account": None}),
+                    now,
+                )
+                return True, reason
+
             # 1. Insert warning record
             await conn.execute(
                 """
@@ -62,38 +83,32 @@ class WarningService:
                 warning_id, org_id, user_id, submission_id, reason, severity, now,
             )
 
-            # 2. Increment warning count; block if >= 3
+            # 2. Increment warning count atomically; block for 7 days at 3 or more
             row = await conn.fetchrow(
-                "SELECT warning_count FROM users WHERE uid = $1", user_id
+                """
+                UPDATE users
+                SET warning_count = warning_count + 1,
+                    blocked_until = CASE WHEN warning_count + 1 >= 3 THEN $1 ELSE blocked_until END,
+                    updated_at = $2
+                WHERE uid = $3
+                RETURNING warning_count, blocked_until
+                """,
+                now + timedelta(days=7), now, user_id,
             )
-            if row:
-                new_count = (row["warning_count"] or 0) + 1
-                blocked_until = None
-                if new_count >= 3:
-                    blocked_until = now + timedelta(days=7)
-                    logger.warning(
-                        "User %s blocked until %s (warning_count=%d)",
-                        user_id, blocked_until.isoformat(), new_count,
-                    )
-                await conn.execute(
-                    """
-                    UPDATE users
-                    SET warning_count = $1,
-                        blocked_until = $2,
-                        updated_at = $3
-                    WHERE uid = $4
-                    """,
-                    new_count, blocked_until, now, user_id,
+            if row and row["warning_count"] >= 3:
+                logger.warning(
+                    "User %s blocked until %s (warning_count=%d)",
+                    user_id, row["blocked_until"].isoformat(), row["warning_count"],
                 )
 
-            # 3. Audit log
+            # 3. Audit log (system entry: no acting user; meta is JSONB text)
             await conn.execute(
                 """
                 INSERT INTO audit_logs (org_id, actor_uid, action, target, meta, created_at)
-                VALUES ($1, 'SYSTEM', 'POLICY_VIOLATION', $2, $3, $4)
+                VALUES ($1, NULL, 'POLICY_VIOLATION', $2, $3, $4)
                 """,
                 org_id, user_id,
-                {"submission_id": submission_id, "reason": reason},
+                json.dumps({"submission_id": submission_id, "reason": reason}),
                 now,
             )
 

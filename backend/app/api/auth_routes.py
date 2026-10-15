@@ -394,6 +394,11 @@ async def auth_redeem_code(
 
     now = datetime.now(timezone.utc)
     async with get_conn() as conn:
+        org_id_val = await conn.fetchval("SELECT get_user_org_id($1)", uid)
+    if not org_id_val:
+        raise HTTPException(404, "User not found.")
+    # Row-level security only exposes the user's row inside its tenant context.
+    async with get_conn(str(org_id_val)) as conn:
         user_row = await conn.fetchrow("SELECT role, faculty_status FROM users WHERE uid = $1", uid)
         if not user_row:
             raise HTTPException(404, "User not found.")

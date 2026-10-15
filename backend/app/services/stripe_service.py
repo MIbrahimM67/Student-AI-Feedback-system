@@ -279,7 +279,8 @@ class StripeService:
             cus_id = data_object.get("customer")
 
             if uid:
-                async with get_conn() as conn:
+                org_id = await _org_for_uid(uid)
+                async with get_conn(org_id) as conn:
                     await conn.execute(
                         """
                         UPDATE users SET
@@ -305,7 +306,8 @@ class StripeService:
             pro_state = "active" if status in ("active", "trialing") else "inactive"
             plan_name = data_object.get("metadata", {}).get("plan_id", "pro") if pro_state == "active" else "free"
 
-            async with get_conn() as conn:
+            org_id = await _org_for_uid(uid) if uid else None
+            async with get_conn(org_id) as conn:
                 if uid:
                     await conn.execute(
                         """
@@ -342,8 +344,12 @@ class StripeService:
         plan = PLANS.get(plan_id, PLANS["pro"])
         pro_status = "active" if plan_id in ("pro", "institution") else "inactive"
 
-        async with get_conn() as conn:
-            await conn.execute(
+        org_id = await _org_for_uid(uid)
+        if not org_id:
+            raise ValueError("User profile not found.")
+        # Row-level security hides users unless the tenant context is set.
+        async with get_conn(org_id) as conn:
+            result = await conn.execute(
                 """
                 UPDATE users SET
                   pro_status = $1,
@@ -354,6 +360,8 @@ class StripeService:
                 """,
                 pro_status, plan_id, "active" if pro_status == "active" else "inactive", now, uid
             )
+        if result == "UPDATE 0":
+            raise ValueError("Subscription was not updated.")
         return {
             "status": "success",
             "uid": uid,
@@ -361,6 +369,12 @@ class StripeService:
             "pro_status": pro_status,
             "message": f"Successfully updated subscription to {plan['name']}!"
         }
+
+
+async def _org_for_uid(uid: str) -> Optional[str]:
+    async with get_conn() as conn:
+        org_id = await conn.fetchval("SELECT get_user_org_id($1)", uid)
+    return str(org_id) if org_id else None
 
 
 stripe_service = StripeService()

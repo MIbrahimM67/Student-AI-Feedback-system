@@ -23,6 +23,7 @@ from app.db.vectors import internal_similarity_search, upsert_submission_chunks
 from app.services.llm_provider import build_llm_from_env
 from app.services.ocr_service import ocr_service
 from app.services.retrieval_service import retrieve_and_rerank
+from app.services.entitlements import assignment_owner_has_pro
 from app.services.warning_service import warning_service
 from app.utils.prompt_templates import utility_title_generator_user
 from app.grading.pipeline import grade_submission as route_and_grade
@@ -84,10 +85,12 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
         assignment = None
         questions = []
         rubric_criteria = []
+        similarity_entitled = False
         if sub["assignment_id"]:
             assignment = await conn.fetchrow(
                 "SELECT * FROM assignments WHERE id = $1", sub["assignment_id"]
             )
+            similarity_entitled = await assignment_owner_has_pro(conn, sub["assignment_id"])
             questions = [dict(r) for r in await conn.fetch(
                 "SELECT * FROM questions WHERE assignment_id = $1 ORDER BY display_order",
                 sub["assignment_id"],
@@ -106,6 +109,10 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
     subject_id = str(sub["subject_id"]) if sub["subject_id"] else None
     batch_id = str(sub["batch_id"]) if sub["batch_id"] else None
     assignment_settings = dict(assignment) if assignment else {}
+    if assignment_settings and not similarity_entitled:
+        # Similarity checks are a Pro feature of the instructor who owns the assignment.
+        assignment_settings["internal_similarity_enabled"] = False
+        assignment_settings["internet_plagiarism_enabled"] = False
 
     async def progress(stage: str, percent: int, message: str) -> None:
         await _set_progress(org_id, submission_id, stage, percent, message)
@@ -219,15 +226,21 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
     await progress("policy_scan", 36, "Checking the submission for blocked prompt-injection or policy issues.")
     is_violated, reason = await warning_service.scan_and_enforce(
         org_id=org_id,
-        user_id=str(sub["user_id"]) if sub["user_id"] else "batch",
+        # Instructor uploads have no student account to warn or block.
+        user_id=str(sub["user_id"]) if sub["user_id"] else None,
         submission_id=submission_id,
         text=extracted_text,
     )
     if is_violated:
-        async with get_conn(org_id) as conn:
-            await conn.execute(
-                "UPDATE submissions SET status = 'failed' WHERE id = $1", submission_id
-            )
+        await _mark_failed(
+            org_id,
+            submission_id,
+            batch_id,
+            f"Grading stopped by the policy scan ({reason}). No report was generated.",
+        )
+        for path in files_to_cleanup:
+            if os.path.exists(path):
+                os.remove(path)
         return
 
     async with get_conn(org_id) as conn:
@@ -941,7 +954,12 @@ async def _retrieve_subject_kb_context(
     return "\n".join(parts)
 
 
-async def _mark_failed(org_id: str, submission_id: str, batch_id: str | None) -> None:
+async def _mark_failed(
+    org_id: str,
+    submission_id: str,
+    batch_id: str | None,
+    message: str = "Grading failed before a report could be generated.",
+) -> None:
     async with get_conn(org_id) as conn:
         await conn.execute(
             "UPDATE submissions SET status = 'failed' WHERE id = $1", submission_id
@@ -956,6 +974,6 @@ async def _mark_failed(org_id: str, submission_id: str, batch_id: str | None) ->
         submission_id,
         "failed",
         100,
-        "Grading failed before a report could be generated.",
+        message,
     )
 

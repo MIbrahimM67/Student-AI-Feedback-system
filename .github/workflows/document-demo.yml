@@ -33,7 +33,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r backend/requirements.txt pytest pytest-asyncio
-      - run: PYTHONPATH=backend pytest -q backend/tests/test_document_demo.py backend/tests/test_code_demo.py backend/tests/test_core_features.py
+      - run: PYTHONPATH=backend pytest -q backend/tests/test_document_demo.py backend/tests/test_code_demo.py backend/tests/test_core_features.py backend/tests/test_access_control.py
         env:
           DEMO_TEST_OWNER_URL: postgresql://postgres:test-only-owner-password@localhost:5432/gradewise_demo_test
       - uses: actions/setup-node@v4

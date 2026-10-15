@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from pydantic import BaseModel
 
 from app.auth.firebase import DemoAccessDenied, verify_id_token
+from app.config import settings
 from app.db.postgres import get_conn
 from app.services.stripe_service import stripe_service, PLANS
 
@@ -234,9 +235,17 @@ async def sandbox_upgrade(
     user: dict = Depends(_get_current_user),
 ):
     """
-    Allows developers, evaluators, and presentation reviewers to toggle Pro status
-    instantly in sandbox/demo mode without requiring a real credit card.
+    Lets verified faculty switch plans without a card on the evaluation
+    deployment or on installations where Stripe is not configured.
+    Downgrading to 'free' is always allowed.
     """
+    if body.plan_id != "free":
+        _check_faculty_eligibility(user)
+        if stripe_service.is_configured and not settings.DOCUMENT_DEMO:
+            raise HTTPException(
+                403,
+                "Sandbox upgrades are disabled while live Stripe billing is configured. Use checkout instead.",
+            )
     result = await stripe_service.sandbox_activate(
         uid=user["uid"],
         plan_id=body.plan_id

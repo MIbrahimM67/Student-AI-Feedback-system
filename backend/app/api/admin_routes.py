@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 from app.auth.firebase import DemoAccessDenied, verify_id_token
 from app.db.postgres import get_conn
+from app.services.entitlements import is_verified_faculty
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -168,13 +169,18 @@ async def reject_application(
 @router.post("/users/{target_uid}/grant-pro")
 async def grant_pro(target_uid: str, admin: dict = Depends(_get_admin)):
     now = datetime.now(timezone.utc)
-    async with get_conn() as conn:
-        result = await conn.execute(
+    async with get_conn(str(admin["org_id"])) as conn:
+        target = await conn.fetchrow(
+            "SELECT role, faculty_status FROM users WHERE uid = $1", target_uid
+        )
+        if not target:
+            raise HTTPException(404, "User not found.")
+        if not is_verified_faculty(target):
+            raise HTTPException(409, "Pro can only be granted to administrators or approved faculty.")
+        await conn.execute(
             "UPDATE users SET pro_status = 'active', updated_at = $1 WHERE uid = $2",
             now, target_uid,
         )
-        if result == "UPDATE 0":
-            raise HTTPException(404, "User not found.")
         await _write_audit(conn, admin["uid"], "GRANT_PRO", target_uid)
     return {"status": "pro_granted", "user_id": target_uid}
 
@@ -182,7 +188,7 @@ async def grant_pro(target_uid: str, admin: dict = Depends(_get_admin)):
 @router.post("/users/{target_uid}/revoke-pro")
 async def revoke_pro(target_uid: str, admin: dict = Depends(_get_admin)):
     now = datetime.now(timezone.utc)
-    async with get_conn() as conn:
+    async with get_conn(str(admin["org_id"])) as conn:
         result = await conn.execute(
             "UPDATE users SET pro_status = 'inactive', updated_at = $1 WHERE uid = $2",
             now, target_uid,

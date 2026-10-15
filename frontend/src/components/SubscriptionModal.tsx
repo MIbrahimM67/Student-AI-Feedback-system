@@ -117,7 +117,7 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
           succeeded = true;
           if (res.data?.message) msg = res.data.message;
         }
-      } catch (err1) {
+      } catch (err1: any) {
         // Fallback to /api/auth/redeem-code
         try {
           const res2 = await api.post("/api/auth/redeem-code", {
@@ -128,11 +128,16 @@ export const SubscriptionModal: React.FC<Props> = ({ open, onClose }) => {
             succeeded = true;
             if (res2.data?.message) msg = res2.data.message;
           }
-        } catch (err2) {
-          succeeded = true;
+        } catch (err2: any) {
+          setError(err2?.message || err1?.message || "Voucher could not be applied.");
+          return;
         }
       }
 
+      if (!succeeded) {
+        setError("Voucher could not be applied.");
+        return;
+      }
       setSuccessMsg(msg);
       setPromoCode("");
       await refreshProfile();

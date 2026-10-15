@@ -348,7 +348,8 @@ async def download_student_pdf(
                    COALESCE(fr.final_payload, fr.ai_payload) as payload,
                    pr.similarity_score as plagiarism_similarity_score
             FROM submissions s
-            LEFT JOIN feedback_reports fr ON fr.submission_id = s.id
+            LEFT JOIN feedback_reports fr
+                   ON fr.submission_id = s.id AND fr.published_at IS NOT NULL
             LEFT JOIN assignments a ON a.id = s.assignment_id
             LEFT JOIN plagiarism_reports pr ON pr.submission_id = s.id
             WHERE s.id = $1 AND s.user_id = $2
@@ -357,6 +358,7 @@ async def download_student_pdf(
         )
         if not sub:
             raise HTTPException(404, "Submission not found.")
+        # Same rule as the feedback endpoint: nothing is exported before publication.
         if not sub["payload"]:
             raise HTTPException(404, "Feedback report has not been published yet.")
 
