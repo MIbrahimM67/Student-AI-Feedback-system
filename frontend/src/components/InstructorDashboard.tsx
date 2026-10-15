@@ -703,13 +703,13 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Assignment Prompt (Question)</label>
+                  <label className="text-xs font-bold text-[var(--color-ink-2)] uppercase tracking-wider">Assignment Prompt (Question)</label>
                   <textarea 
-                    rows={3} 
+                    rows={8} 
                     placeholder="e.g. Write a comprehensive essay explaining the effects of..." 
                     value={prompt} 
                     onChange={e=>setPrompt(e.target.value)} 
-                    className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:font-medium placeholder:text-slate-400" 
+                    className="w-full min-h-48 py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium leading-6 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:font-medium placeholder:text-slate-400" 
                   />
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -740,13 +740,13 @@ const SubjectDetailsView: React.FC<{ subject: Subject, onSelectAssignment: (a: A
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Rubric / Grading Criteria <span className="font-semibold normal-case text-slate-400">(optional)</span></label>
+                  <label className="text-xs font-bold text-[var(--color-ink-2)] uppercase tracking-wider">Rubric / Grading Criteria <span className="font-medium normal-case text-slate-400">(optional)</span></label>
                   <textarea 
-                    rows={2} 
+                    rows={7} 
                     placeholder="e.g. 50% technical accuracy, 30% clarity, 20% grammar. Leave blank to auto-generate." 
                     value={rubric} 
                     onChange={e=>setRubric(e.target.value)} 
-                    className="w-full py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:font-medium placeholder:text-slate-400" 
+                    className="w-full min-h-40 py-3 px-4 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium leading-6 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:font-medium placeholder:text-slate-400" 
                   />
                 </div>
                 {<div className="border border-slate-200 bg-slate-50 p-4 space-y-4">
