@@ -120,7 +120,7 @@ export const LandingSection: React.FC<LandingSectionProps> = ({ onOpenWorkspace 
 
           <button className={styles.headerCta} onClick={openWorkspace} disabled={loading}>
             {user ? <Home size={15} /> : null}
-            {user ? "Return to workspace" : "Open workspace"}
+            {user ? "Return to workspace" : "Sign in"}
             <ArrowRight size={15} />
           </button>
         </header>
@@ -371,7 +371,7 @@ export const LandingSection: React.FC<LandingSectionProps> = ({ onOpenWorkspace 
             <h2>Make grading faster without making it opaque.</h2>
           </div>
           <button className={styles.primaryLight} onClick={openWorkspace} disabled={loading}>
-            {user ? "Return to workspace" : "Open GradeWise"}
+            {user ? "Return to workspace" : "Continue with Google"}
             <ArrowRight size={17} />
           </button>
         </section>
