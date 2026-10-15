@@ -267,47 +267,47 @@ class RotatingGroqProvider(LLMProvider):
         logger.warning("Groq slot %d cooling down for %.0fs (%s limit)", index + 1, seconds, "daily" if daily else "temporary")
 
     async def _call(self, operation):
-        # A short minute-level cooldown can be retried once. A daily limit is
-        # never rechecked in this process for 24 hours.
+        # Keep the grading request alive through short account-level limits.
+        # A daily limit stays excluded for 24 hours; it is not polled here.
         last_error: Exception | None = None
         await self._load_cooldowns()
-        for cycle in range(2):
-            attempted: set[int] = set()
-            while len(attempted) < len(self._providers):
-                index, wait = await self._next_slot(attempted)
-                if index is None:
-                    break
-                attempted.add(index)
-                try:
-                    return await operation(self._providers[index])
-                except httpx.HTTPStatusError as exc:
-                    last_error = exc
-                    status = exc.response.status_code
-                    if status == 429:
-                        body = exc.response.text
-                        daily = any(mark in body.lower() for mark in ("per day", "(tpd)", "(rpd)", "daily limit"))
-                        org = re.search(r"organization [`']([^`']+)[`']", body)
-                        try:
-                            retry_after = float(exc.response.headers.get("retry-after", "30"))
-                        except ValueError:
-                            retry_after = 30.0
-                        await self._cool_down(index, 86400.0 if daily else max(1.0, retry_after), org_id=org.group(1) if org else None, daily=daily)
-                        continue
-                    if status in (401, 403):
-                        await self._cool_down(index, 86400.0)
-                        continue
-                    if status in (500, 502, 503, 504):
-                        await self._cool_down(index, 10.0)
-                        continue
-                    raise
-                except httpx.RequestError as exc:
-                    last_error = exc
+        deadline = time.monotonic() + 600.0
+        attempted: set[int] = set()
+        while True:
+            index, _ = await self._next_slot(attempted)
+            if index is None:
+                _, wait = await self._next_slot(set())
+                if 0 < wait <= 600 and time.monotonic() + wait < deadline:
+                    await asyncio.sleep(wait + 0.1)
+                    attempted.clear()
+                    continue
+                break
+            attempted.add(index)
+            try:
+                return await operation(self._providers[index])
+            except httpx.HTTPStatusError as exc:
+                last_error = exc
+                status = exc.response.status_code
+                if status == 429:
+                    body = exc.response.text
+                    daily = any(mark in body.lower() for mark in ("per day", "(tpd)", "(rpd)", "daily limit"))
+                    org = re.search(r"organization [`']([^`']+)[`']", body)
+                    try:
+                        retry_after = float(exc.response.headers.get("retry-after", "30"))
+                    except ValueError:
+                        retry_after = 30.0
+                    await self._cool_down(index, 86400.0 if daily else max(1.0, retry_after), org_id=org.group(1) if org else None, daily=daily)
+                    continue
+                if status in (401, 403):
+                    await self._cool_down(index, 86400.0)
+                    continue
+                if status in (500, 502, 503, 504):
                     await self._cool_down(index, 10.0)
-            _, wait = await self._next_slot(set())
-            if cycle == 0 and 0 < wait <= 60:
-                await asyncio.sleep(wait + 0.1)
-                continue
-            break
+                    continue
+                raise
+            except httpx.RequestError as exc:
+                last_error = exc
+                await self._cool_down(index, 10.0)
         raise GroqKeysUnavailable("All configured Groq keys are unavailable; check their organization quotas and retry after cooldown.") from last_error
 
     async def chat(self, messages: Sequence[ChatMessage], *, model: str, temperature: float = 0.2, max_tokens: int = 2048, response_format: str | None = None) -> ChatResponse:
