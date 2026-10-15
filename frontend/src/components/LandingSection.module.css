@@ -325,8 +325,15 @@
 }
 .hero h1{margin:0 0 24px;font-size:clamp(48px,5.1vw,70px)}
 .heroCopy,.evidenceCopy,.codePane{min-width:0}
-.proofBar{width:min(1280px,calc(100% - 48px));grid-template-columns:repeat(5,minmax(0,1fr));gap:clamp(12px,2vw,26px)}
-.proofBar strong{min-width:0}
+.proofBar{
+  width:min(1280px,calc(100% - 48px));
+  min-height:82px;
+  grid-template-columns:1.05fr repeat(4,minmax(0,1fr));
+  gap:clamp(12px,2vw,26px);
+}
+.proofBar span{font-size:10px;line-height:1.4}
+.proofBar strong{min-width:0;font-size:11px;line-height:1.4}
+.proofBar svg{flex:none;width:16px;height:16px}
 .product,.process{padding-block:clamp(68px,7.5vw,104px)}
 .sectionHeading{
   display:flex;
@@ -393,7 +400,7 @@
   .heroIntro{font-size:15px;line-height:1.6}
   .proofBar{width:calc(100% - 32px);grid-template-columns:repeat(2,minmax(0,1fr));padding-top:36px;gap:8px}
   .proofBar span{margin-bottom:2px}
-  .proofBar strong{font-size:10px;min-height:36px}
+  .proofBar strong{font-size:11px;min-height:40px}
   .product,.process{padding-block:clamp(62px,12vw,82px)}
   .sectionHeading h2,.sectionHeadingCompact h2,.evidenceCopy h2{font-size:clamp(32px,9vw,42px)}
   .outputGrid{grid-template-columns:minmax(0,1fr)}
