@@ -1894,7 +1894,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                     const displayName = hb.batch_name || `Batch ${hb.id.split("-")[0]}`;
                     
                     return (
-                      <tr key={hb.id} className="hover:bg-slate-50 transition-colors">
+                      <tr key={hb.id} className="hover:bg-[var(--color-surface-2)] transition-colors">
                         <td className="p-4">
                           {renamingBatchId === hb.id ? (
                             <div className="flex items-center gap-2">
@@ -1942,7 +1942,7 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                             <button 
                               onClick={() => { setBatchId(hb.id); fetchBatchReports(hb.id); }} 
                               disabled={!isDone}
-                              className="bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                              className="bg-white border border-slate-200 text-slate-600 hover:bg-[var(--color-surface-2)] px-3 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
                             >
                               View Reports
                             </button>
