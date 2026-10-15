@@ -1036,6 +1036,26 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
     }
   };
 
+  const handleBatchExport = async (kind: "excel" | "zip") => {
+    const token = await auth.currentUser?.getIdToken();
+    if (!token || !batchId) return;
+    setError(null);
+    const res = await fetch(`${API_URL}/api/instructor/batch/${batchId}/export/${kind}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      // Batch exports need an active Pro plan; show the server's reason instead of saving an error page.
+      const body = await res.json().catch(() => null);
+      setError(body?.detail || "Export failed.");
+      return;
+    }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = kind === "excel" ? `Batch_Grades_${batchId}.xlsx` : `Batch_Reports_${batchId}.zip`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
   // History State
   const [historyBatches, setHistoryBatches] = useState<any[]>([]);
   const [batchName, setBatchName] = useState("");
@@ -1420,26 +1440,10 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><ClipboardList className="w-5 h-5 text-indigo-500"/> Batch Reports Review</h3>
               <div className="flex items-center gap-3">
-                 <button onClick={() => {
-                   auth.currentUser?.getIdToken().then((token: string) => {
-                     fetch(`${API_URL}/api/instructor/batch/${batchId}/export/excel`, { headers: { Authorization: `Bearer ${token}` } })
-                       .then(res => res.blob()).then(blob => {
-                         const url = window.URL.createObjectURL(blob);
-                         const a = document.createElement('a'); a.href = url; a.download = `Batch_Grades_${batchId}.xlsx`; a.click();
-                       });
-                   });
-                 }} className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors">
+                 <button onClick={() => { void handleBatchExport("excel"); }} className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors">
                    <FileSpreadsheet className="w-4 h-4"/> Export Excel
                  </button>
-                 <button onClick={() => {
-                   auth.currentUser?.getIdToken().then((token: string) => {
-                     fetch(`${API_URL}/api/instructor/batch/${batchId}/export/zip`, { headers: { Authorization: `Bearer ${token}` } })
-                       .then(res => res.blob()).then(blob => {
-                         const url = window.URL.createObjectURL(blob);
-                         const a = document.createElement('a'); a.href = url; a.download = `Batch_Reports_${batchId}.zip`; a.click();
-                       });
-                   });
-                 }} className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors">
+                 <button onClick={() => { void handleBatchExport("zip"); }} className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors">
                    <FileArchive className="w-4 h-4"/> Export PDFs (ZIP)
                  </button>
                  <div className="w-px h-5 bg-slate-200 mx-1"></div>

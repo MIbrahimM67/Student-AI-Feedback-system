@@ -80,9 +80,9 @@ async def branch_db(db, monkeypatch):
     owner, org = db
     uid='tester'
     async with postgres.get_conn(str(org)) as conn:
-        await conn.execute("UPDATE users SET role='instructor',faculty_status='approved' WHERE uid=$1",uid)
+        await conn.execute("UPDATE users SET role='instructor',faculty_status='approved',pro_status='active' WHERE uid=$1",uid)
         subject=str(await conn.fetchval("INSERT INTO subjects(org_id,instructor_id,title) VALUES($1,$2,'Synthetic science') RETURNING id",org,uid))
-    result=await create_assignment(subject,CreateAssignmentRequest(title='Water',prompt='Explain the density of ice',rubric='Accuracy: 10 marks',total_marks=10),{'org_id':org,'uid':uid})
+    result=await create_assignment(subject,CreateAssignmentRequest(title='Water',prompt='Explain the density of ice',rubric='Accuracy: 10 marks',total_marks=10),{'org_id':org,'uid':uid,'role':'instructor','faculty_status':'approved','pro_status':'active'})
     assignment=str(result['id'])
     yield {'org':str(org),'uid':uid,'subject':subject,'assignment':assignment}
 
@@ -96,7 +96,7 @@ async def test_branch_batch_30_storage_queue_and_reciprocal_similarity(branch_db
     from app.services import grading_task, task_dispatch
     from app.grading.types import GradingResult, Tier
     d=branch_db
-    app.dependency_overrides[_get_instructor]=lambda:{'uid':d['uid'],'org_id':d['org'],'role':'instructor','faculty_status':'approved'}
+    app.dependency_overrides[_get_instructor]=lambda:{'uid':d['uid'],'org_id':d['org'],'role':'instructor','faculty_status':'approved','pro_status':'active'}
     monkeypatch.setattr(grading_task.warning_service,'scan_and_enforce',AsyncMock(return_value=(False,None)))
     async def grader(**kwargs):
         return GradingResult(score=8,max_score=10,per_criterion={'accuracy':8},feedback='Controlled test feedback',tier_used=Tier.CONTEXT,reference_sections_used=[])
