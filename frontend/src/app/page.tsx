@@ -144,6 +144,7 @@ export default function Home() {
               </div>
             </div>
 
+            {activeRole !== "admin" && (
             <div>
               <div className="mb-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[oklch(72%_0.018_92)]">
                 Subscription & Tier
@@ -165,6 +166,7 @@ export default function Home() {
                 </span>
               </button>
             </div>
+            )}
           </nav>
 
           <div className="space-y-3 border-t border-[oklch(96%_0.012_92_/_0.14)] p-4">
@@ -217,6 +219,7 @@ export default function Home() {
                 <span className="hidden sm:inline">Home</span>
               </button>
 
+              {activeRole !== "admin" && (
               <button
                 onClick={() => setSubscriptionOpen(true)}
                 className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider border border-[var(--color-rule)] bg-[var(--color-surface)] hover:bg-[var(--color-paper-2)] text-[var(--color-ink)] transition-colors cursor-pointer"
@@ -224,6 +227,8 @@ export default function Home() {
                 <Crown className="w-3.5 h-3.5 text-amber-500" />
                 <span>{user.proStatus === "active" ? "Pro Plan Active" : "Pricing / Upgrade"}</span>
               </button>
+
+              )}
 
               <span className={`hidden items-center gap-1.5 border px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] sm:inline-flex ${roleStyles[activeRole]}`}>
                 {currentMeta.icon}
@@ -257,7 +262,7 @@ export default function Home() {
       </div>
 
       <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
-      <SubscriptionModal open={subscriptionOpen} onClose={() => setSubscriptionOpen(false)} />
+      <SubscriptionModal open={activeRole !== "admin" && subscriptionOpen} onClose={() => setSubscriptionOpen(false)} />
     </>
   );
 }
