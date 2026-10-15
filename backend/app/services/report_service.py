@@ -43,6 +43,16 @@ class ReportService:
             SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether, HRFlowable
         )
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+
+        # Helvetica cannot render nonbreaking hyphens and several symbols that
+        # appear in AI feedback. The Docker image installs these Unicode fonts.
+        font_dir = "/usr/share/fonts/truetype/dejavu"
+        if "GradeWiseSans" not in pdfmetrics.getRegisteredFontNames():
+            pdfmetrics.registerFont(TTFont("GradeWiseSans", os.path.join(font_dir, "DejaVuSans.ttf")))
+            pdfmetrics.registerFont(TTFont("GradeWiseSans-Bold", os.path.join(font_dir, "DejaVuSans-Bold.ttf")))
+            pdfmetrics.registerFontFamily("GradeWiseSans", normal="GradeWiseSans", bold="GradeWiseSans-Bold")
 
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
@@ -76,7 +86,7 @@ class ReportService:
             fontSize=18,
             leading=23,
             textColor=charcoal,
-            fontName='Helvetica-Bold',
+            fontName='GradeWiseSans-Bold',
             spaceAfter=2,
         )
         subtitle_style = ParagraphStyle(
@@ -85,7 +95,7 @@ class ReportService:
             fontSize=8,
             leading=11,
             textColor=text_muted,
-            fontName='Helvetica',
+            fontName='GradeWiseSans',
         )
         h2_style = ParagraphStyle(
             'SectionHeader',
@@ -93,7 +103,7 @@ class ReportService:
             fontSize=11,
             leading=14,
             textColor=charcoal,
-            fontName='Helvetica-Bold',
+            fontName='GradeWiseSans-Bold',
             spaceBefore=15,
             spaceAfter=7,
             keepWithNext=False,
@@ -104,7 +114,7 @@ class ReportService:
             fontSize=9,
             leading=13.5,
             textColor=text_dark,
-            fontName='Helvetica',
+            fontName='GradeWiseSans',
         )
         bullet_style = ParagraphStyle(
             'BulletItem',
@@ -119,31 +129,31 @@ class ReportService:
             fontSize=8,
             leading=11,
             textColor=charcoal,
-            fontName='Helvetica-Bold',
+            fontName='GradeWiseSans-Bold',
         )
         table_cell = ParagraphStyle(
             'TableCell',
             parent=styles['Normal'],
-            fontSize=8.2,
-            leading=12,
+            fontSize=9,
+            leading=14,
             textColor=text_dark,
-            fontName='Helvetica',
+            fontName='GradeWiseSans',
         )
         table_cell_bold = ParagraphStyle(
             'TableCellBold',
             parent=styles['Normal'],
-            fontSize=8.2,
-            leading=12,
+            fontSize=9,
+            leading=14,
             textColor=charcoal,
-            fontName='Helvetica-Bold',
+            fontName='GradeWiseSans-Bold',
         )
 
         # The quiet editorial header mirrors the dark workbench and yellow controls.
         masthead = Table([[
             Paragraph('<font color="#F2E58F"><b>G /</b></font>  <font color="#F5F5F1"><b>GRADEWISE</b></font>',
-                      ParagraphStyle('Brand', fontName='Helvetica-Bold', fontSize=12, leading=16)),
+                      ParagraphStyle('Brand', fontName='GradeWiseSans-Bold', fontSize=12, leading=16)),
             Paragraph('<font color="#F2E58F">ASSESSMENT REPORT</font>',
-                      ParagraphStyle('Kicker', fontName='Helvetica-Bold', fontSize=8, leading=12, alignment=2)),
+                      ParagraphStyle('Kicker', fontName='GradeWiseSans-Bold', fontSize=8, leading=12, alignment=2)),
         ]], colWidths=[content_width * .58, content_width * .42])
         masthead.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), charcoal),
@@ -234,75 +244,66 @@ class ReportService:
             story.append(Paragraph(_clean_text(summary_text), body_style))
             story.append(Spacer(1, 8))
 
-        # Rubric & Criteria Breakdown Table
+        # Full-width criterion blocks keep evidence and deductions legible on
+        # letter paper. A four-column table squeezed each line into tiny type.
         per_criterion = report_data.get("per_criterion") or {}
         criteria_notes = report_data.get("criteria_notes") or {}
         rubric_scores = report_data.get("rubricScores") or []
 
         if per_criterion or rubric_scores:
             story.append(Paragraph("Rubric & Criteria Assessment Breakdown", h2_style))
-            r_rows = [
-                [
-                    Paragraph("Criterion", table_hdr),
-                    Paragraph("Score", table_hdr),
-                    Paragraph("Evidence & Deductions", table_hdr),
-                    Paragraph("Action Item", table_hdr),
-                ]
-            ]
-
+            criterion_text = ParagraphStyle(
+                "CriterionDetail", parent=body_style, fontSize=9.3,
+                leading=15, leftIndent=10, rightIndent=10, spaceAfter=6,
+            )
+            criterion_name = ParagraphStyle(
+                "CriterionName", parent=table_cell_bold, fontSize=10,
+                leading=14,
+            )
+            def criterion_block(name, score, note, evidence, deduction, action):
+                header = Table([[
+                    Paragraph(_clean_text(name), criterion_name),
+                    Paragraph(_clean_text(score), criterion_name),
+                ]], colWidths=[content_width * .76, content_width * .24])
+                header.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), butter),
+                    ("BOX", (0, 0), (-1, -1), .5, border_color),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                    ("TOPPADDING", (0, 0), (-1, -1), 8),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                    ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                ]))
+                body = []
+                if note:
+                    body.append(Paragraph(_clean_text(note), criterion_text))
+                if evidence:
+                    body.append(Paragraph(f"<b>Student evidence</b>  {_clean_text(evidence)}", criterion_text))
+                if deduction:
+                    body.append(Paragraph(f"<b>Reason for deduction</b>  <font color='#8C3834'>{_clean_text(deduction)}</font>", criterion_text))
+                if action:
+                    body.append(Paragraph(f"<b>Next step</b>  {_clean_text(action)}", criterion_text))
+                if not body:
+                    body.append(Paragraph("No supporting criterion notes were recorded.", criterion_text))
+                story.append(KeepTogether([header, body[0]]))
+                story.extend(body[1:])
+                story.append(Spacer(1, 8))
             if per_criterion:
                 for crit_id, raw_val in per_criterion.items():
                     c_score = raw_val.get("score", 0) if isinstance(raw_val, dict) else raw_val
                     notes = criteria_notes.get(crit_id) or (raw_val if isinstance(raw_val, dict) else {})
-                    
-                    crit_name = _clean_text(crit_id.replace("_", " ").title())
-                    crit_score_text = f"{float(c_score):.1f} pts"
-
-                    evidence_parts = []
-                    if notes.get("evidence"):
-                        evidence_parts.append(f"<b>Evidence:</b> {_clean_text(notes['evidence'])}")
-                    if notes.get("deduction_reason"):
-                        evidence_parts.append(f"<b>Deduction:</b> <font color='#A04440'>{_clean_text(notes['deduction_reason'])}</font>")
-                    if notes.get("note") and not notes.get("evidence"):
-                        evidence_parts.append(_clean_text(notes["note"]))
-                    if not evidence_parts:
-                        evidence_parts.append("Evaluated according to standard rubric.")
-
-                    action_text = _clean_text(notes.get("action") or "Maintain performance standard.")
-
-                    r_rows.append([
-                        Paragraph(crit_name, table_cell_bold),
-                        Paragraph(crit_score_text, table_cell_bold),
-                        Paragraph("<br/>".join(evidence_parts), table_cell),
-                        Paragraph(action_text, table_cell),
-                    ])
+                    criterion_block(
+                        crit_id.replace("_", " ").title(), f"{float(c_score):.1f} pts",
+                        notes.get("note"), notes.get("evidence"),
+                        notes.get("deduction_reason"), notes.get("action"),
+                    )
             elif rubric_scores:
                 for item in rubric_scores:
-                    crit_name = _clean_text(item.get("criterion", "Criterion"))
-                    crit_score_text = f"{item.get('score', 0)} / {item.get('maxScore', 10)}"
-                    justification = _clean_text(item.get("justification", ""))
-                    r_rows.append([
-                        Paragraph(crit_name, table_cell_bold),
-                        Paragraph(crit_score_text, table_cell_bold),
-                        Paragraph(justification, table_cell),
-                        Paragraph("See detailed recommendations below.", table_cell),
-                    ])
-
-            r_tab = Table(r_rows, colWidths=[content_width * .21, content_width * .12, content_width * .40, content_width * .27], repeatRows=1, splitInRow=1, hAlign='LEFT')
-            r_tab.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), butter),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, paper]),
-                ('LINEBELOW', (0, 0), (-1, 0), 1, charcoal),
-                ('BOX', (0, 0), (-1, -1), 0.5, border_color),
-                ('LINEBELOW', (0, 1), (-1, -2), 0.35, border_color),
-                ('LEFTPADDING', (0, 0), (-1, -1), 7),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 7),
-                ('TOPPADDING', (0, 0), (-1, -1), 7),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ]))
-            story.append(r_tab)
-            story.append(Spacer(1, 10))
+                    criterion_block(
+                        item.get("criterion", "Criterion"),
+                        f"{item.get('score', 0)} / {item.get('maxScore', 10)}",
+                        None, item.get("justification"), None, None,
+                    )
 
         # Key Strengths
         strengths = report_data.get("strengths") or []
@@ -405,10 +406,10 @@ class ReportService:
             canvas.setStrokeColor(border_color)
             canvas.setLineWidth(.6)
             canvas.line(document.leftMargin, 35, width - document.rightMargin, 35)
-            canvas.setFont('Helvetica-Bold', 7)
+            canvas.setFont('GradeWiseSans-Bold', 7)
             canvas.setFillColor(charcoal)
             canvas.drawString(document.leftMargin, 23, 'GRADEWISE  /  FEEDBACK REPORT')
-            canvas.setFont('Helvetica', 7)
+            canvas.setFont('GradeWiseSans', 7)
             canvas.setFillColor(text_muted)
             canvas.drawRightString(width - document.rightMargin, 23, f'PAGE {document.page}')
             canvas.restoreState()
