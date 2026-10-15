@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import os
 import asyncio
+import hashlib
 import time
 import logging
 import re
+from datetime import datetime, timedelta, timezone
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Sequence
@@ -172,6 +174,162 @@ class OpenAICompatibleProvider(LLMProvider):
         return [(item["index"], item["relevance_score"]) for item in results]
 
 
+
+class GroqKeysUnavailable(RuntimeError):
+    """All configured Groq credentials are cooling down or unavailable."""
+
+
+class RotatingGroqProvider(LLMProvider):
+    """Share a process-wide key pool across grading stages without logging secrets."""
+
+    name = "dedicated"
+
+    def __init__(self, tokens: Sequence[str], base_url: str, timeout: float = 120.0):
+        self._providers = [
+            OpenAICompatibleProvider(token, base_url, timeout, name=f"dedicated-slot-{i + 1}")
+            for i, token in enumerate(dict.fromkeys(token for token in tokens if token))
+        ]
+        if not self._providers:
+            raise ValueError("At least one dedicated inference token is required")
+        self._cooldown_until = [0.0] * len(self._providers)
+        self._org_by_slot: dict[int, str] = {}
+        self._cursor = 0
+        self._lock = asyncio.Lock()
+        self._load_lock = asyncio.Lock()
+        self._loaded = False
+        self._fingerprints = [hashlib.sha256(token.encode()).hexdigest() for token in dict.fromkeys(token for token in tokens if token)]
+
+    async def _load_cooldowns(self) -> None:
+        if self._loaded:
+            return
+        async with self._load_lock:
+            if self._loaded:
+                return
+            from app.db.postgres import get_conn
+            async with get_conn() as conn:
+                rows = await conn.fetch(
+                    "SELECT key_fingerprint, organization_id, cooldown_until "
+                    "FROM public.groq_key_cooldowns "
+                    "WHERE key_fingerprint = ANY($1::text[]) AND cooldown_until > now()",
+                    self._fingerprints,
+                )
+            by_fingerprint = {row['key_fingerprint']: row for row in rows}
+            now = datetime.now(timezone.utc)
+            async with self._lock:
+                for index, fingerprint in enumerate(self._fingerprints):
+                    row = by_fingerprint.get(fingerprint)
+                    if row:
+                        seconds = max(0.0, (row['cooldown_until'] - now).total_seconds())
+                        self._cooldown_until[index] = max(self._cooldown_until[index], time.monotonic() + seconds)
+                        if row['organization_id']:
+                            self._org_by_slot[index] = row['organization_id']
+            self._loaded = True
+
+    async def _next_slot(self, attempted: set[int]) -> tuple[int | None, float]:
+        async with self._lock:
+            now = time.monotonic()
+            for offset in range(len(self._providers)):
+                index = (self._cursor + offset) % len(self._providers)
+                if index not in attempted and self._cooldown_until[index] <= now:
+                    self._cursor = (index + 1) % len(self._providers)
+                    return index, 0.0
+            waits = [until - now for until in self._cooldown_until if until > now]
+            return None, min(waits) if waits else 0.0
+
+    async def _cool_down(self, index: int, seconds: float, *, org_id: str | None = None, daily: bool = False) -> None:
+        async with self._lock:
+            if org_id:
+                self._org_by_slot[index] = org_id
+            until = time.monotonic() + seconds
+            affected = [
+                i for i in range(len(self._providers))
+                if i == index or (daily and org_id and self._org_by_slot.get(i) == org_id)
+            ]
+            for i in affected:
+                self._cooldown_until[i] = max(self._cooldown_until[i], until)
+        from app.db.postgres import get_conn
+        until_at = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+        try:
+            async with get_conn() as conn:
+                for i in affected:
+                    await conn.execute(
+                        "INSERT INTO public.groq_key_cooldowns "
+                        "(key_fingerprint, organization_id, cooldown_until, reason) VALUES ($1,$2,$3,$4) "
+                        "ON CONFLICT (key_fingerprint) DO UPDATE SET "
+                        "organization_id=COALESCE(EXCLUDED.organization_id, groq_key_cooldowns.organization_id), "
+                        "cooldown_until=GREATEST(groq_key_cooldowns.cooldown_until, EXCLUDED.cooldown_until), "
+                        "reason=EXCLUDED.reason, updated_at=now()",
+                        self._fingerprints[i], self._org_by_slot.get(i), until_at,
+                        'daily' if daily else 'temporary',
+                    )
+        except Exception:
+            logger.exception("Could not persist Groq key cooldown; current process will still honor it")
+        logger.warning("Groq slot %d cooling down for %.0fs (%s limit)", index + 1, seconds, "daily" if daily else "temporary")
+
+    async def _call(self, operation):
+        # A short minute-level cooldown can be retried once. A daily limit is
+        # never rechecked in this process for 24 hours.
+        last_error: Exception | None = None
+        await self._load_cooldowns()
+        for cycle in range(2):
+            attempted: set[int] = set()
+            while len(attempted) < len(self._providers):
+                index, wait = await self._next_slot(attempted)
+                if index is None:
+                    break
+                attempted.add(index)
+                try:
+                    return await operation(self._providers[index])
+                except httpx.HTTPStatusError as exc:
+                    last_error = exc
+                    status = exc.response.status_code
+                    if status == 429:
+                        body = exc.response.text
+                        daily = any(mark in body.lower() for mark in ("per day", "(tpd)", "(rpd)", "daily limit"))
+                        org = re.search(r"organization [`']([^`']+)[`']", body)
+                        try:
+                            retry_after = float(exc.response.headers.get("retry-after", "30"))
+                        except ValueError:
+                            retry_after = 30.0
+                        await self._cool_down(index, 86400.0 if daily else max(1.0, retry_after), org_id=org.group(1) if org else None, daily=daily)
+                        continue
+                    if status in (401, 403):
+                        await self._cool_down(index, 86400.0)
+                        continue
+                    if status in (500, 502, 503, 504):
+                        await self._cool_down(index, 10.0)
+                        continue
+                    raise
+                except httpx.RequestError as exc:
+                    last_error = exc
+                    await self._cool_down(index, 10.0)
+            _, wait = await self._next_slot(set())
+            if cycle == 0 and 0 < wait <= 60:
+                await asyncio.sleep(wait + 0.1)
+                continue
+            break
+        raise GroqKeysUnavailable("All configured Groq keys are unavailable; check their organization quotas and retry after cooldown.") from last_error
+
+    async def chat(self, messages: Sequence[ChatMessage], *, model: str, temperature: float = 0.2, max_tokens: int = 2048, response_format: str | None = None) -> ChatResponse:
+        return await self._call(lambda provider: provider.chat(messages, model=model, temperature=temperature, max_tokens=max_tokens, response_format=response_format))
+
+    async def embed(self, texts: Sequence[str], *, model: str) -> list[list[float]]:
+        return await self._call(lambda provider: provider.embed(texts, model=model))
+
+    async def rerank(self, query: str, documents: Sequence[str], *, model: str, top_k: int = 6) -> list[tuple[int, float]]:
+        return await self._call(lambda provider: provider.rerank(query, documents, model=model, top_k=top_k))
+
+
+_DEDICATED_POOLS: dict[tuple[str, ...], RotatingGroqProvider] = {}
+
+
+def _dedicated_pool(tokens: Sequence[str], base_url: str) -> RotatingGroqProvider:
+    key = (base_url, *dict.fromkeys(token for token in tokens if token))
+    if key not in _DEDICATED_POOLS:
+        _DEDICATED_POOLS[key] = RotatingGroqProvider(key[1:], base_url)
+    return _DEDICATED_POOLS[key]
+
+
 class GradientProvider(OpenAICompatibleProvider):
     def __init__(self, api_key: str, base_url: str, timeout: float = 90.0):
         super().__init__(
@@ -300,11 +458,10 @@ def build_dedicated_llm_from_env() -> ResilientLLM | None:
     from app.config import settings
     if not settings.DEDICATED_INFERENCE_BASE_URL or not settings.DEDICATED_INFERENCE_TOKEN:
         return None
-    dedicated = OpenAICompatibleProvider(
-        api_key=settings.DEDICATED_INFERENCE_TOKEN,
-        base_url=settings.DEDICATED_INFERENCE_BASE_URL,
-        timeout=120.0,  # longer timeout for large context grading
-        name="dedicated",
+    backup_tokens = re.split(r"[,;\s]+", os.getenv("DEDICATED_INFERENCE_BACKUP_TOKENS", "").strip())
+    dedicated = _dedicated_pool(
+        [settings.DEDICATED_INFERENCE_TOKEN, *backup_tokens],
+        settings.DEDICATED_INFERENCE_BASE_URL,
     )
     failover: list[LLMProvider] = []
     model_overrides: dict[str, str] = {}
@@ -410,3 +567,4 @@ def build_embedding_llm_from_env() -> ResilientLLM | None:
     if not settings.GRADIENT_API_KEY:
         return None
     return ResilientLLM(primary=GradientProvider(api_key=settings.GRADIENT_API_KEY,base_url=settings.GRADIENT_BASE_URL),max_retries=2)
+

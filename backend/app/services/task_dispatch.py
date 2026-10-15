@@ -87,7 +87,32 @@ async def _drain() -> bool:
             # Holding the lock proves no other demo consumer is executing these.
             interrupted = await lock_conn.fetch("SELECT * FROM demo_jobs WHERE status='running'")
             for job in interrupted:
-                await _fail(job, "Server restarted during grading. Please upload the document again.")
+                if job["task"] == "tasks.grade_submission":
+                    # The prior process may have stopped mid-LLM call during a
+                    # deployment. A committed report must never be graded twice.
+                    async with get_conn(str(job["org_id"])) as conn:
+                        report_exists = await conn.fetchval(
+                            "SELECT EXISTS(SELECT 1 FROM feedback_reports WHERE submission_id=$1)",
+                            job["target_id"],
+                        )
+                        if report_exists:
+                            await conn.execute(
+                                "UPDATE demo_jobs SET status='done', finished_at=now() WHERE id=$1",
+                                job["id"],
+                            )
+                        else:
+                            await conn.execute(
+                                "UPDATE submissions SET status='uploaded', progress_stage='queued', "
+                                "progress_percent=0, progress_message='Resuming after service update.', "
+                                "progress_updated_at=now() WHERE id=$1 AND status IN ('uploaded','processing')",
+                                job["target_id"],
+                            )
+                            await conn.execute(
+                                "UPDATE demo_jobs SET status='pending', finished_at=NULL WHERE id=$1",
+                                job["id"],
+                            )
+                else:
+                    await _fail(job, "Server restarted during indexing. Please upload the reference again.")
             while True:
                 job = await lock_conn.fetchrow(
                     """UPDATE demo_jobs SET status='running' WHERE id=(
@@ -157,4 +182,5 @@ async def stop_worker() -> None:
         with suppress(asyncio.CancelledError):
             await _worker
         _worker = None
+
 

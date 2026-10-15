@@ -57,3 +57,13 @@ CREATE TABLE IF NOT EXISTS demo_jobs (
 GRANT SELECT, INSERT, UPDATE, DELETE ON demo_files, demo_jobs TO app_user;
 GRANT SELECT, UPDATE ON demo_storage_budget TO app_user;
 GRANT USAGE, SELECT ON SEQUENCE demo_jobs_id_seq TO app_user;
+
+-- Groq key cooldowns survive Render restarts. Fingerprints are SHA-256 hashes, never tokens.
+CREATE TABLE IF NOT EXISTS groq_key_cooldowns (
+    key_fingerprint TEXT PRIMARY KEY,
+    organization_id TEXT,
+    cooldown_until TIMESTAMPTZ NOT NULL,
+    reason TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+GRANT SELECT, INSERT, UPDATE ON groq_key_cooldowns TO app_user;
