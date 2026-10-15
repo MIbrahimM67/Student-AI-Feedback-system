@@ -1681,32 +1681,54 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                                             </div>
 
                                             {payload.per_criterion && Object.keys(payload.per_criterion).length > 0 && (
-                                              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                                                <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-3">Criteria Breakdown</div>
-                                                <div className="space-y-3">
-                                                  {Object.entries(payload.per_criterion).map(([criterionId, rawCriterion]: [string, any]) => {
-                                                    const score = criterionScore(rawCriterion);
-                                                    const notes = payload.criteria_notes?.[criterionId] || (typeof rawCriterion === "object" && rawCriterion !== null ? rawCriterion : {});
-                                                    return (
-                                                      <div key={criterionId} className="border border-slate-100 bg-slate-50 p-3">
-                                                        <div className="flex items-start justify-between gap-3">
-                                                          <div className="font-black text-xs text-slate-700 capitalize">{criterionId.replace(/_/g, " ")}</div>
-                                                          <span className={`shrink-0 font-bold px-2 py-0.5 rounded-md text-xs ${
-                                                            Number(score) === 0 ? "bg-rose-50 text-rose-600" :
-                                                            Number(score) >= 4 ? "bg-emerald-50 text-emerald-600" :
-                                                            "bg-amber-50 text-amber-600"
-                                                          }`}>{score} pts</span>
-                                                        </div>
-                                                        {notes.note && <p className="mt-2 text-xs leading-relaxed text-slate-700">{notes.note}</p>}
-                                                        {notes.evidence && <p className="mt-2 text-[11px] leading-relaxed text-slate-500"><span className="font-black text-slate-600">Student evidence:</span> {notes.evidence}</p>}
-                                                        {notes.deduction_reason && <p className="mt-1 text-[11px] leading-relaxed text-rose-700"><span className="font-black">Why marks were cut:</span> {notes.deduction_reason}</p>}
-                                                        {notes.reference_support && <p className="mt-1 border-l-2 border-indigo-200 pl-2 text-[11px] leading-relaxed text-slate-600"><span className="font-black text-indigo-700">RAG/reference support:</span> {notes.reference_support}</p>}
-                                                        {notes.action && <p className="mt-1 text-[11px] leading-relaxed text-indigo-700"><span className="font-black">Action:</span> {notes.action}</p>}
-                                                      </div>
-                                                    );
-                                                  })}
+                                              <section className="rounded-xl border border-[var(--color-rule)] bg-[var(--color-surface)] px-4 py-5 sm:px-6">
+                                                <div className="mx-auto max-w-[1080px]">
+                                                  <div className="mb-5">
+                                                    <h3 className="text-lg font-bold text-[var(--color-ink)]">Criteria breakdown</h3>
+                                                    <p className="mt-1 text-sm leading-6 text-[var(--color-ink-2)]">Evidence, deductions, and next steps for each criterion.</p>
+                                                  </div>
+                                                  <div className="space-y-5">
+                                                    {Object.entries(payload.per_criterion).map(([criterionId, rawCriterion]: [string, any]) => {
+                                                      const score = criterionScore(rawCriterion);
+                                                      const notes = payload.criteria_notes?.[criterionId] || (typeof rawCriterion === "object" && rawCriterion !== null ? rawCriterion : {});
+                                                      return (
+                                                        <article key={criterionId} className="min-w-0 rounded-lg border border-[var(--color-rule-2)] bg-[var(--color-paper-2)] p-4 sm:p-5">
+                                                          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-rule)] pb-3">
+                                                            <div className="min-w-0">
+                                                              <h4 className="text-base font-bold capitalize text-[var(--color-ink)]">{criterionId.replace(/_/g, " ")}</h4>
+                                                              {notes.note && <p className="mt-1 text-sm leading-6 text-[var(--color-ink-2)]">{notes.note}</p>}
+                                                            </div>
+                                                            <span className="shrink-0 rounded-md bg-[var(--color-accent)] px-3 py-1 text-sm font-bold text-[var(--color-accent-ink)]">{score} pts</span>
+                                                          </div>
+                                                          <div className="mt-4 grid gap-4 md:grid-cols-2">
+                                                            {notes.evidence && (
+                                                              <div className="min-w-0">
+                                                                <div className="text-xs font-bold uppercase tracking-wide text-[var(--color-muted)]">Student evidence</div>
+                                                                <p className="mt-1 break-words text-sm leading-6 text-[var(--color-ink-2)]">{notes.evidence}</p>
+                                                              </div>
+                                                            )}
+                                                            {notes.deduction_reason && (
+                                                              <div className="min-w-0 border-l-2 border-[var(--color-error)] pl-3">
+                                                                <div className="text-xs font-bold uppercase tracking-wide text-[var(--color-error)]">Reason for deduction</div>
+                                                                <p className="mt-1 break-words text-sm leading-6 text-[var(--color-ink-2)]">{notes.deduction_reason}</p>
+                                                              </div>
+                                                            )}
+                                                          </div>
+                                                          {notes.action && (
+                                                            <div className="mt-4 rounded-md border border-[var(--color-accent-border)] bg-[var(--color-accent-soft)] px-3 py-2.5">
+                                                              <span className="text-xs font-bold uppercase tracking-wide text-[var(--color-accent)]">Next step</span>
+                                                              <p className="mt-1 break-words text-sm leading-6 text-[var(--color-ink)]">{notes.action}</p>
+                                                            </div>
+                                                          )}
+                                                          {notes.reference_support && notes.reference_support !== "No direct reference quote available." && (
+                                                            <p className="mt-3 break-words text-sm leading-6 text-[var(--color-ink-2)]"><span className="font-bold text-[var(--color-accent)]">Reference support:</span> {notes.reference_support}</p>
+                                                          )}
+                                                        </article>
+                                                      );
+                                                    })}
+                                                  </div>
                                                 </div>
-                                              </div>
+                                              </section>
                                             )}
                                           </>
                                         );
@@ -1971,4 +1993,5 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
     </div>
   );
 };
+
 
