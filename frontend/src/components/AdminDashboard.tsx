@@ -176,6 +176,21 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  const handleInstructorAccess = async (target: UserRow) => {
+    if (target.role === "admin") return;
+    const nextRole = target.role === "instructor" ? "student" : "instructor";
+    const action = nextRole === "instructor" ? "grant instructor access to" : "revoke instructor access from";
+    if (!window.confirm(`Do you want to ${action} ${target.email}?`)) return;
+    try {
+      await api.patch(`/api/admin/users/${encodeURIComponent(target.uid)}/role`, { role: nextRole });
+      setSuccessMsg(`Instructor access ${nextRole === "instructor" ? "granted" : "revoked"} for ${target.email}.`);
+      setTimeout(() => setSuccessMsg(null), 4000);
+      fetchAdminData();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || err.message || "Could not update instructor access.");
+    }
+  };
+
   const handleDismissWarning = async (id: string) => {
     try {
       await api.post(`/api/admin/warnings/${id}/dismiss`);
@@ -404,6 +419,7 @@ export const AdminDashboard: React.FC = () => {
                     <th scope="col" className="px-4 py-3">Role</th>
                     <th scope="col" className="px-4 py-3">Faculty status</th>
                     <th scope="col" className="px-4 py-3">Warnings</th>
+                    <th scope="col" className="px-4 py-3">Access</th>
                     <th scope="col" className="px-4 py-3">Joined</th>
                   </tr>
                 </thead>
@@ -421,6 +437,16 @@ export const AdminDashboard: React.FC = () => {
                         {u.facultyStatus && u.facultyStatus !== "none" ? u.facultyStatus : "—"}
                       </td>
                       <td className="px-4 py-3 font-semibold text-[var(--color-ink-2)]">{u.warningCount ?? 0}</td>
+                      <td className="px-4 py-3">
+                        {u.role === "admin" ? (
+                          <span className="text-[11px] text-[var(--color-muted)]">Protected</span>
+                        ) : (
+                          <button type="button" onClick={() => handleInstructorAccess(u)}
+                            className="rounded-lg border border-[var(--color-rule)] px-2.5 py-1.5 text-[11px] font-bold text-[var(--color-ink)] hover:bg-[#fff0a6] transition-colors">
+                            {u.role === "instructor" ? "Revoke instructor" : "Grant instructor"}
+                          </button>
+                        )}
+                      </td>
                       <td className="whitespace-nowrap px-4 py-3 text-[11px] text-[var(--color-muted)]">
                         {new Date(u.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                       </td>
@@ -445,6 +471,12 @@ export const AdminDashboard: React.FC = () => {
                     <div><dt className="text-[var(--color-muted)]">Warnings</dt><dd className="mt-1 text-[var(--color-ink-2)]">{u.warningCount ?? 0}</dd></div>
                     <div><dt className="text-[var(--color-muted)]">Joined</dt><dd className="mt-1 text-[var(--color-ink-2)]">{new Date(u.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</dd></div>
                   </dl>
+                  {u.role !== "admin" && (
+                    <button type="button" onClick={() => handleInstructorAccess(u)}
+                      className="mt-3 w-full rounded-lg border border-[var(--color-rule)] px-3 py-2 text-xs font-bold text-[var(--color-ink)] hover:bg-[#fff0a6] transition-colors">
+                      {u.role === "instructor" ? "Revoke instructor" : "Grant instructor"}
+                    </button>
+                  )}
                 </article>
               ))}
             </div>
