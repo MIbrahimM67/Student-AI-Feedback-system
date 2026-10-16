@@ -110,15 +110,8 @@ async def sync_user(
                   SET email        = EXCLUDED.email,
                       display_name = EXCLUDED.display_name,
                       photo_url    = EXCLUDED.photo_url,
-                      role         = CASE
-                                       WHEN users.role = 'admin' THEN users.role
-                                       WHEN EXCLUDED.role = 'instructor' THEN 'instructor'
-                                       ELSE users.role
-                                     END,
-                      faculty_status = CASE
-                                         WHEN EXCLUDED.faculty_status = 'approved' THEN 'approved'
-                                         ELSE users.faculty_status
-                                       END,
+                      role = users.role,
+                      faculty_status = users.faculty_status,
                       updated_at   = EXCLUDED.updated_at
                 """,
                 uid, org_id, email, display_name, photo_url,

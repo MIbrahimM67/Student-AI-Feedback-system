@@ -193,6 +193,57 @@ async def revoke_pro(target_uid: str, admin: dict = Depends(_get_admin)):
     return {"status": "pro_revoked", "user_id": target_uid}
 
 
+
+class InstructorAccessRequest(BaseModel):
+    role: str
+
+
+@router.patch("/users/{target_uid}/role")
+async def set_instructor_access(
+    target_uid: str,
+    payload: InstructorAccessRequest,
+    admin: dict = Depends(_get_admin),
+):
+    """Grant or revoke instructor access within the admin's organization."""
+    if payload.role not in {"student", "instructor"}:
+        raise HTTPException(400, "Role must be student or instructor.")
+    if target_uid == admin["uid"]:
+        raise HTTPException(400, "An admin cannot change their own role.")
+
+    org_id = str(admin["org_id"])
+    now = datetime.now(timezone.utc)
+    async with get_conn(org_id) as conn:
+        target = await conn.fetchrow(
+            "SELECT uid, role FROM users WHERE uid = $1 AND org_id = $2::uuid FOR UPDATE",
+            target_uid, org_id,
+        )
+        if not target:
+            raise HTTPException(404, "User not found in this organization.")
+        if target["role"] == "admin":
+            raise HTTPException(403, "Admin roles cannot be changed here.")
+        status = "approved" if payload.role == "instructor" else "none"
+        await conn.execute(
+            """
+            UPDATE users SET role = $1, faculty_status = $2, updated_at = $3
+            WHERE uid = $4 AND org_id = $5::uuid
+            """,
+            payload.role, status, now, target_uid, org_id,
+        )
+        if payload.role == "instructor":
+            await conn.execute(
+                """
+                INSERT INTO instructor_profiles (uid, org_id, created_at, updated_at)
+                VALUES ($1, $2::uuid, $3, $3)
+                ON CONFLICT (uid) DO UPDATE SET org_id = EXCLUDED.org_id,
+                  updated_at = EXCLUDED.updated_at
+                """,
+                target_uid, org_id, now,
+            )
+        await _write_audit(conn, admin["uid"], "SET_INSTRUCTOR_ACCESS", target_uid)
+
+    return {"user_id": target_uid, "role": payload.role, "faculty_status": status}
+
+
 # ---- Warnings ---------------------------------------------------------------
 
 @router.get("/warnings")

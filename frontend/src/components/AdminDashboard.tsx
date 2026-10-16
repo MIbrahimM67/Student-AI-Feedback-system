@@ -144,6 +144,21 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  const handleInstructorAccess = async (target: UserRow) => {
+    if (target.role === "admin") return;
+    const nextRole = target.role === "instructor" ? "student" : "instructor";
+    const action = nextRole === "instructor" ? "grant instructor access to" : "revoke instructor access from";
+    if (!window.confirm(`Do you want to ${action} ${target.email}?`)) return;
+    try {
+      await api.patch(`/api/admin/users/${encodeURIComponent(target.uid)}/role`, { role: nextRole });
+      setSuccessMsg(`Instructor access ${nextRole === "instructor" ? "granted" : "revoked"} for ${target.email}.`);
+      setTimeout(() => setSuccessMsg(null), 4000);
+      fetchAdminData();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || err.message || "Could not update instructor access.");
+    }
+  };
+
   const handleDismissWarning = async (id: string) => {
     try {
       await api.post(`/api/admin/warnings/${id}/dismiss`);
@@ -309,6 +324,7 @@ export const AdminDashboard: React.FC = () => {
                   <th className="py-3 px-4">Role</th>
                   <th className="py-3 px-4">Faculty Status</th>
                   <th className="py-3 px-4">Warnings</th>
+                  <th className="py-3 px-4">Access</th>
                   <th className="py-3 px-4">Joined</th>
                 </tr>
               </thead>
@@ -340,6 +356,19 @@ export const AdminDashboard: React.FC = () => {
                         </span>
                       ) : (
                         <span className="text-[10px] text-[#8e8b80]">0</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4">
+                      {u.role === "admin" ? (
+                        <span className="text-[10px] text-[#8e8b80]">Protected</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleInstructorAccess(u)}
+                          className="rounded-lg border border-[#dfdbd3] px-2.5 py-1.5 text-[10px] font-bold text-[#1c1c18] hover:bg-[#fff0a6] transition-colors"
+                        >
+                          {u.role === "instructor" ? "Revoke instructor" : "Grant instructor"}
+                        </button>
                       )}
                     </td>
                     <td className="py-3 px-4 text-[10px] text-[#8e8b80] font-mono">
