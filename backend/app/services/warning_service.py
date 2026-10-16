@@ -3,7 +3,7 @@ GradeWise v3 — warning service (Postgres-backed).
 
 Scans student submissions for policy violations and records them
 in the `warnings` table. Increments user warning_count and applies
-a 7-day block when count >= 3.
+a 24-hour block when count >= 3.
 
 No Firestore. No mock data.
 """
@@ -70,7 +70,7 @@ class WarningService:
                 new_count = (row["warning_count"] or 0) + 1
                 blocked_until = None
                 if new_count >= 3:
-                    blocked_until = now + timedelta(days=7)
+                    blocked_until = now + timedelta(hours=24)
                     logger.warning(
                         "User %s blocked until %s (warning_count=%d)",
                         user_id, blocked_until.isoformat(), new_count,
