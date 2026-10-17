@@ -61,7 +61,8 @@ const process = [
 ];
 
 export const LandingSection: React.FC<LandingSectionProps> = ({ onOpenWorkspace }) => {
-  const { loginWithGoogle, error, loading, user } = useAuth();
+  const { loginWithGoogle, redeemBetaAccess, betaAccessRequired, error, loading, user } = useAuth();
+  const [accessCode, setAccessCode] = React.useState("");
   const [activeOutput, setActiveOutput] = React.useState(0);
 
   const scrollToSection = (event: React.MouseEvent<HTMLAnchorElement>, id: string) => {
@@ -151,10 +152,34 @@ export const LandingSection: React.FC<LandingSectionProps> = ({ onOpenWorkspace 
 
             <div className={styles.trustLine}>
               <LockKeyhole size={14} />
-              Invitation-only demo
+              Private beta
               <span />
               Instructor approval required
             </div>
+            {betaAccessRequired && (
+              <form className={styles.betaForm} onSubmit={(event) => {
+                event.preventDefault();
+                if (accessCode.trim()) void redeemBetaAccess(accessCode.trim());
+              }}>
+                <label htmlFor="beta-access-code">Beta tester access code</label>
+                <div className={styles.betaFormRow}>
+                  <input
+                    id="beta-access-code"
+                    type="password"
+                    autoComplete="off"
+                    value={accessCode}
+                    onChange={(event) => setAccessCode(event.target.value)}
+                    placeholder="Enter your access code"
+                    required
+                    disabled={loading}
+                  />
+                  <button type="submit" disabled={loading || !accessCode.trim()}>
+                    {loading ? "Checking…" : "Unlock access"}
+                  </button>
+                </div>
+                <p>Access is limited to invited testers. Ask the project team for a code.</p>
+              </form>
+            )}
             {error && <p role="alert" className={styles.error}>{error}</p>}
           </div>
 
