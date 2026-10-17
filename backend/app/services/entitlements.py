@@ -1,20 +1,10 @@
-"""Faculty verification and Pro plan checks shared by routes and background jobs.
-
-Rules:
-  * Instructor features need role 'admin', or role 'instructor' with an
-    approved faculty application.
-  * Batch upload, similarity checks and exports additionally need an active
-    Pro plan. Administrators are treated as entitled.
-"""
+"""Faculty verification for instructor workflows and optional billing plan state."""
 from __future__ import annotations
 
 from typing import Any, Mapping
 
 FACULTY_REQUIRED_DETAIL = (
     "Instructor tools are available after an administrator approves your faculty application."
-)
-PRO_REQUIRED_DETAIL = (
-    "An active Pro plan is required for batch uploads, similarity checks and exports."
 )
 
 
@@ -31,13 +21,13 @@ def has_active_pro(user: Mapping[str, Any]) -> bool:
     return user.get("role") == "admin" or user.get("pro_status") == "active"
 
 
-async def assignment_owner_has_pro(conn, assignment_id) -> bool:
-    """True when the instructor who owns the assignment's subject is entitled to Pro features."""
+async def assignment_owner_is_verified(conn, assignment_id) -> bool:
+    """Check the owning instructor before running assignment similarity jobs."""
     if not assignment_id:
         return False
     row = await conn.fetchrow(
         """
-        SELECT u.role, u.faculty_status, u.pro_status
+        SELECT u.role, u.faculty_status
         FROM assignments a
         JOIN subjects s ON s.id = a.subject_id
         JOIN users u ON u.uid = s.instructor_id
@@ -45,4 +35,4 @@ async def assignment_owner_has_pro(conn, assignment_id) -> bool:
         """,
         assignment_id,
     )
-    return bool(row) and has_active_pro(dict(row))
+    return bool(row) and is_verified_faculty(dict(row))

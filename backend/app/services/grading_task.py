@@ -23,7 +23,7 @@ from app.db.vectors import internal_similarity_search, upsert_submission_chunks
 from app.services.llm_provider import build_llm_from_env
 from app.services.ocr_service import ocr_service
 from app.services.retrieval_service import retrieve_and_rerank
-from app.services.entitlements import assignment_owner_has_pro
+from app.services.entitlements import assignment_owner_is_verified
 from app.services.warning_service import warning_service
 from app.utils.prompt_templates import utility_title_generator_user
 from app.grading.pipeline import grade_submission as route_and_grade
@@ -90,7 +90,7 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
             assignment = await conn.fetchrow(
                 "SELECT * FROM assignments WHERE id = $1", sub["assignment_id"]
             )
-            similarity_entitled = await assignment_owner_has_pro(conn, sub["assignment_id"])
+            similarity_entitled = await assignment_owner_is_verified(conn, sub["assignment_id"])
             questions = [dict(r) for r in await conn.fetch(
                 "SELECT * FROM questions WHERE assignment_id = $1 ORDER BY display_order",
                 sub["assignment_id"],
@@ -110,7 +110,7 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
     batch_id = str(sub["batch_id"]) if sub["batch_id"] else None
     assignment_settings = dict(assignment) if assignment else {}
     if assignment_settings and not similarity_entitled:
-        # Similarity checks are a Pro feature of the instructor who owns the assignment.
+        # Disable similarity if the assignment owner no longer has faculty approval.
         assignment_settings["internal_similarity_enabled"] = False
         assignment_settings["internet_plagiarism_enabled"] = False
 

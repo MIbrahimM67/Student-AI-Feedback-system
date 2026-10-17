@@ -32,11 +32,11 @@ def compare_texts(texts: list[str]) -> list[list[float]]:
 
 
 async def refresh_internal_similarity(org_id: str, assignment_id: str, batch_id: str | None = None) -> None:
-    from app.services.entitlements import assignment_owner_has_pro
+    from app.services.entitlements import assignment_owner_is_verified
     async with get_conn(org_id) as conn:
         enabled = await conn.fetchval('SELECT internal_similarity_enabled FROM assignments WHERE id=$1', assignment_id)
-        # Similarity checks are a Pro feature of the instructor who owns the assignment.
-        if not enabled or not await assignment_owner_has_pro(conn, assignment_id):
+        # Only the approved faculty owner (or an admin) may run this job.
+        if not enabled or not await assignment_owner_is_verified(conn, assignment_id):
             return
         batch_size = await conn.fetchval('SELECT count(*) FROM submissions WHERE batch_id=$1', batch_id) if batch_id else 0
         rows = await conn.fetch(

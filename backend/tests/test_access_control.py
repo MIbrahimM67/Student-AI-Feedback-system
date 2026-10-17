@@ -77,27 +77,14 @@ async def test_instructor_dependency_requires_approved_faculty(monkeypatch, row,
         assert denied.value.status_code == 403
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("user,allowed", [(FACULTY, False), (PRO, True), (ADMIN, True)])
-async def test_pro_dependency(user, allowed):
-    from app.api.instructor_routes import _get_pro_instructor
-    if allowed:
-        assert await _get_pro_instructor(user) is user
-    else:
-        with pytest.raises(HTTPException) as denied:
-            await _get_pro_instructor(user)
-        assert denied.value.status_code == 403
-        assert "Pro plan" in denied.value.detail
-
-
-def test_pro_routes_use_pro_dependency():
+def test_batch_and_export_routes_require_approved_faculty():
     from app.main import app
-    from app.api.instructor_routes import _get_pro_instructor
+    from app.api.instructor_routes import _get_instructor
 
     def dependencies(route):
         return {d.call for d in route.dependant.dependencies}
 
-    pro_paths = {
+    instructor_paths = {
         ("POST", "/api/instructor/batch"),
         ("POST", "/api/instructor/batch/{batch_id}/confirm-names"),
         ("POST", "/api/instructor/batch/{batch_id}/process"),
@@ -108,10 +95,10 @@ def test_pro_routes_use_pro_dependency():
     found = set()
     for route in app.routes:
         for method in getattr(route, "methods", set()) or set():
-            if (method, getattr(route, "path", "")) in pro_paths:
-                assert _get_pro_instructor in dependencies(route), route.path
+            if (method, getattr(route, "path", "")) in instructor_paths:
+                assert _get_instructor in dependencies(route), route.path
                 found.add((method, route.path))
-    assert found == pro_paths
+    assert found == instructor_paths
 
 
 # ---- Billing -----------------------------------------------------------------
@@ -292,7 +279,7 @@ async def test_pro_activation_works_under_row_level_security(db):
 
 
 @pytest.mark.asyncio
-async def test_routes_enforce_faculty_approval_and_pro(db, monkeypatch):
+async def test_routes_allow_approved_faculty_without_pro(db, monkeypatch):
     owner, org = db
     from app.main import app
     from app.api import instructor_routes
@@ -315,36 +302,37 @@ async def test_routes_enforce_faculty_approval_and_pro(db, monkeypatch):
                     json={"title": "Essay", "rubric": "Accuracy: 10", "internal_similarity_enabled": True},
                 )
                 assert created.status_code == 201, created.text
-                assert created.json()["internal_similarity_enabled"] is pro
+                assert created.json()["internal_similarity_enabled"] is True
                 stored = await owner.fetchval("SELECT internal_similarity_enabled FROM assignments WHERE id=$1", uuid.UUID(created.json()["id"]))
-                assert stored is pro
+                assert stored is True
                 batch = await client.post(
                     "/api/instructor/batch",
                     data={"assignment_id": created.json()["id"], "subject_id": subject},
                     files={"file": ("class.zip", b"not-a-zip", "application/zip")},
                 )
-                # Non-Pro is refused before the upload is read; Pro reaches archive validation.
-                assert (batch.status_code == 403) is (not pro), batch.text
+                # Both approved instructors reach archive validation, regardless of plan.
+                assert batch.status_code == 422, batch.text
     finally:
         app.dependency_overrides.clear()
 
 
 @pytest.mark.asyncio
-async def test_similarity_job_skips_assignments_of_non_pro_owner(db):
+async def test_similarity_job_requires_approved_faculty_owner(db):
     owner, org = db
     from app.services.internal_similarity import refresh_internal_similarity
     await _make_user(owner, org, "faculty-2")
     subject, assignment = uuid.uuid4(), uuid.uuid4()
     await owner.execute("INSERT INTO subjects(id,org_id,instructor_id,title) VALUES ($1,$2,'faculty-2','Course')", subject, org)
-    # Simulates an assignment saved before enforcement, or a plan that has since lapsed.
+    # Even a previously enabled assignment should not run for a pending owner.
     await owner.execute("INSERT INTO assignments(id,org_id,subject_id,title,internal_similarity_enabled) VALUES ($1,$2,$3,'A',true)", assignment, org, subject)
     for _ in range(2):
         await owner.execute(
             "INSERT INTO submissions(id,org_id,assignment_id,subject_id,type,mode,status,input_text) VALUES ($1,$2,$3,$4,'text','single','graded','Identical answer text about density')",
             uuid.uuid4(), org, assignment, subject,
         )
+    await owner.execute("UPDATE users SET faculty_status='pending' WHERE uid='faculty-2'")
     await refresh_internal_similarity(str(org), str(assignment))
     assert await owner.fetchval("SELECT count(*) FROM plagiarism_reports") == 0
-    await owner.execute("UPDATE users SET pro_status='active' WHERE uid='faculty-2'")
+    await owner.execute("UPDATE users SET faculty_status='approved' WHERE uid='faculty-2'")
     await refresh_internal_similarity(str(org), str(assignment))
     assert await owner.fetchval("SELECT count(*) FROM plagiarism_reports") == 2

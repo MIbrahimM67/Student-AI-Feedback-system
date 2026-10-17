@@ -28,7 +28,7 @@ from app.auth.firebase import DemoAccessDenied, verify_id_token
 from app.services import file_storage
 from app.services.demo_limits import check_submission_type, read_upload
 from app.services.entitlements import (
-    FACULTY_REQUIRED_DETAIL, PRO_REQUIRED_DETAIL, has_active_pro, is_verified_faculty,
+    FACULTY_REQUIRED_DETAIL, is_verified_faculty,
 )
 from app.db.postgres import get_conn
 from app.services.task_dispatch import dispatch, notify
@@ -71,13 +71,6 @@ async def _get_instructor(uid: str = Depends(_get_verified_uid)) -> dict:
     if not is_verified_faculty(row):
         raise HTTPException(403, FACULTY_REQUIRED_DETAIL)
     return dict(row)
-
-
-async def _get_pro_instructor(user: dict = Depends(_get_instructor)) -> dict:
-    """Batch upload, similarity checks and exports are Pro features."""
-    if not has_active_pro(user):
-        raise HTTPException(403, PRO_REQUIRED_DETAIL)
-    return user
 
 
 # ---- Subjects ---------------------------------------------------------------
@@ -284,9 +277,8 @@ async def create_assignment(
     title = body.title
     prompt = body.prompt
     rubric = (body.rubric or "").strip()
-    similarity_allowed = has_active_pro(user)
-    internal_similarity = similarity_allowed and bool(body.internal_similarity_enabled)
-    internet_plagiarism = similarity_allowed and not settings.DOCUMENT_DEMO and bool(body.internet_plagiarism_enabled)
+    internal_similarity = bool(body.internal_similarity_enabled)
+    internet_plagiarism = not settings.DOCUMENT_DEMO and bool(body.internet_plagiarism_enabled)
     plagiarism = internal_similarity or internet_plagiarism
     use_subject_kb = bool(body.use_subject_kb)
     course_weight = max(0, min(100, int(body.course_material_weight or 0)))
@@ -353,7 +345,6 @@ async def create_assignment(
         "message": "Assignment created successfully.",
         "internal_similarity_enabled": internal_similarity,
         "internet_plagiarism_enabled": internet_plagiarism,
-        "similarity_requires_pro": not similarity_allowed,
     }
 
 
@@ -372,9 +363,8 @@ async def update_assignment(
     rubric = (body.rubric or "").strip()
     total_marks = max(1, int(body.total_marks or 100))
     minimum_marks = max(0, min(total_marks, int(body.minimum_marks or 0)))
-    similarity_allowed = has_active_pro(user)
-    internal_similarity = similarity_allowed and bool(body.internal_similarity_enabled)
-    internet_plagiarism = similarity_allowed and not settings.DOCUMENT_DEMO and bool(body.internet_plagiarism_enabled)
+    internal_similarity = bool(body.internal_similarity_enabled)
+    internet_plagiarism = not settings.DOCUMENT_DEMO and bool(body.internet_plagiarism_enabled)
     plagiarism = internal_similarity or internet_plagiarism
     use_subject_kb = bool(body.use_subject_kb)
     course_weight = max(0, min(100, int(body.course_material_weight or 0)))
@@ -452,7 +442,6 @@ async def update_assignment(
         "message": "Assignment updated successfully.",
         "internal_similarity_enabled": internal_similarity,
         "internet_plagiarism_enabled": internet_plagiarism,
-        "similarity_requires_pro": not similarity_allowed,
     }
 
 
@@ -657,7 +646,7 @@ async def upload_batch(
     type: str = Form("text"),
     stdin_text: Optional[str] = Form(None),
     file: UploadFile = File(...),
-    user: dict = Depends(_get_pro_instructor),
+    user: dict = Depends(_get_instructor),
 ):
     from app.services.batch_ingestion import stage_archive
     from pathlib import PurePosixPath
@@ -714,7 +703,7 @@ class ConfirmNamesPayload(BaseModel):
 async def confirm_batch_names(
     batch_id: str,
     payload: ConfirmNamesPayload,
-    user: dict = Depends(_get_pro_instructor),
+    user: dict = Depends(_get_instructor),
 ):
     """Update student names in submissions after the instructor reviews them."""
     org_id = str(user["org_id"])
@@ -740,7 +729,7 @@ async def confirm_batch_names(
 
 
 @router.post("/batch/{batch_id}/process")
-async def process_batch(batch_id: str, user: dict = Depends(_get_pro_instructor)):
+async def process_batch(batch_id: str, user: dict = Depends(_get_instructor)):
     """Trigger grading for an already-uploaded batch (called after name confirmation)."""
     from app.services.batch_ingestion import batch_file_limit
     org_id = str(user["org_id"])
@@ -1039,7 +1028,7 @@ async def approve_report(
 # ---- Export Batch Reports ---------------------------------------------------
 
 @router.get("/batch/{batch_id}/export/excel")
-async def export_batch_excel(batch_id: str, user: dict = Depends(_get_pro_instructor)):
+async def export_batch_excel(batch_id: str, user: dict = Depends(_get_instructor)):
     import io
     import openpyxl
     from fastapi.responses import StreamingResponse
@@ -1089,7 +1078,7 @@ async def export_batch_excel(batch_id: str, user: dict = Depends(_get_pro_instru
 
 
 @router.get("/batch/{batch_id}/export/zip")
-async def export_batch_zip(batch_id: str, user: dict = Depends(_get_pro_instructor)):
+async def export_batch_zip(batch_id: str, user: dict = Depends(_get_instructor)):
     import io
     import zipfile
     from fastapi.responses import StreamingResponse
@@ -1198,7 +1187,7 @@ async def export_batch_zip(batch_id: str, user: dict = Depends(_get_pro_instruct
 
 
 @router.get("/reports/{report_id}/pdf")
-async def export_report_pdf(report_id: str, user: dict = Depends(_get_pro_instructor)):
+async def export_report_pdf(report_id: str, user: dict = Depends(_get_instructor)):
     from app.services.report_service import report_service
     from fastapi.responses import Response
     import json
