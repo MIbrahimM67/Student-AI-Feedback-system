@@ -40,6 +40,17 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const SIGN_IN_TIMEOUT_MS = 60000;
+
+const withTimeout = <T,>(promise: Promise<T>, message: string): Promise<T> =>
+  new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), SIGN_IN_TIMEOUT_MS);
+    promise.then(
+      value => { window.clearTimeout(timer); resolve(value); },
+      error => { window.clearTimeout(timer); reject(error); }
+    );
+  });
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -49,7 +60,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Sync Firebase user with Postgres via backend
   const syncBackendProfile = async (fbUser: FirebaseUser) => {
     try {
-      const token = await getIdToken(fbUser);
+      const token = await withTimeout(getIdToken(fbUser), "Google sign-in timed out. Please try again.");
       const response = await axios.post(
         `${API_URL}/api/auth/sync-user`,
         {
@@ -57,7 +68,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           displayName: fbUser.displayName || "User",
           photoURL: fbUser.photoURL || "",
         },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` }, timeout: SIGN_IN_TIMEOUT_MS }
       );
       const backendUser = response.data.user;
       setUser({
@@ -83,21 +94,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
+    if (!loading) return;
+    const timer = window.setTimeout(() => {
+      setError("Sign-in is taking too long. Please try again.");
+      setLoading(false);
+    }, SIGN_IN_TIMEOUT_MS + 10000);
+    return () => window.clearTimeout(timer);
+  }, [loading]);
+
+  useEffect(() => {
     if (!auth) {
       setLoading(false);
       return;
     }
-    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
-      setLoading(true);
-      if (fbUser) {
-        setFirebaseUser(fbUser);
-        await syncBackendProfile(fbUser);
-      } else {
-        setFirebaseUser(null);
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      async (fbUser) => {
+        setLoading(true);
+        try {
+          if (fbUser) {
+            setFirebaseUser(fbUser);
+            await syncBackendProfile(fbUser);
+          } else {
+            setFirebaseUser(null);
+            setUser(null);
+          }
+        } catch (err: any) {
+          setUser(null);
+          setError(err?.message || "Unable to open your workspace. Please try again.");
+        } finally {
+          setLoading(false);
+        }
+      },
+      (err) => {
         setUser(null);
+        setError(err.message || "Google sign-in failed. Please try again.");
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    );
     return () => unsubscribe();
   }, []);
 
@@ -107,7 +141,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       if (!auth) throw new Error("Firebase Auth not initialized.");
       const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
+      provider.setCustomParameters({ prompt: "select_account" });
+      const result = await withTimeout(
+        signInWithPopup(auth, provider),
+        "Google sign-in timed out. Close the sign-in window and try again."
+      );
       setFirebaseUser(result.user);
       await syncBackendProfile(result.user);
     } catch (err: any) {
