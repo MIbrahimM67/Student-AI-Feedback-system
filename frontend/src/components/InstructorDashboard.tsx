@@ -80,6 +80,15 @@ export const InstructorDashboard: React.FC = () => {
         </div>
       </div>
 
+      {isVerified && (
+        <p
+          role="note"
+          className="border-l-2 border-[var(--color-accent)] bg-[var(--color-accent-soft)] px-3 py-2 text-xs leading-relaxed text-[var(--color-ink-2)]"
+        >
+          <span className="font-bold">Testing access:</span> Approved instructors can use the available Pro features without a subscription. Pro subscriptions are planned for a future release.
+        </p>
+      )}
+
       {!isVerified ? (
         <VerificationForm isPending={isPending} />
       ) : (
