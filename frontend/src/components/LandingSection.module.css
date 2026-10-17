@@ -504,3 +504,14 @@
   .previewApproval{flex-wrap:wrap}
   .previewApproval>span{margin-left:0}
 }
+
+/* Private beta sign-in is shown after a verified Google account reaches the gate. */
+.betaForm{width:min(100%,520px);margin-top:20px;padding:18px;border:1px solid var(--color-accent-border);border-radius:10px;background:var(--surface);color:var(--ink)}
+.betaForm label{display:block;margin-bottom:10px;font-size:13px;font-weight:750}
+.betaFormRow{display:flex;gap:9px}
+.betaFormRow input{min-width:0;flex:1;height:45px;padding:0 12px;border:1px solid var(--rule);border-radius:6px;background:var(--paper);color:var(--ink);font:inherit;font-size:13px}
+.betaFormRow input:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.betaFormRow button{height:45px;padding:0 15px;border:0;border-radius:6px;background:var(--blue);color:var(--color-accent-ink);font-size:12px;font-weight:800;cursor:pointer}
+.betaFormRow button:disabled{opacity:.6;cursor:wait}
+.betaForm p{margin-top:10px;color:var(--muted);font-size:11px;line-height:1.5}
+@media(max-width:480px){.betaFormRow{flex-direction:column}.betaFormRow button{width:100%}}
