@@ -32,6 +32,8 @@ interface AuthContextType {
   firebaseUser: FirebaseUser | null;
   loading: boolean;
   error: string | null;
+  betaAccessRequired: boolean;
+  redeemBetaAccess: (code: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   selectRole: (role: "student" | "instructor", profileData?: { displayName?: string; institution?: string; department?: string }) => Promise<void>;
@@ -56,6 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [betaAccessRequired, setBetaAccessRequired] = useState(false);
 
   // Sync Firebase user with Postgres via backend
   const syncBackendProfile = async (fbUser: FirebaseUser) => {
@@ -85,9 +88,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updatedAt: backendUser.updated_at,
       });
       setError(null);
+      setBetaAccessRequired(false);
     } catch (err: any) {
       console.error("Backend sync failed:", err);
       const errMsg = err.response?.data?.detail || err.message || "Unknown error";
+      setBetaAccessRequired(err.response?.status === 403 && typeof errMsg === "string" && errMsg.startsWith("Beta access required:"));
       setError(err.response?.status === 403 ? errMsg : `Unable to open your workspace: ${errMsg}`);
       setUser(null);
     }
@@ -118,6 +123,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } else {
             setFirebaseUser(null);
             setUser(null);
+            setBetaAccessRequired(false);
           }
         } catch (err: any) {
           setUser(null);
@@ -138,6 +144,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loginWithGoogle = async () => {
     setLoading(true);
     setError(null);
+    setBetaAccessRequired(false);
     try {
       if (!auth) throw new Error("Firebase Auth not initialized.");
       const provider = new GoogleAuthProvider();
@@ -155,12 +162,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const redeemBetaAccess = async (code: string) => {
+    if (!firebaseUser) {
+      setError("Continue with Google before entering the access code.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const token = await withTimeout(getIdToken(firebaseUser), "Google sign-in timed out. Please try again.");
+      await axios.post(`${API_URL}/api/auth/beta-access`, { code }, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: SIGN_IN_TIMEOUT_MS,
+      });
+      await withTimeout(getIdToken(firebaseUser, true), "Access was granted, but refreshing your session timed out. Please try again.");
+      await syncBackendProfile(firebaseUser);
+    } catch (err: any) {
+      const detail = err.response?.data?.detail;
+      setError(typeof detail === "string" ? detail : err.message || "Unable to check your code. Please try again.");
+      setBetaAccessRequired(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const logout = async () => {
     setLoading(true);
     try {
       if (auth) await signOut(auth);
       setUser(null);
       setFirebaseUser(null);
+      setBetaAccessRequired(false);
+      setError(null);
     } catch (err: any) {
       console.error("Logout failed:", err);
     } finally {
@@ -215,7 +248,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, firebaseUser, loading, error, loginWithGoogle, logout, selectRole, refreshProfile }}>
+    <AuthContext.Provider value={{ user, firebaseUser, loading, error, betaAccessRequired, redeemBetaAccess, loginWithGoogle, logout, selectRole, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
