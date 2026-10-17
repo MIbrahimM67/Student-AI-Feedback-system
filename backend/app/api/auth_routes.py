@@ -13,6 +13,7 @@ The frontend reads it from here on every session restore.
 from __future__ import annotations
 
 import logging
+import secrets
 from datetime import datetime, timezone
 from typing import Annotated
 
@@ -20,7 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 import asyncpg
 
-from app.auth.firebase import DemoAccessDenied, verify_id_token
+from app.auth.firebase import DemoAccessDenied, grant_beta_access, verify_firebase_identity, verify_id_token
 from app.config import settings
 from app.db.postgres import get_conn
 
@@ -49,6 +50,38 @@ async def _get_verified_uid(authorization: Annotated[str, Header()]) -> str:
     """Dependency: verify Firebase token, return uid."""
     claims = await _get_verified_claims(authorization)
     return claims["uid"]
+
+
+class BetaAccessRequest(BaseModel):
+    code: str
+
+
+@router.post("/beta-access")
+async def redeem_beta_access(
+    body: BetaAccessRequest,
+    authorization: Annotated[str, Header()],
+):
+    """Grant a verified Google account access after validating the server secret."""
+    if not settings.DOCUMENT_DEMO:
+        raise HTTPException(404, "Beta access is unavailable.")
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Missing Bearer token")
+    try:
+        claims = verify_firebase_identity(authorization.removeprefix("Bearer "))
+    except ValueError as e:
+        raise HTTPException(401, "Invalid Firebase token") from e
+    if not claims.get("uid") or not claims.get("email") or claims.get("email_verified") is not True:
+        raise HTTPException(403, "A verified Google email is required.")
+    if not settings.BETA_ACCESS_CODE:
+        raise HTTPException(503, "Beta access is not configured.")
+    if not secrets.compare_digest(body.code, settings.BETA_ACCESS_CODE):
+        raise HTTPException(403, "Invalid beta access code.")
+    try:
+        grant_beta_access(claims["uid"])
+    except Exception as e:
+        logger.exception("Unable to grant beta access to verified account.")
+        raise HTTPException(503, "Unable to activate beta access. Please try again.") from e
+    return {"granted": True}
 
 
 async def _get_user_row(uid: str, org_id: str) -> dict | None:
