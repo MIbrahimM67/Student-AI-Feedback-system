@@ -25,8 +25,8 @@ class DemoAccessDenied(PermissionError):
 
     def __init__(self, uid: str):
         super().__init__(
-            "Google sign-in succeeded, but this account is not invited to the demo. "
-            f"Account ID: {uid}. Send this ID to the demo owner to request access."
+            "Beta access required: This workspace is open to beta testers. "
+            "Enter your access code to continue."
         )
 
 
@@ -79,18 +79,31 @@ def _init_firebase():
 
 
 
-def verify_id_token(token: str) -> dict[str, Any]:
-    """
-    Verify a Firebase ID token and return the decoded claims.
-    Raises ValueError if the token is invalid.
-    """
+def verify_firebase_identity(token: str) -> dict[str, Any]:
+    """Verify the Firebase signature without granting application access."""
     _init_firebase()
     if _firebase_auth is None:
         raise ValueError("Firebase Auth is not initialised.")
     try:
-        claims = _firebase_auth.verify_id_token(token)
+        return _firebase_auth.verify_id_token(token)
     except Exception as e:
         raise ValueError(f"Invalid Firebase token: {e}") from e
+
+
+def grant_beta_access(uid: str) -> None:
+    """Preserve any existing Firebase claims when marking a verified tester."""
+    _init_firebase()
+    if _firebase_auth is None:
+        raise RuntimeError("Firebase Auth is not initialised.")
+    record = _firebase_auth.get_user(uid)
+    claims = dict(record.custom_claims or {})
+    claims["beta_access"] = True
+    _firebase_auth.set_custom_user_claims(uid, claims)
+
+
+def verify_id_token(token: str) -> dict[str, Any]:
+    """Verify the Firebase token and enforce the private beta gate."""
+    claims = verify_firebase_identity(token)
     from app.config import settings
     if settings.DOCUMENT_DEMO:
         allowed_uids = {
@@ -109,7 +122,7 @@ def verify_id_token(token: str) -> dict[str, Any]:
             and claims.get("email_verified") is True
             and claim_email in allowed_emails
         )
-        if claims.get("uid") not in allowed_uids and not email_allowed:
+        if claims.get("uid") not in allowed_uids and not email_allowed and claims.get("beta_access") is not True:
             raise DemoAccessDenied(claims.get("uid", ""))
     return claims
 
