@@ -64,6 +64,8 @@ async def _get_instructor(uid: str = Depends(_get_verified_uid)) -> dict:
         raise HTTPException(404, "User not found.")
     if row["role"] not in ("instructor", "admin"):
         raise HTTPException(403, "Instructor role required.")
+    if row["role"] == "instructor" and row["faculty_status"] != "approved":
+        raise HTTPException(403, "Instructor tools require an approved faculty application.")
     return dict(row)
 
 

@@ -187,17 +187,17 @@ export const ProfileModal: React.FC<Props> = ({ open, onClose }) => {
                 <Crown className="w-4 h-4 text-amber-600 shrink-0" />
                 <div>
                   <p className="text-xs font-bold text-slate-800">
-                    Tier: {profile?.pro_status === "active" ? "Pro Faculty Plan" : "Free Plan"}
+                    {profile?.role === "instructor" && profile?.faculty_status === "approved" ? "Instructor access" : `Tier: ${profile?.pro_status === "active" ? "Pro Faculty Plan" : "Free Plan"}`}
                   </p>
                   <p className="text-[10px] text-slate-500">
-                    {profile?.pro_status === "active" ? "Unlimited batch evaluations & deep vision enabled" : "5 single submissions / month"}
+                    {profile?.role === "instructor" && profile?.faculty_status === "approved" ? "Batch grading, internal similarity and exports available" : profile?.pro_status === "active" ? "Plan active" : "Single-submission access"}
                   </p>
                 </div>
               </div>
               <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border ${
-                profile?.pro_status === "active" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-600 border-slate-300"
+                profile?.role === "instructor" && profile?.faculty_status === "approved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : profile?.pro_status === "active" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-600 border-slate-300"
               }`}>
-                {profile?.pro_status === "active" ? "PRO ACTIVE" : "FREE"}
+                {profile?.role === "instructor" && profile?.faculty_status === "approved" ? "APPROVED" : profile?.pro_status === "active" ? "PRO ACTIVE" : "FREE"}
               </span>
             </div>
 
