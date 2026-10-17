@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     DEMO_ALLOWED_UIDS: str = ""
     DEMO_ALLOWED_EMAILS: str = ""
     DEMO_INSTRUCTOR_EMAILS: str = ""
+    BETA_ACCESS_CODE: str = ""  # Server-side invitation secret; never expose to the browser bundle.
 
     # Database — ONE Postgres for relational + vectors + graph
     DATABASE_URL: str = "postgresql+asyncpg://app_user:change_me@postgres:5432/feedback"
