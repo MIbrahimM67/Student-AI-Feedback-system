@@ -105,40 +105,45 @@ async def run_indexing(reference_id: str, org_id: str, subject_id: str) -> None:
     # ---- Step 4: Extract concepts per chunk (Utility model) ------------------
     concept_ids_per_chunk: list[list[str]] = []
     import asyncio as _asyncio
-    for chunk_text in raw_chunks:
-        try:
-            resp = await llm.chat(
-                messages=[
-                    ChatMessage(role="system", content="You are a concept extractor. Output only JSON."),
-                    ChatMessage(role="user", content=utility_concept_extraction_user(chunk_text)),
-                ],
-                model=settings.GRADIENT_MODEL_UTILITY,
-                temperature=0.0,
-                max_tokens=500,
-                response_format="json_object",
-            )
-            concepts = json.loads(resp.text)
-            if not isinstance(concepts, list):
-                concepts = concepts.get("concepts", [])
+    if settings.DOCUMENT_DEMO:
+        # Demo retrieval is full-text, not concept-graph-backed. Avoid expensive
+        # JSON concept calls that can fail or exhaust quota without helping search.
+        concept_ids_per_chunk = [[] for _ in raw_chunks]
+    else:
+        for chunk_text in raw_chunks:
+            try:
+                resp = await llm.chat(
+                    messages=[
+                        ChatMessage(role="system", content="You are a concept extractor. Output only JSON."),
+                        ChatMessage(role="user", content=utility_concept_extraction_user(chunk_text)),
+                    ],
+                    model=settings.GRADIENT_MODEL_UTILITY,
+                    temperature=0.0,
+                    max_tokens=2500,
+                    response_format="json_object",
+                )
+                concepts = json.loads(resp.text)
+                if not isinstance(concepts, list):
+                    concepts = concepts.get("concepts", [])
 
-            chunk_concept_ids = []
-            for c in concepts[:5]:  # cap at 5 concepts per chunk
-                if isinstance(c, dict) and c.get("name"):
-                    cid = await upsert_concept(
-                        org_id=org_id,
-                        subject_id=subject_id,
-                        name=c["name"][:120],
-                        definition=c.get("definition", "")[:500],
-                    )
-                    chunk_concept_ids.append(cid)
-            concept_ids_per_chunk.append(chunk_concept_ids)
-        except Exception as e:
-            logger.warning("Concept extraction failed for chunk: %s", e)
-            concept_ids_per_chunk.append([])
+                chunk_concept_ids = []
+                for c in concepts[:5]:  # cap at 5 concepts per chunk
+                    if isinstance(c, dict) and c.get("name"):
+                        cid = await upsert_concept(
+                            org_id=org_id,
+                            subject_id=subject_id,
+                            name=c["name"][:120],
+                            definition=c.get("definition", "")[:500],
+                        )
+                        chunk_concept_ids.append(cid)
+                concept_ids_per_chunk.append(chunk_concept_ids)
+            except Exception as e:
+                logger.warning("Concept extraction failed for chunk: %s", e)
+                concept_ids_per_chunk.append([])
 
-        # Pace calls to stay within DO serverless RPM limit (~10 RPM)
-        if not settings.DOCUMENT_DEMO:
-            await _asyncio.sleep(6)
+            # Pace calls to stay within DO serverless RPM limit (~10 RPM)
+            if not settings.DOCUMENT_DEMO:
+                await _asyncio.sleep(6)
 
 
 

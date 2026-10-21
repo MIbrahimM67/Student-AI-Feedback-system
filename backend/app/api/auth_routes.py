@@ -145,10 +145,13 @@ async def sync_user(
                       photo_url    = EXCLUDED.photo_url,
                       role         = CASE
                                        WHEN users.role = 'admin' THEN users.role
+                                       -- An admin revocation overrides demo email invitations.
+                                       WHEN users.faculty_status = 'rejected' THEN 'student'
                                        WHEN EXCLUDED.role = 'instructor' THEN 'instructor'
                                        ELSE users.role
                                      END,
                       faculty_status = CASE
+                                         WHEN users.faculty_status = 'rejected' THEN 'rejected'
                                          WHEN EXCLUDED.faculty_status = 'approved' THEN 'approved'
                                          ELSE users.faculty_status
                                        END,
@@ -223,6 +226,13 @@ async def select_role(
 
 
     async with get_conn(org_id) as conn:
+        # A role picker must not override an explicit admin denial.
+        if role == "instructor":
+            current_status = await conn.fetchval(
+                "SELECT faculty_status FROM users WHERE uid = $1", uid
+            )
+            if current_status == "rejected":
+                raise HTTPException(403, "Instructor access was denied or revoked by an administrator.")
         # Update users table
         if body.display_name:
             await conn.execute(

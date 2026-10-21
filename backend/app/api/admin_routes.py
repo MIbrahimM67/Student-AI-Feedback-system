@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Annotated, Optional
+from typing import Annotated, Optional, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
@@ -162,6 +162,63 @@ async def reject_application(
         await _write_audit(conn, admin["uid"], "REJECT_FACULTY", app["user_id"])
 
     return {"status": "rejected", "application_id": app_id}
+
+
+# ---- Instructor role management ---------------------------------------------
+
+class InstructorRolePayload(BaseModel):
+    role: Literal["student", "instructor"]
+
+
+@router.patch("/users/{target_uid}/role")
+async def change_instructor_role(
+    target_uid: str,
+    payload: InstructorRolePayload,
+    admin: dict = Depends(_get_admin),
+):
+    """Administrator-only, org-scoped instructor grant/revoke.
+
+    Reuse the allowed faculty status 'rejected' to record a revocation so
+    invite-based login synchronization cannot silently restore access.
+    A later explicit admin grant restores 'approved' status.
+    """
+    if target_uid == admin["uid"]:
+        raise HTTPException(403, "Administrators cannot change their own role.")
+    org_id = str(admin["org_id"])
+    now = datetime.now(timezone.utc)
+    async with get_conn(org_id) as conn:
+        target = await conn.fetchrow(
+            "SELECT uid, role, faculty_status FROM users "
+            "WHERE uid = $1 AND org_id = $2 FOR UPDATE",
+            target_uid, admin["org_id"],
+        )
+        if not target:
+            raise HTTPException(404, "User not found in this organization.")
+        if target["role"] == "admin":
+            raise HTTPException(403, "Administrator accounts are protected.")
+
+        granting = payload.role == "instructor"
+        status = "approved" if granting else "rejected"
+        if target["role"] != payload.role or target["faculty_status"] != status:
+            await conn.execute(
+                "UPDATE users SET role = $1, faculty_status = $2, "
+                "pro_status = CASE WHEN $1 = 'student' THEN 'inactive' ELSE pro_status END, "
+                "updated_at = $3 WHERE uid = $4 AND org_id = $5",
+                payload.role, status, now, target_uid, admin["org_id"],
+            )
+            if granting:
+                await conn.execute(
+                    "INSERT INTO instructor_profiles (uid, org_id, created_at, updated_at) "
+                    "VALUES ($1, $2, $3, $3) "
+                    "ON CONFLICT (uid) DO UPDATE SET updated_at = EXCLUDED.updated_at",
+                    target_uid, admin["org_id"], now,
+                )
+            await _write_audit(
+                conn, admin["uid"],
+                "GRANT_INSTRUCTOR" if granting else "REVOKE_INSTRUCTOR",
+                target_uid,
+            )
+    return {"status": "updated", "user_id": target_uid, "role": payload.role}
 
 
 # ---- Pro access -------------------------------------------------------------

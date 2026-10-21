@@ -154,7 +154,7 @@ async def test_small_demo_grades_and_decomposes_rubric_without_gradient(monkeypa
     responses = iter([
         {"criteria": [{"id": "accuracy", "description": "Factual accuracy", "max_points": 10}]},
         {"per_criterion": {"accuracy": 8}},
-        {"overall_verdict": "FAIR"},
+        {"overall_verdict": "FAIR", "per_criterion_review": {"accuracy": {"original_score": 8, "final_score": 8, "verdict": "ACCEPTED", "correction_reason": "Evidence supports the score"}}},
         {"per_criterion": {"accuracy": 8}, "final_comments": "Explain the missing evidence."},
     ])
     clients = []

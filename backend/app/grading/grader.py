@@ -13,6 +13,8 @@ from __future__ import annotations
 import json
 import logging
 import time
+
+import httpx
 from typing import Any, Awaitable, Callable
 
 from app.services.llm_provider import build_llm_from_env, build_dedicated_llm_from_env, ChatMessage
@@ -168,6 +170,65 @@ def _string_list(value: Any) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Bounded recovery for incomplete provider JSON
+# ---------------------------------------------------------------------------
+
+async def _request_stage_json(
+    llm,
+    *,
+    stage: str,
+    messages: list[ChatMessage],
+    model: str,
+    section: str,
+    criterion_ids: list[str],
+) -> tuple[Any, dict]:
+    """Require complete, criterion-aligned JSON; retry a truncated response once.
+
+    GPT OSS's reasoning consumes completion tokens, so the provider's 2048-token
+    default is not enough for a multi-criterion Specialist/Judge/Senior report.
+    No partial/invalid response is ever converted into a zero-mark report.
+    """
+    for attempt in range(2):
+        stage_messages = list(messages)
+        if attempt:
+            stage_messages.append(ChatMessage(
+                role="user",
+                content=(
+                    "Regenerate the COMPLETE JSON object. Be concise: each evidence, "
+                    "reason and suggestion should use no more than two short sentences. "
+                    "Include every criterion ID and close all JSON braces."
+                ),
+            ))
+        try:
+            response = await llm.chat(
+                messages=stage_messages,
+                model=model,
+                temperature=0.1 if not attempt else 0.0,
+                max_tokens=8192,
+                response_format="json_object",
+            )
+            data = _extract_json(response.text)
+            values = data.get(section)
+            if not isinstance(values, dict) or any(
+                criterion_id not in values for criterion_id in criterion_ids
+            ):
+                raise ValueError(f"{stage} output is missing required criterion results")
+            return response, data
+        except httpx.HTTPStatusError as exc:
+            # Groq sometimes rejects incomplete JSON before returning text.
+            if (attempt == 1 or exc.response.status_code != 400
+                    or "json_validate_failed" not in exc.response.text):
+                raise
+            logger.warning("%s JSON-mode generation failed; retrying a compact response", stage)
+        except (ValueError, TypeError) as exc:
+            if attempt == 1:
+                raise ValueError(f"{stage} returned invalid/incomplete JSON after retry") from exc
+            logger.warning("%s returned invalid/incomplete JSON; retrying a compact response", stage)
+
+    raise RuntimeError(f"{stage} did not return valid grading JSON")
+
+
+# ---------------------------------------------------------------------------
 # Core 3-stage grading function
 # ---------------------------------------------------------------------------
 
@@ -218,15 +279,16 @@ async def grade(
                 "Specialist agent is matching evidence to each rubric criterion.",
             )
         logger.info("Stage 1/3 — Specialist: performing evidence-based assessment")
-        specialist_resp = await llm.chat(
+        specialist_resp, specialist_data = await _request_stage_json(
+            llm, stage="Specialist",
             messages=[
                 ChatMessage(role="system", content=SPECIALIST_SYSTEM),
                 ChatMessage(role="user", content=doc_context),
             ],
             model=model_name,
-            temperature=0.3,
+            section="per_criterion",
+            criterion_ids=[criterion.id for criterion in criteria],
         )
-        specialist_data = _extract_json(specialist_resp.text)
         total_input_tokens += specialist_resp.input_tokens
         total_output_tokens += specialist_resp.output_tokens
         logger.info("Stage 1 complete — Specialist identified %d criteria scores",
@@ -248,15 +310,16 @@ async def grade(
             f"=== SPECIALIST ASSESSMENT TO REVIEW ===\n"
             f"{json.dumps(specialist_data, indent=2)}"
         )
-        judge_resp = await llm.chat(
+        judge_resp, judge_data = await _request_stage_json(
+            llm, stage="Judge",
             messages=[
                 ChatMessage(role="system", content=JUDGE_SYSTEM),
                 ChatMessage(role="user", content=judge_user),
             ],
             model=model_name,
-            temperature=0.1,
+            section="per_criterion_review",
+            criterion_ids=[criterion.id for criterion in criteria],
         )
-        judge_data = _extract_json(judge_resp.text)
         total_input_tokens += judge_resp.input_tokens
         total_output_tokens += judge_resp.output_tokens
         verdict = judge_data.get("overall_verdict", "FAIR")
@@ -283,15 +346,16 @@ async def grade(
             + f"\n\n=== SPECIALIST ANALYSIS ===\n{json.dumps(specialist_data, indent=2)}"
             + f"\n\n=== JUDGE REVIEW ===\n{json.dumps(judge_data, indent=2)}"
         )
-        senior_resp = await llm.chat(
+        senior_resp, senior_data = await _request_stage_json(
+            llm, stage="Senior",
             messages=[
                 ChatMessage(role="system", content=SENIOR_SYSTEM),
                 ChatMessage(role="user", content=senior_user),
             ],
             model=model_name,
-            temperature=0.1,
+            section="per_criterion",
+            criterion_ids=[criterion.id for criterion in criteria],
         )
-        senior_data = _extract_json(senior_resp.text)
         total_input_tokens += senior_resp.input_tokens
         total_output_tokens += senior_resp.output_tokens
         logger.info("Stage 3 complete — Senior produced final report")
