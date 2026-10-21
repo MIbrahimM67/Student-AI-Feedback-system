@@ -150,11 +150,17 @@ class ReportService:
         verdict = verdict.replace("_", " ").title()
 
         story.append(para("STUDENT FEEDBACK REPORT", styles["kicker"]))
+        similarity = report_data.get("plagiarism_similarity_score", report_data.get("plagiarismScore"))
+        integrity = (
+            "Not checked (coming soon)" if settings and settings.DOCUMENT_DEMO
+            else "Not checked"
+        ) if similarity is None else f"{float(similarity):.1f}% Similarity"
         meta = [
             [para("Student", styles["label"]), para(student_name or "Student", styles["small"])],
             [para("Assignment", styles["label"]), para(assignment_title or report_data.get("assignmentTitle") or "Assignment", styles["small"])],
             [para("Submission", styles["label"]), para(file_name or report_data.get("fileName") or "Submission", styles["small"])],
             [para("Format", styles["label"]), para((assignment_type or "text").replace("_", " ").title(), styles["small"])],
+            [para("Integrity", styles["label"]), para(integrity, styles["small"])],
             [para("Generated", styles["label"]), para(datetime.now().strftime("%d %b %Y, %H:%M"), styles["small"])],
         ]
         meta_table = Table(meta, colWidths=[95, 437], hAlign="LEFT")
