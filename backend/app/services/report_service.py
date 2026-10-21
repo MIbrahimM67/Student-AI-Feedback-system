@@ -34,326 +34,271 @@ class ReportService:
         file_name: str = "",
         assignment_title: str = "",
     ) -> bytes:
-        """
-        Generates a beautifully typeset PDF feedback report in memory and returns bytes.
-        """
-        from reportlab.lib.pagesizes import letter
-        from reportlab.lib import colors
-        from reportlab.platypus import (
-            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether, HRFlowable
-        )
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        """Create a printable GradeWise-branded report, including real sandbox logs.
 
+        All report content is escaped and normalized for the built-in PDF fonts
+        so Unicode bullets and unsupported glyphs cannot turn into black squares.
+        """
+        import re
+        import textwrap
+        import unicodedata
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import (
+            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+            HRFlowable, Preformatted, KeepTogether,
+        )
+
+        ink = colors.HexColor("#202020")
+        deep = colors.HexColor("#151515")
+        muted = colors.HexColor("#676660")
+        accent = colors.HexColor("#F2E58F")
+        soft = colors.HexColor("#F7F6F0")
+        rule = colors.HexColor("#D9D7CE")
+        danger = colors.HexColor("#A13D37")
+        success = colors.HexColor("#356B47")
+
+        def normalize(value: Any) -> str:
+            raw = str(value if value is not None else "")
+            for original, replacement in {
+                "\u2022": "-", "\u25cf": "-", "\u25aa": "-", "\u25cf": "-",
+                "\u2014": "-", "\u2013": "-", "\u2212": "-", "\u2192": "->",
+                "\u2713": "PASS", "\u2717": "FAIL", "\u2714": "PASS",
+                "\u201c": '"', "\u201d": '"', "\u2018": "'", "\u2019": "'",
+                "\u00a0": " ", "\u200b": "", "\u2026": "...",
+            }.items():
+                raw = raw.replace(original, replacement)
+            raw = unicodedata.normalize("NFKD", raw)
+            # Helvetica's supported characters are essentially WinAnsi; emit
+            # ASCII-only text for predictable PDF rendering across viewers.
+            return raw.encode("ascii", "replace").decode("ascii").replace("\ufffd", "?")
+
+        def para(value: Any, style, max_chars: int = 15000):
+            text = normalize(value)[:max_chars]
+            escaped = html.escape(text)
+            return Paragraph(escaped.replace("\n", "<br/>"), style)
+
+        styles = {
+            "kicker": ParagraphStyle(
+                "Gwkicker", fontName="Helvetica-Bold", fontSize=8,
+                textColor=muted, leading=11, spaceAfter=4,
+            ),
+            "heading": ParagraphStyle(
+                "Gwheading", fontName="Helvetica-Bold", fontSize=11,
+                textColor=deep, leading=14, spaceBefore=13, spaceAfter=5,
+            ),
+            "body": ParagraphStyle(
+                "Gwbody", fontName="Helvetica", fontSize=8.8,
+                textColor=ink, leading=13.5, spaceAfter=5,
+                splitLongWords=1, wordWrap="CJK",
+            ),
+            "small": ParagraphStyle(
+                "Gwsmall", fontName="Helvetica", fontSize=7.7,
+                textColor=ink, leading=11, splitLongWords=1,
+                wordWrap="CJK",
+            ),
+            "label": ParagraphStyle(
+                "Gwlabel", fontName="Helvetica-Bold", fontSize=8,
+                textColor=muted, leading=11,
+            ),
+            "score": ParagraphStyle(
+                "Gwscore", fontName="Helvetica-Bold", fontSize=23,
+                textColor=deep, leading=27,
+            ),
+            "mono": ParagraphStyle(
+                "Gwmono", fontName="Courier", fontSize=7.2,
+                textColor=ink, leading=10, splitLongWords=1,
+            ),
+        }
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
-            buffer,
-            pagesize=letter,
-            rightMargin=36,
-            leftMargin=36,
-            topMargin=36,
-            bottomMargin=36,
+            buffer, pagesize=letter,
+            rightMargin=40, leftMargin=40, topMargin=95, bottomMargin=46,
+            title="GradeWise | Student Feedback",
+            author="GradeWise",
         )
-        story = []
+        story: list = []
 
-        styles = getSampleStyleSheet()
+        def decorate(canvas, pdf_doc):
+            canvas.saveState()
+            width, height = letter
+            canvas.setFillColor(deep)
+            canvas.rect(0, height - 76, width, 76, fill=1, stroke=0)
+            canvas.setFillColor(accent)
+            canvas.rect(0, height - 80, width, 4, fill=1, stroke=0)
+            canvas.setFont("Helvetica-Bold", 19)
+            canvas.setFillColor(colors.HexColor("#F5F5F1"))
+            canvas.drawString(41, height - 38, "GRADEWISE")
+            canvas.setFillColor(accent)
+            canvas.setFont("Helvetica-Bold", 8)
+            canvas.drawString(42, height - 57, "AI-ASSISTED RUBRIC ASSESSMENT")
+            canvas.setStrokeColor(rule)
+            canvas.line(40, 33, width - 40, 33)
+            canvas.setFillColor(muted)
+            canvas.setFont("Helvetica", 8)
+            canvas.drawString(40, 21, "GradeWise  /  Evidence-led feedback")
+            canvas.drawRightString(width - 40, 21, f"Page {pdf_doc.page}")
+            canvas.restoreState()
 
-        # Theme Colors
-        navy = colors.HexColor("#0F172A")
-        indigo = colors.HexColor("#3B82F6")
-        indigo_dark = colors.HexColor("#1E3A8A")
-        emerald = colors.HexColor("#059669")
-        rose = colors.HexColor("#DC2626")
-        amber = colors.HexColor("#D97706")
-        light_slate = colors.HexColor("#F8FAFC")
-        border_color = colors.HexColor("#CBD5E1")
-        text_dark = colors.HexColor("#1E293B")
-        text_muted = colors.HexColor("#64748B")
+        score = float(report_data.get("score") if report_data.get("score") is not None
+                      else report_data.get("overallScore") or 0)
+        maximum = float(report_data.get("max_score") if report_data.get("max_score") is not None
+                        else report_data.get("maxScore") or 100)
+        percent = score / maximum * 100 if maximum else 0
+        verdict = str(report_data.get("verdict") or report_data.get("status") or "Needs review")
+        verdict = verdict.replace("_", " ").title()
 
-        # Custom text styles
-        title_style = ParagraphStyle(
-            'ReportTitle',
-            parent=styles['Heading1'],
-            fontSize=18,
-            leading=22,
-            textColor=navy,
-            fontName='Helvetica-Bold',
-        )
-        subtitle_style = ParagraphStyle(
-            'ReportSubtitle',
-            parent=styles['Normal'],
-            fontSize=9,
-            leading=12,
-            textColor=text_muted,
-            fontName='Helvetica',
-        )
-        h2_style = ParagraphStyle(
-            'SectionHeader',
-            parent=styles['Heading2'],
-            fontSize=11,
-            leading=14,
-            textColor=indigo_dark,
-            fontName='Helvetica-Bold',
-            spaceBefore=10,
-            spaceAfter=4,
-        )
-        body_style = ParagraphStyle(
-            'BodyText',
-            parent=styles['Normal'],
-            fontSize=8.5,
-            leading=12,
-            textColor=text_dark,
-            fontName='Helvetica',
-        )
-        bullet_style = ParagraphStyle(
-            'BulletItem',
-            parent=body_style,
-            leftIndent=12,
-            bulletIndent=4,
-            spaceAfter=3,
-        )
-        table_hdr = ParagraphStyle(
-            'TableHdr',
-            parent=styles['Normal'],
-            fontSize=8,
-            leading=10,
-            textColor=colors.white,
-            fontName='Helvetica-Bold',
-        )
-        table_cell = ParagraphStyle(
-            'TableCell',
-            parent=styles['Normal'],
-            fontSize=8,
-            leading=11,
-            textColor=text_dark,
-            fontName='Helvetica',
-        )
-        table_cell_bold = ParagraphStyle(
-            'TableCellBold',
-            parent=styles['Normal'],
-            fontSize=8,
-            leading=11,
-            textColor=navy,
-            fontName='Helvetica-Bold',
-        )
-
-        # Header Title
-        story.append(Paragraph("GRADEWISE AI FEEDBACK REPORT", title_style))
-        gen_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        story.append(Paragraph(f"Automated Multi-Stage Rubric & Evidence Assessment • Generated on {gen_time}", subtitle_style))
-        story.append(Spacer(1, 6))
-        story.append(HRFlowable(width="100%", thickness=1.5, color=indigo, spaceAfter=8))
-
-        # Extract Core Scores & Verdict
-        score = float(report_data.get("score") if report_data.get("score") is not None else report_data.get("overallScore", 0))
-        max_score = float(report_data.get("max_score") if report_data.get("max_score") is not None else report_data.get("maxScore", 100))
-        pct = (score / max_score * 100) if max_score > 0 else 0
-
-        raw_verdict = str(report_data.get("verdict") or report_data.get("status") or "completed").upper()
-        if pct >= 80:
-            verdict_color = "#059669"
-            verdict_label = "EXCELLENT / PASS" if "PASS" in raw_verdict or "EXCELLENT" in raw_verdict else raw_verdict
-        elif pct >= 60:
-            verdict_color = "#0284C7"
-            verdict_label = "GOOD / SATISFACTORY"
-        else:
-            verdict_color = "#DC2626"
-            verdict_label = "NEEDS IMPROVEMENT" if "IMPROVEMENT" in raw_verdict or "FAIL" in raw_verdict else raw_verdict
-
-        # Metadata & Score Table
-        s_name = _clean_text(student_name or "Student")
-        f_name = _clean_text(file_name or report_data.get("fileName") or "submission_file")
-        a_title = _clean_text(assignment_title or report_data.get("assignmentTitle") or "Assignment Submission")
-        format_display = _clean_text(assignment_type.capitalize())
-        similarity_score = report_data.get("plagiarism_similarity_score", report_data.get("plagiarismScore"))
-        integrity_display = (
-            f"{similarity_score}% Similarity" if similarity_score is not None
-            else "Not checked (coming soon)" if settings and settings.DOCUMENT_DEMO
-            else "Not checked"
-        )
-
-        meta_rows = [
-            [
-                Paragraph(f"<b>Student Name:</b> {s_name}", body_style),
-                Paragraph("<b>Overall Score:</b>", body_style),
-            ],
-            [
-                Paragraph(f"<b>Submission File:</b> {f_name}", body_style),
-                Paragraph(f'<font size=13 color="#1E3A8A"><b>{score:.1f} / {max_score:.1f}</b></font> <font size=9 color="#64748B">({pct:.1f}%)</font>', body_style),
-            ],
-            [
-                Paragraph(f"<b>Assignment:</b> {a_title}", body_style),
-                Paragraph(f'<b>Verdict:</b> <font color="{verdict_color}"><b>{_clean_text(verdict_label)}</b></font>', body_style),
-            ],
-            [
-                Paragraph(f"<b>Format:</b> {format_display} • <b>Tier:</b> {_clean_text(str(report_data.get('tier_used', 'agentic')).replace('_', ' ').title())}", body_style),
-                Paragraph(f"<b>Integrity:</b> {_clean_text(integrity_display)}", body_style),
-            ],
+        story.append(para("STUDENT FEEDBACK REPORT", styles["kicker"]))
+        meta = [
+            [para("Student", styles["label"]), para(student_name or "Student", styles["small"])],
+            [para("Assignment", styles["label"]), para(assignment_title or report_data.get("assignmentTitle") or "Assignment", styles["small"])],
+            [para("Submission", styles["label"]), para(file_name or report_data.get("fileName") or "Submission", styles["small"])],
+            [para("Format", styles["label"]), para((assignment_type or "text").replace("_", " ").title(), styles["small"])],
+            [para("Generated", styles["label"]), para(datetime.now().strftime("%d %b %Y, %H:%M"), styles["small"])],
         ]
-
-        meta_table = Table(meta_rows, colWidths=[340, 200])
+        meta_table = Table(meta, colWidths=[95, 437], hAlign="LEFT")
         meta_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), light_slate),
-            ('BACKGROUND', (1, 0), (1, -1), colors.HexColor("#EFF6FF")),
-            ('BOX', (0, 0), (-1, -1), 0.5, border_color),
-            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
-            ('PADDING', (0, 0), (-1, -1), 4.5),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ("BACKGROUND", (0, 0), (-1, -1), soft),
+            ("LINEBELOW", (0, -1), (-1, -1), 0.5, rule),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 9),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 9),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ]))
         story.append(meta_table)
-        story.append(Spacer(1, 10))
+        story.append(Spacer(1, 11))
+        scorebox = Table([
+            [para(f"{score:.1f} / {maximum:.1f}", styles["score"]),
+             para(f"{percent:.1f}%   |   {verdict}", styles["heading"])],
+        ], colWidths=[210, 322], hAlign="LEFT")
+        scorebox.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), accent),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 12),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+            ("TOPPADDING", (0, 0), (-1, -1), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ]))
+        story.append(scorebox)
 
-        # Executive Summary / Feedback
-        summary_text = (
-            report_data.get("student_feedback")
-            or report_data.get("summary")
-            or report_data.get("feedback")
-            or report_data.get("instructor_brief")
-            or ""
+        summary = (
+            report_data.get("student_feedback") or report_data.get("summary")
+            or report_data.get("feedback") or report_data.get("instructor_brief")
         )
-        if summary_text:
-            story.append(Paragraph("Executive Summary & Feedback", h2_style))
-            story.append(Paragraph(_clean_text(summary_text), body_style))
-            story.append(Spacer(1, 8))
+        if summary:
+            story.append(para("SUMMARY & FEEDBACK", styles["heading"]))
+            story.append(para(summary, styles["body"]))
 
-        # Rubric & Criteria Breakdown Table
-        per_criterion = report_data.get("per_criterion") or {}
-        criteria_notes = report_data.get("criteria_notes") or {}
-        rubric_scores = report_data.get("rubricScores") or []
+        scores = report_data.get("per_criterion") or {}
+        notes = report_data.get("criteria_notes") or {}
+        if scores:
+            story.append(para("RUBRIC EVALUATION", styles["heading"]))
+            for criterion_id, raw_score in scores.items():
+                info = notes.get(criterion_id) or {}
+                if isinstance(raw_score, dict):
+                    info = {**raw_score, **info}
+                    raw_score = raw_score.get("score", 0)
+                try:
+                    pts = f"{float(raw_score):.1f} pts"
+                except (ValueError, TypeError):
+                    pts = "Reviewed"
+                heading = Table([
+                    [para(str(criterion_id).replace("_", " ").title(), styles["label"]),
+                     para(pts, styles["label"])],
+                ], colWidths=[400, 132], hAlign="LEFT")
+                heading.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), soft),
+                    ("LINEBELOW", (0, 0), (-1, -1), 0.8, accent),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]))
+                story.append(Spacer(1, 5))
+                story.append(heading)
+                for field, label in [
+                    ("evidence", "Evidence"), ("deduction_reason", "Deductions"),
+                    ("reference_support", "Reference support"), ("action", "Recommended action"),
+                    ("note", "Assessment"),
+                ]:
+                    if info.get(field):
+                        story.append(para(f"{label}: {info[field]}", styles["small"]))
 
-        if per_criterion or rubric_scores:
-            story.append(Paragraph("Rubric & Criteria Assessment Breakdown", h2_style))
-            r_rows = [
-                [
-                    Paragraph("Criterion", table_hdr),
-                    Paragraph("Score", table_hdr),
-                    Paragraph("Evidence & Deductions", table_hdr),
-                    Paragraph("Action Item", table_hdr),
-                ]
-            ]
-
-            if per_criterion:
-                for crit_id, raw_val in per_criterion.items():
-                    c_score = raw_val.get("score", 0) if isinstance(raw_val, dict) else raw_val
-                    notes = criteria_notes.get(crit_id) or (raw_val if isinstance(raw_val, dict) else {})
-                    
-                    crit_name = _clean_text(crit_id.replace("_", " ").title())
-                    crit_score_text = f"{float(c_score):.1f} pts"
-
-                    evidence_parts = []
-                    if notes.get("evidence"):
-                        evidence_parts.append(f"<b>Evidence:</b> {_clean_text(notes['evidence'])}")
-                    if notes.get("deduction_reason"):
-                        evidence_parts.append(f"<b>Deduction:</b> <font color='#DC2626'>{_clean_text(notes['deduction_reason'])}</font>")
-                    if notes.get("note") and not notes.get("evidence"):
-                        evidence_parts.append(_clean_text(notes["note"]))
-                    if not evidence_parts:
-                        evidence_parts.append("Evaluated according to standard rubric.")
-
-                    action_text = _clean_text(notes.get("action") or "Maintain performance standard.")
-
-                    r_rows.append([
-                        Paragraph(crit_name, table_cell_bold),
-                        Paragraph(crit_score_text, table_cell_bold),
-                        Paragraph("<br/>".join(evidence_parts), table_cell),
-                        Paragraph(action_text, table_cell),
-                    ])
-            elif rubric_scores:
-                for item in rubric_scores:
-                    crit_name = _clean_text(item.get("criterion", "Criterion"))
-                    crit_score_text = f"{item.get('score', 0)} / {item.get('maxScore', 10)}"
-                    justification = _clean_text(item.get("justification", ""))
-                    r_rows.append([
-                        Paragraph(crit_name, table_cell_bold),
-                        Paragraph(crit_score_text, table_cell_bold),
-                        Paragraph(justification, table_cell),
-                        Paragraph("See detailed recommendations below.", table_cell),
-                    ])
-
-            r_tab = Table(r_rows, colWidths=[120, 65, 235, 120])
-            r_tab.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), indigo_dark),
-                ('BOX', (0, 0), (-1, -1), 0.5, border_color),
-                ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
-                ('PADDING', (0, 0), (-1, -1), 4.5),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ]))
-            story.append(r_tab)
-            story.append(Spacer(1, 10))
-
-        # Key Strengths
-        strengths = report_data.get("strengths") or []
-        if isinstance(strengths, list) and len(strengths) > 0:
-            story.append(Paragraph("Key Strengths", h2_style))
-            for item in strengths:
+        for key, title in [
+            ("strengths", "STRENGTHS"),
+            ("weaknesses", "AREAS FOR IMPROVEMENT"),
+            ("priority_actions", "PRIORITY ACTIONS"),
+            ("suggestions", "RECOMMENDATIONS"),
+        ]:
+            items = report_data.get(key) or []
+            if not isinstance(items, list) or not items:
+                continue
+            story.append(para(title, styles["heading"]))
+            for item in items:
                 if str(item).strip():
-                    story.append(Paragraph(f"• {_clean_text(item)}", bullet_style))
-            story.append(Spacer(1, 6))
+                    # ASCII hyphen instead of the Helvetica-incompatible Unicode bullet.
+                    story.append(para("- " + str(item), styles["body"]))
 
-        # Areas for Improvement / Weaknesses
-        weaknesses = report_data.get("weaknesses") or []
-        if isinstance(weaknesses, list) and len(weaknesses) > 0:
-            story.append(Paragraph("Areas for Improvement", h2_style))
-            for item in weaknesses:
-                if str(item).strip():
-                    story.append(Paragraph(f"• {_clean_text(item)}", bullet_style))
-            story.append(Spacer(1, 6))
+        def log_block(label, content):
+            story.append(para(label, styles["label"]))
+            text = normalize(content)
+            if not text.strip():
+                text = "(empty)"
+            lines = []
+            for line in text.splitlines() or [text]:
+                lines.extend(textwrap.wrap(
+                    line, width=92, replace_whitespace=False,
+                    drop_whitespace=False, break_long_words=True,
+                    break_on_hyphens=False,
+                ) or [""])
+            # Split the log in small blocks so ReportLab can paginate safely.
+            for offset in range(0, len(lines), 28):
+                story.append(Preformatted(
+                    "\n".join(lines[offset:offset + 28]), styles["mono"],
+                    maxLineLength=92, splitChars=" ",
+                ))
+                story.append(Spacer(1, 3))
 
-        # Actionable Next Steps / Suggestions
-        suggestions = report_data.get("suggestions") or report_data.get("priority_actions") or []
-        if isinstance(suggestions, list) and len(suggestions) > 0:
-            story.append(Paragraph("Actionable Recommendations & Next Steps", h2_style))
-            for item in suggestions:
-                if str(item).strip():
-                    story.append(Paragraph(f"• {_clean_text(item)}", bullet_style))
-            story.append(Spacer(1, 6))
+        structured_logs = report_data.get("sandbox_logs")
+        legacy_log = report_data.get("code_execution_result")
+        if isinstance(structured_logs, list) and structured_logs:
+            story.append(para("SANDBOX EXECUTION LOGS", styles["heading"]))
+            story.append(para(
+                "Exit code 0 means the program ran; correctness is assessed against the rubric.",
+                styles["small"],
+            ))
+            for index, item in enumerate(structured_logs[:12], 1):
+                if not isinstance(item, dict):
+                    continue
+                story.append(para(
+                    f"TEST {index}: {item.get('name') or 'Execution'} - "
+                    f"exit {item.get('exitCode', 'unknown')} - "
+                    f"{item.get('durationMs', 'unknown')} ms",
+                    styles["heading"],
+                ))
+                log_block("Input (stdin)", item.get("input", ""))
+                log_block("Output (stdout)", item.get("stdout", item.get("actual_output", "")))
+                log_block("Errors (stderr)", item.get("stderr", item.get("error", "")))
+        elif isinstance(structured_logs, str) and structured_logs.strip():
+            story.append(para("SANDBOX EXECUTION LOGS", styles["heading"]))
+            log_block("Recorded sandbox input / output / errors", structured_logs)
+        elif isinstance(legacy_log, str) and legacy_log.strip():
+            story.append(para("SANDBOX EXECUTION LOGS", styles["heading"]))
+            log_block("Recorded sandbox input / output / errors", legacy_log)
+        elif assignment_type == "coding":
+            story.append(para("SANDBOX EXECUTION LOGS", styles["heading"]))
+            story.append(para("No execution logs were stored for this submission.", styles["small"]))
 
-        # Code Sandbox Test Cases (for coding submissions)
-        sandbox_logs = report_data.get("sandbox_logs") or report_data.get("code_execution_result") or []
-        if isinstance(sandbox_logs, list) and len(sandbox_logs) > 0:
-            story.append(Paragraph("Code Sandbox Test Suite Results", h2_style))
-            s_rows = [
-                [
-                    Paragraph("Test Case", table_hdr),
-                    Paragraph("Status", table_hdr),
-                    Paragraph("Input", table_hdr),
-                    Paragraph("Expected Output", table_hdr),
-                    Paragraph("Actual Output", table_hdr),
-                ]
-            ]
-            for i, log in enumerate(sandbox_logs):
-                passed = log.get("passed", False)
-                status_color = "#059669" if passed else "#DC2626"
-                status_str = "PASS" if passed else "FAIL"
-                s_rows.append([
-                    Paragraph(f"Test #{i+1}", table_cell_bold),
-                    Paragraph(f'<font color="{status_color}"><b>{status_str}</b></font>', table_cell_bold),
-                    Paragraph(_clean_text(log.get("input", "")), table_cell),
-                    Paragraph(_clean_text(log.get("expected_output", "")), table_cell),
-                    Paragraph(_clean_text(log.get("actual_output", log.get("error", ""))), table_cell),
-                ])
-            s_tab = Table(s_rows, colWidths=[60, 50, 140, 145, 145])
-            s_tab.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#334155")),
-                ('BOX', (0, 0), (-1, -1), 0.5, border_color),
-                ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
-                ('PADDING', (0, 0), (-1, -1), 4),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ]))
-            story.append(s_tab)
-            story.append(Spacer(1, 8))
+        conclusion = report_data.get("score_rationale") or report_data.get("finalComments")
+        if conclusion and conclusion != summary:
+            story.append(para("EVALUATOR COMMENTS", styles["heading"]))
+            story.append(para(conclusion, styles["body"]))
 
-        # Final Comments
-        final_comments = report_data.get("finalComments") or report_data.get("score_rationale") or ""
-        if final_comments and final_comments != summary_text:
-            story.append(Paragraph("Evaluator Comments", h2_style))
-            story.append(Paragraph(_clean_text(final_comments), body_style))
-            story.append(Spacer(1, 6))
-
-        # Build PDF
-        doc.build(story)
-        pdf_bytes = buffer.getvalue()
+        doc.build(story, onFirstPage=decorate, onLaterPages=decorate)
+        result = buffer.getvalue()
         buffer.close()
-        return pdf_bytes
+        return result
 
     async def generate_student_pdf(
         self,
