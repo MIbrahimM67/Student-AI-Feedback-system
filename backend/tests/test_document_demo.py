@@ -100,7 +100,7 @@ async def test_demo_auth_requires_allowed_verified_uid(monkeypatch):
     monkeypatch.setattr(firebase, "_firebase_auth", Auth())
     monkeypatch.setattr(settings, "DEMO_ALLOWED_UIDS", "invited")
     assert firebase.verify_id_token("invited")["uid"] == "invited"
-    with pytest.raises(firebase.DemoAccessDenied, match="not invited"):
+    with pytest.raises(firebase.DemoAccessDenied, match="Beta access required"):
         firebase.verify_id_token("uninvited")
 
 
@@ -124,8 +124,8 @@ async def test_verified_uninvited_account_returns_403_not_invalid_token(monkeypa
     with pytest.raises(HTTPException) as denied:
         await module._get_verified_uid("Bearer valid-test-token")
     assert denied.value.status_code == 403
-    assert "Google sign-in succeeded" in denied.value.detail
-    assert "signed-in-account" in denied.value.detail
+    assert "Beta access required" in denied.value.detail
+    assert "Enter your access code" in denied.value.detail
     assert "valid-test-token" not in denied.value.detail
     assert "Invalid" not in denied.value.detail
 

@@ -98,7 +98,7 @@ class OpenAICompatibleProvider(LLMProvider):
         self._rate_limited = rate_limited
         self._client = httpx.AsyncClient(
             base_url=base_url.rstrip("/"),
-            headers={"Authorization": f"Bearer {api_key}"},
+            headers={"Authorization": f"Bearer {api_key}", "User-Agent": "GradeWise/3.0"},
             timeout=timeout,
         )
 
@@ -181,6 +181,50 @@ class GradientProvider(OpenAICompatibleProvider):
             name="gradient",
             rate_limited=True,
         )
+
+
+class RotatingProvider(LLMProvider):
+    """Try each available credential once, retaining the selected grading model."""
+    def __init__(self, keys, base_url, *, persistent=False):
+        from app.services.provider_key_pool import shared_key_pool
+        self.name = "dedicated"
+        self.pool = shared_key_pool(keys, persistent=persistent)
+        self.providers = [OpenAICompatibleProvider(
+            api_key=key, base_url=base_url, timeout=120.0, name=self.name,
+        ) for key in keys]
+
+    async def _call(self, method, *args, **kwargs):
+        from app.services.provider_key_pool import KeysCoolingDown, cooldown_seconds
+        attempted = set()
+        last_error = None
+        while len(attempted) < len(self.providers):
+            index = await self.pool.select(attempted)
+            if index is None:
+                break
+            attempted.add(index)
+            try:
+                return await getattr(self.providers[index], method)(*args, **kwargs)
+            except httpx.HTTPStatusError as exc:
+                status = exc.response.status_code
+                if status not in {401, 403, 429, 500, 502, 503, 504}:
+                    raise  # Invalid payload/model is not a credential failure.
+                await self.pool.block(index, cooldown_seconds(exc.response))
+                last_error = exc
+            except httpx.TransportError as exc:
+                await self.pool.block(index, 5.0)
+                last_error = exc
+        # Do not let the outer retry wrapper sleep for a provider's daily
+        # Retry-After once every credential has already been tried or skipped.
+        raise KeysCoolingDown("All inference credentials are cooling down; retry later.") from last_error
+
+    async def chat(self, *args, **kwargs):
+        return await self._call("chat", *args, **kwargs)
+
+    async def embed(self, *args, **kwargs):
+        return await self._call("embed", *args, **kwargs)
+
+    async def rerank(self, *args, **kwargs):
+        return await self._call("rerank", *args, **kwargs)
 
 
 # ---- Resilient wrapper: retries + failover ----------------------------------
@@ -298,13 +342,16 @@ def build_dedicated_llm_from_env() -> ResilientLLM | None:
     Returns None if no dedicated endpoint is configured.
     """
     from app.config import settings
-    if not settings.DEDICATED_INFERENCE_BASE_URL or not settings.DEDICATED_INFERENCE_TOKEN:
+    keys = list(dict.fromkeys(k.strip() for k in [
+        settings.DEDICATED_INFERENCE_TOKEN or "",
+        *settings.DEDICATED_INFERENCE_TOKENS.split(","),
+    ] if k.strip()))
+    if not settings.DEDICATED_INFERENCE_BASE_URL or not keys:
         return None
-    dedicated = OpenAICompatibleProvider(
-        api_key=settings.DEDICATED_INFERENCE_TOKEN,
+    dedicated = RotatingProvider(
+        keys=keys,
         base_url=settings.DEDICATED_INFERENCE_BASE_URL,
-        timeout=120.0,  # longer timeout for large context grading
-        name="dedicated",
+        persistent=settings.INFERENCE_COOLDOWN_PERSISTENCE,
     )
     failover: list[LLMProvider] = []
     model_overrides: dict[str, str] = {}

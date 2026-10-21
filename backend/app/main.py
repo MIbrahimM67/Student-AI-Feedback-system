@@ -51,6 +51,8 @@ async def lifespan(app: FastAPI):
         async with get_conn() as conn:
             await conn.execute("SELECT id FROM demo_jobs LIMIT 0")
             await conn.execute("SELECT id FROM demo_files LIMIT 0")
+            if settings.INFERENCE_COOLDOWN_PERSISTENCE:
+                await conn.execute("SELECT key_hash FROM provider_key_cooldowns LIMIT 0")
 
     if not settings.DOCUMENT_DEMO:
         _redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
