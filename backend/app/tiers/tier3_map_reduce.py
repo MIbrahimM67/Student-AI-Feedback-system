@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.grading import config
-from app.grading.grader import ProgressCallback, grade, _request_stage_json
+from app.grading.grader import ProgressCallback, grade, _request_stage_json, _build_document_context
 from app.grading.rubric import _extract_json
 from app.grading.types import Criterion, DocumentPayload, GradingResult, Tier
 from app.router.router import _dedicated_available
@@ -28,6 +28,9 @@ SERVERLESS_CHUNK_SIZE = 4
 DEDICATED_CHUNK_SIZE = 80
 TEXT_CHUNK_CHARS = 24_000
 COOLDOWN_DELAY_S = 3.0
+# Approx. 8,000 tokens at the application's existing four-chars/token estimate.
+# Covers the COMPLETE final grading context: rubric, references and evidence.
+FINAL_CONTEXT_MAX_CHARS = 32_000
 
 
 @dataclass
@@ -116,11 +119,57 @@ async def grade_tier3(
             logger.info("Tier 3 cooldown: sleeping for %.1fs", COOLDOWN_DELAY_S)
             await asyncio.sleep(COOLDOWN_DELAY_S)
 
+    if progress_callback:
+        await progress_callback(
+            "consolidating", 77,
+            "Combining chunk evidence into one bounded final grading context.",
+        )
     aggregate_text = _build_aggregate_submission_text(reviews, unresolved_missing, criteria)
+    original_chars = len(aggregate_text)
+    reference_text = reference_payload.plain_text
+    final_context_chars = len(_build_document_context(
+        DocumentPayload(
+            source_path="aggregate", pages=[], est_tokens=len(aggregate_text) // 4,
+            has_structure=False, text_only=True, plain_text=aggregate_text,
+        ),
+        reference_payload.pages, criteria, reference_text,
+    ))
+    if final_context_chars > FINAL_CONTEXT_MAX_CHARS:
+        # One deterministic compaction, never recursive. Preserve ALL distinct
+        # evidence and explicit unresolved requirements: duplicate observations
+        # can be collapsed, but unique grading evidence must never disappear.
+        aggregate_text = _build_compact_aggregate_submission_text(
+            reviews, unresolved_missing, criteria,
+        )
+        final_context_chars = len(_build_document_context(
+            DocumentPayload(
+                source_path="compact aggregate", pages=[],
+                est_tokens=len(aggregate_text) // 4,
+                has_structure=False, text_only=True, plain_text=aggregate_text,
+            ),
+            reference_payload.pages, criteria, reference_text,
+        ))
+        logger.info(
+            "Tier 3 consolidation: original evidence=%d chars, compact=%d chars, "
+            "complete final context=%d chars, limit=%d",
+            original_chars, len(aggregate_text), final_context_chars, FINAL_CONTEXT_MAX_CHARS,
+        )
+    if final_context_chars > FINAL_CONTEXT_MAX_CHARS:
+        # Never feed an over-budget context back into route() or grade_tier3().
+        # Truncating unique evidence would risk unfair marks; fail explicitly.
+        raise ValueError(
+            "Chunked grading has more unique evidence or reference material than the "
+            "safe final context budget. No final grade was issued; instructor review "
+            "or a smaller document/reference is required."
+        )
+    logger.info(
+        "Tier 3 final context budget: %d/%d chars (approx. %d tokens), %d chunks",
+        final_context_chars, FINAL_CONTEXT_MAX_CHARS, (final_context_chars + 3) // 4, len(chunks),
+    )
     aggregate_payload = DocumentPayload(
         source_path=f"{submission.source_path} (Tier 3 aggregated evidence)",
         pages=[],
-        est_tokens=len(aggregate_text) // 4,
+        est_tokens=(len(aggregate_text) + 3) // 4,
         has_structure=False,
         text_only=True,
         plain_text=aggregate_text,
@@ -129,7 +178,7 @@ async def grade_tier3(
     final_result = await grade(
         submission=aggregate_payload,
         reference_pages=reference_payload.pages,
-        reference_text=reference_payload.plain_text,
+        reference_text=reference_text,
         criteria=criteria,
         tier=Tier.MAP_REDUCE,
         reference_sections_used=[review.chunk_label for review in reviews],
@@ -318,6 +367,73 @@ def _build_aggregate_submission_text(
     else:
         parts.append("None.")
 
+    return "\n".join(parts)
+
+
+
+def _build_compact_aggregate_submission_text(
+    reviews: list[ChunkReview],
+    unresolved_missing: list[str],
+    criteria: list[Criterion],
+) -> str:
+    """Non-LLM, non-recursive consolidation; never discard distinct evidence.
+
+    Duplicate statements across chunks are merged by exact case-insensitive
+    comparison. All distinct criterion evidence, reported mistakes, discovered
+    requirements and final unresolved requirements remain in the context.
+    """
+    parts = [
+        "=== CONSOLIDATED CHUNK EVIDENCE (NO CHUNK-LEVEL SCORES) ===",
+        "Use evidence from ALL chunks to grade once; early omissions are not "
+        "penalties when later chunks provide the material.",
+        "Do not invent evidence. Only deduct marks for gaps unresolved after the last chunk.",
+    ]
+    for criterion in criteria:
+        parts.append(f"\n=== CRITERION {criterion.id} (max {criterion.max_points}) ===")
+        parts.append(criterion.description)
+        unique: dict[str, tuple[str, str]] = {}
+        for review in reviews:
+            for item in review.evidence_by_criterion.get(criterion.id, []):
+                content = item.strip()
+                if content:
+                    key = content.casefold()
+                    if key not in unique:
+                        unique[key] = (review.chunk_label, content)
+        if unique:
+            parts.extend(f"- [{source}] {content}" for source, content in unique.values())
+        else:
+            parts.append("No supporting evidence was identified in any chunk.")
+
+    for heading, attribute in [
+        ("OBSERVED MISTAKES OR SHORTCOMINGS", "mistakes_or_shortcomings"),
+        ("PREVIOUSLY MISSING REQUIREMENTS FOUND LATER", "found_requested_sections"),
+    ]:
+        parts.append(f"\n=== {heading} ===")
+        unique_items: dict[str, tuple[str, str]] = {}
+        for review in reviews:
+            for item in getattr(review, attribute):
+                value = item.strip()
+                if value and value.casefold() not in unique_items:
+                    unique_items[value.casefold()] = (review.chunk_label, value)
+        if unique_items:
+            parts.extend(f"- [{source}] {value}" for source, value in unique_items.values())
+        else:
+            parts.append("None.")
+
+    # A summary can be the ONLY evidence for a poorly formed chunk; retain
+    # it when the chunk has no extracted criterion evidence or errors.
+    summaries = [
+        (review.chunk_label, review.summary)
+        for review in reviews
+        if review.summary and not any(review.evidence_by_criterion.values())
+        and not review.mistakes_or_shortcomings
+    ]
+    if summaries:
+        parts.append("\n=== CHUNKS WITHOUT STRUCTURED EVIDENCE ===")
+        parts.extend(f"- [{source}] {value}" for source, value in summaries)
+
+    parts.append("\n=== UNRESOLVED AFTER LAST CHUNK ===")
+    parts.extend(f"- {item}" for item in _dedupe(unresolved_missing)) if unresolved_missing else parts.append("None.")
     return "\n".join(parts)
 
 
