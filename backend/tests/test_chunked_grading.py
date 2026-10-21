@@ -115,32 +115,28 @@ async def test_invalid_chunk_json_fails_instead_of_silently_losing_evidence(monk
         )
 
 
-def test_repeated_chunk_evidence_is_compacted_once_with_strict_final_budget():
-    """Several chunks can repeat the same rubric evidence without inflating the final prompt."""
-    from app.grading.grader import _build_document_context
+
+def test_many_repeated_facts_become_short_source_labelled_summary():
     module = tier3_map_reduce
     criteria = [Criterion(id="accuracy", description="Support factual claims", max_points=10)]
     reviews = [
         module.ChunkReview(
             chunk_label=f"Chunk {i}",
             evidence_by_criterion={"accuracy": ["Repeated supported fact " + "A" * 350]},
-            mistakes_or_shortcomings=["Repeated mistake " + "B" * 180],
             unresolved_missing_sections=["Discussion"],
         ) for i in range(100)
     ]
     original = module._build_aggregate_submission_text(reviews, ["Discussion"], criteria)
-    compact = module._build_compact_aggregate_submission_text(reviews, ["Discussion"], criteria)
+    short = module._build_short_aggregate_submission_text(reviews, ["Discussion"], criteria, 2500)
     assert len(original) > module.FINAL_CONTEXT_MAX_CHARS
-    context = _build_document_context(document(compact), [], criteria, "Short reference")
-    assert len(context) <= module.FINAL_CONTEXT_MAX_CHARS
-    assert compact.count("Repeated supported fact") == 1
-    assert compact.count("Repeated mistake") == 1
-    assert "Discussion" in compact
-    assert "Chunk 0" in compact
+    assert len(short) <= 2500
+    assert short.count("Repeated supported fact") == 1
+    assert "Discussion" in short
+    assert "Chunk 0" in short
 
 
 @pytest.mark.asyncio
-async def test_large_repeated_evidence_is_compacted_then_graded_exactly_once(monkeypatch):
+async def test_large_repeated_evidence_summarized_then_graded_exactly_once(monkeypatch):
     module = tier3_map_reduce
     criteria = [Criterion(id="accuracy", description="Accuracy", max_points=10)]
     submission = document("Student text. " * 5500)
@@ -161,50 +157,72 @@ async def test_large_repeated_evidence_is_compacted_then_graded_exactly_once(mon
     monkeypatch.setattr(module.asyncio, "sleep", AsyncMock())
     await module.grade_tier3(submission, document("Short reference"), criteria)
     assert final.await_count == 1
-    context = final.await_args.kwargs["submission"].plain_text
-    assert context.count(repeated) == 1
-    assert "Conclusion" in context
+    text = final.await_args.kwargs["submission"].plain_text
+    assert text.count("Clearly supported point") == 1
+    assert "Conclusion" in text
+    assert len(text) <= module.FINAL_CONTEXT_MAX_CHARS
 
 
 @pytest.mark.asyncio
-async def test_too_much_unique_evidence_fails_closed_without_rechunking_or_grading(monkeypatch):
+async def test_extensive_unique_evidence_produces_brief_summary_not_recursive_loop(monkeypatch):
     module = tier3_map_reduce
     criteria = [Criterion(id="accuracy", description="Accuracy", max_points=10)]
     submission = document("Student text. " * 5500)
-    count = 0
+    observed = []
     async def fake_review(**kwargs):
-        nonlocal count
-        count += 1
         i = kwargs["chunk_index"]
-        # Distinct facts cannot safely be thrown away to fit the context.
+        observed.append(i)
         return module.ChunkReview(
             chunk_label=f"Chunk {i}",
             evidence_by_criterion={"accuracy": [str(i) + " UNIQUE " + "Q" * 12_000]},
         )
-    final = AsyncMock()
+    result = GradingResult(score=6, max_score=10, per_criterion={"accuracy": 6},
+        feedback="Needs verification", tier_used=Tier.MAP_REDUCE, reference_sections_used=[])
+    final = AsyncMock(return_value=result)
     monkeypatch.setattr(module, "_review_chunk", fake_review)
     monkeypatch.setattr(module, "grade", final)
     monkeypatch.setattr(module.asyncio, "sleep", AsyncMock())
-    with pytest.raises(ValueError, match="No final grade was issued"):
-        await module.grade_tier3(submission, document("Reference"), criteria)
-    assert count == len(module._build_chunks(submission))
-    final.assert_not_awaited()
+    await module.grade_tier3(submission, document("Reference"), criteria)
+    assert len(observed) == len(module._build_chunks(submission))
+    final.assert_awaited_once()
+    summary = final.await_args.kwargs["submission"].plain_text
+    assert len(summary) < 14_001
+    assert "partial" in summary
+    assert "UNIQUE" in summary
 
 
 @pytest.mark.asyncio
-async def test_oversize_reference_also_stops_before_scoring(monkeypatch):
+async def test_long_reference_is_bounded_as_well(monkeypatch):
     module = tier3_map_reduce
     criteria = [Criterion(id="accuracy", description="Accuracy", max_points=10)]
     async def fake_review(**kwargs):
         return module.ChunkReview(
             chunk_label="Chunk", evidence_by_criterion={"accuracy": ["Evidence found"]},
         )
-    final = AsyncMock()
+    result = GradingResult(score=5, max_score=10, per_criterion={"accuracy": 5},
+        feedback="Manual review", tier_used=Tier.MAP_REDUCE, reference_sections_used=[])
+    final = AsyncMock(return_value=result)
     monkeypatch.setattr(module, "_review_chunk", fake_review)
     monkeypatch.setattr(module, "grade", final)
     monkeypatch.setattr(module.asyncio, "sleep", AsyncMock())
-    with pytest.raises(ValueError, match="No final grade was issued"):
-        await module.grade_tier3(
-            document("Answer. " * 5000), document("Long reference " * 3000), criteria,
-        )
-    final.assert_not_awaited()
+    await module.grade_tier3(document("Answer. " * 5000), document("Long reference " * 3000), criteria)
+    final.assert_awaited_once()
+    reference = final.await_args.kwargs["reference_text"]
+    assert len(reference) <= 10_000
+    assert "Manual review" in reference
+
+
+def test_brief_summary_keeps_all_criteria_and_final_gaps():
+    criteria = [Criterion(f"rubric_{i}", f"Requirement {i}", 1) for i in range(4)]
+    reviews = [
+        tier3_map_reduce.ChunkReview(
+            chunk_label=f"part_{i}",
+            evidence_by_criterion={f"rubric_{j}": [f"Finding {i}-{j}"] for j in range(4)},
+        ) for i in range(9)
+    ]
+    brief = tier3_map_reduce._build_short_aggregate_submission_text(
+        reviews, ["Missing final section"], criteria, 2200,
+    )
+    assert len(brief) <= 2200
+    assert all(c.id + ":" in brief for c in criteria)
+    assert "Missing final section" in brief
