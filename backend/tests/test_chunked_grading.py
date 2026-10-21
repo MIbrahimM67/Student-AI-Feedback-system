@@ -113,3 +113,98 @@ async def test_invalid_chunk_json_fails_instead_of_silently_losing_evidence(monk
             criteria=[Criterion(id="accuracy", description="Accuracy", max_points=10)],
             chunk_index=0, total_chunks=2, unresolved_missing=[],
         )
+
+
+def test_repeated_chunk_evidence_is_compacted_once_with_strict_final_budget():
+    """Several chunks can repeat the same rubric evidence without inflating the final prompt."""
+    from app.grading.grader import _build_document_context
+    module = tier3_map_reduce
+    criteria = [Criterion(id="accuracy", description="Support factual claims", max_points=10)]
+    reviews = [
+        module.ChunkReview(
+            chunk_label=f"Chunk {i}",
+            evidence_by_criterion={"accuracy": ["Repeated supported fact " + "A" * 350]},
+            mistakes_or_shortcomings=["Repeated mistake " + "B" * 180],
+            unresolved_missing_sections=["Discussion"],
+        ) for i in range(100)
+    ]
+    original = module._build_aggregate_submission_text(reviews, ["Discussion"], criteria)
+    compact = module._build_compact_aggregate_submission_text(reviews, ["Discussion"], criteria)
+    assert len(original) > module.FINAL_CONTEXT_MAX_CHARS
+    context = _build_document_context(document(compact), [], criteria, "Short reference")
+    assert len(context) <= module.FINAL_CONTEXT_MAX_CHARS
+    assert compact.count("Repeated supported fact") == 1
+    assert compact.count("Repeated mistake") == 1
+    assert "Discussion" in compact
+    assert "Chunk 0" in compact
+
+
+@pytest.mark.asyncio
+async def test_large_repeated_evidence_is_compacted_then_graded_exactly_once(monkeypatch):
+    module = tier3_map_reduce
+    criteria = [Criterion(id="accuracy", description="Accuracy", max_points=10)]
+    submission = document("Student text. " * 5500)
+    repeated = "Clearly supported point " + "word " * 220
+    async def fake_review(**kwargs):
+        return module.ChunkReview(
+            chunk_label=f"Chunk {kwargs['chunk_index']}",
+            evidence_by_criterion={"accuracy": [repeated] * 20},
+            unresolved_missing_sections=["Conclusion"],
+        )
+    result = GradingResult(
+        score=7, max_score=10, per_criterion={"accuracy": 7},
+        feedback="Evidence summary", tier_used=Tier.MAP_REDUCE, reference_sections_used=[],
+    )
+    final = AsyncMock(return_value=result)
+    monkeypatch.setattr(module, "_review_chunk", fake_review)
+    monkeypatch.setattr(module, "grade", final)
+    monkeypatch.setattr(module.asyncio, "sleep", AsyncMock())
+    await module.grade_tier3(submission, document("Short reference"), criteria)
+    assert final.await_count == 1
+    context = final.await_args.kwargs["submission"].plain_text
+    assert context.count(repeated) == 1
+    assert "Conclusion" in context
+
+
+@pytest.mark.asyncio
+async def test_too_much_unique_evidence_fails_closed_without_rechunking_or_grading(monkeypatch):
+    module = tier3_map_reduce
+    criteria = [Criterion(id="accuracy", description="Accuracy", max_points=10)]
+    submission = document("Student text. " * 5500)
+    count = 0
+    async def fake_review(**kwargs):
+        nonlocal count
+        count += 1
+        i = kwargs["chunk_index"]
+        # Distinct facts cannot safely be thrown away to fit the context.
+        return module.ChunkReview(
+            chunk_label=f"Chunk {i}",
+            evidence_by_criterion={"accuracy": [str(i) + " UNIQUE " + "Q" * 12_000]},
+        )
+    final = AsyncMock()
+    monkeypatch.setattr(module, "_review_chunk", fake_review)
+    monkeypatch.setattr(module, "grade", final)
+    monkeypatch.setattr(module.asyncio, "sleep", AsyncMock())
+    with pytest.raises(ValueError, match="No final grade was issued"):
+        await module.grade_tier3(submission, document("Reference"), criteria)
+    assert count == len(module._build_chunks(submission))
+    final.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_oversize_reference_also_stops_before_scoring(monkeypatch):
+    module = tier3_map_reduce
+    criteria = [Criterion(id="accuracy", description="Accuracy", max_points=10)]
+    async def fake_review(**kwargs):
+        return module.ChunkReview(
+            chunk_label="Chunk", evidence_by_criterion={"accuracy": ["Evidence found"]},
+        )
+    final = AsyncMock()
+    monkeypatch.setattr(module, "_review_chunk", fake_review)
+    monkeypatch.setattr(module, "grade", final)
+    monkeypatch.setattr(module.asyncio, "sleep", AsyncMock())
+    with pytest.raises(ValueError, match="No final grade was issued"):
+        await module.grade_tier3(
+            document("Answer. " * 5000), document("Long reference " * 3000), criteria,
+        )
+    final.assert_not_awaited()
