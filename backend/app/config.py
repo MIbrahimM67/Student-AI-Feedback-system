@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     # When set, large submissions are routed here instead of Map-Reduce chunking.
     DEDICATED_INFERENCE_BASE_URL: Optional[str] = None
     DEDICATED_INFERENCE_TOKEN: Optional[str] = None
+    DEDICATED_INFERENCE_TOKENS: str = ""  # Comma-separated private credentials; never public config.
+    INFERENCE_COOLDOWN_PERSISTENCE: bool = False  # Enable after provider_key_schema.sql is applied.
     DEDICATED_MODEL: str = "llama-3.3-70b-versatile"  # Groq model name
     DEDICATED_FALLBACK_BASE_URL: Optional[str] = None
     DEDICATED_FALLBACK_TOKEN: Optional[str] = None

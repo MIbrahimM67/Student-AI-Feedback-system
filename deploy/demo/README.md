@@ -173,6 +173,23 @@ Provider docs checked 2026-10-03:
 - https://neon.com/pricing
 - https://docs.railway.com/pricing/free-trial
 
+## Inference credential rotation
+
+Apply `backend/provider_key_schema.sql` as the database owner and set
+`INFERENCE_COOLDOWN_PERSISTENCE=true` before enabling multiple keys in the hosted
+demo. Keep all credentials in the backend environment only:
+`DEDICATED_INFERENCE_TOKENS` accepts comma-separated keys, and the existing
+`DEDICATED_INFERENCE_TOKEN` remains supported. Duplicate keys are ignored.
+Requests rotate across available keys without changing the selected model or
+the Specialist, Judge and Senior stages. A credential failure, rate limit or
+temporary provider error tries the next available credential immediately.
+Daily-limit errors block the affected key for 24 hours; minute limits use the
+provider's retry interval. Exhausting every key fails explicitly without a
+long daily-limit sleep. With persistence enabled, Postgres stores only SHA-256
+key fingerprints and cooldown expiry times, so restarts retain the cooldowns.
+If durable cooldown state is unavailable, inference fails instead of ignoring it.
+Keys in the same Groq organization share its quota.
+
 ## Real code execution setup
 
 Deploy the frontend bridge before enabling backend coding. It uses Vercel's automatic

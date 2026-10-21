@@ -22,7 +22,10 @@ DEDICATED_CONTEXT_CAP = 120_000  # Groq/Llama-3.3-70B: 128k window, leave headro
 def _dedicated_available() -> bool:
     """True when a high-capacity dedicated endpoint is configured."""
     from app.config import settings
-    return bool(settings.DEDICATED_INFERENCE_BASE_URL and settings.DEDICATED_INFERENCE_TOKEN)
+    return bool(settings.DEDICATED_INFERENCE_BASE_URL and (
+        settings.DEDICATED_INFERENCE_TOKEN
+        or any(key.strip() for key in settings.DEDICATED_INFERENCE_TOKENS.split(","))
+    ))
 
 
 def route(sub_payload: DocumentPayload, ref_payload: DocumentPayload) -> Tier:
