@@ -266,6 +266,7 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
 
     # ---- Code sandbox -------------------------------------------------------
     code_execution_result = None
+    sandbox_logs_structured: list[dict] = []
     if sub["type"] == "coding" and code_execution_available():
         try:
             await progress("code_checks", 40, "Generating and running code checks before grading.")
@@ -328,6 +329,17 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
                             out_str = f"=== Test Case: {tc_name} ===\nStatus: FAILED (exit code {result.get('exitCode')})\nInput:\n{str(tc_input)[:8000]}\nOutput:\n{result.get('stdout', '').strip()[:4000]}\nErrors/Reasons:\n{result.get('stderr', '').strip()[:1000]}"
                     
                         execution_results.append(out_str)
+                        sandbox_logs_structured.append({
+                            "name": str(tc_name)[:150],
+                            "language": lang,
+                            "input": str(tc_input)[:8000],
+                            "stdout": str(result.get("stdout") or "")[:8000],
+                            "stderr": str(result.get("stderr") or "")[:4000],
+                            "exitCode": result.get("exitCode"),
+                            "durationMs": result.get("durationMs"),
+                            "isSimulated": False,
+                            "status": "executed" if result.get("exitCode") == 0 else "execution_failed",
+                        })
                     
                     code_execution_result = "\n\n".join(execution_results)
             
@@ -484,7 +496,7 @@ async def _run_grade_submission(submission_id: str, org_id: str, work_dir: str) 
         "latency_ms": report.latency_ms,
         "est_cost_usd": report.est_cost_usd,
         "code_execution_result": code_execution_result,
-        "sandbox_logs": code_execution_result,
+        "sandbox_logs": sandbox_logs_structured if sandbox_logs_structured else code_execution_result,
         "integrity_report": integrity_report,
     }
     

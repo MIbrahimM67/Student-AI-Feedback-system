@@ -1767,37 +1767,35 @@ const AssignmentUploadView: React.FC<{ subject: Subject, assignment: Assignment,
                                       )}
                                       {/* Sandbox Logs */}
                                       {detail.ai_payload?.sandbox_logs && detail.ai_payload.sandbox_logs.length > 0 && (
-                                        <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 font-mono">
-                                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                            <Terminal className="w-3 h-3" /> Sandbox Execution Logs
+                                        <div className="rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-2)] p-4 font-mono">
+                                          <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-[var(--color-accent)]">
+                                            <Terminal className="h-4 w-4" /> Real sandbox execution logs
                                           </div>
+                                          <p className="mb-3 text-[11px] text-[var(--color-muted)]">
+                                            Exit code 0 means executed successfully, not automatically correct.
+                                          </p>
                                           <div className="space-y-3">
                                             {typeof detail.ai_payload.sandbox_logs === "string" ? (
-                                              <pre className="text-xs text-slate-300 whitespace-pre-wrap break-words">{detail.ai_payload.sandbox_logs}</pre>
+                                              <pre className="whitespace-pre-wrap break-all text-xs text-[var(--color-ink-2)]">{detail.ai_payload.sandbox_logs}</pre>
                                             ) : detail.ai_payload.sandbox_logs.map((log: any, i: number) => (
-                                              <div key={i} className="text-[10px] space-y-1">
-                                                <div className="flex items-center gap-2 text-indigo-400">
-                                                  <span className="font-bold">Test Case {i+1}</span>
-                                                  {log.passed ? (
-                                                    <span className="text-emerald-400">✓ Passed</span>
-                                                  ) : (
-                                                    <span className="text-rose-400">✗ Failed</span>
-                                                  )}
+                                              <div key={i} className="rounded-md border border-[var(--color-rule)] bg-[var(--color-surface)] p-3 text-[11px]">
+                                                <div className="mb-2 flex flex-wrap items-center gap-2 font-bold text-[var(--color-ink)]">
+                                                  <span>{log.name || ("Test Case " + (i + 1))}</span>
+                                                  <span className="rounded-md bg-[var(--color-accent-soft)] px-2 py-0.5 text-[var(--color-accent)]">
+                                                    {log.exitCode === 0 ? "EXECUTED" : ("FAILED (exit " + (log.exitCode ?? "?") + ")")}
+                                                  </span>
+                                                  {log.durationMs != null && <span className="text-[var(--color-muted)]">{log.durationMs} ms</span>}
                                                 </div>
-                                                <div className="text-slate-300">
-                                                  <span className="text-slate-500">Input:</span> {log.input}
-                                                </div>
-                                                <div className="text-slate-300">
-                                                  <span className="text-slate-500">Expected:</span> {log.expected_output}
-                                                </div>
-                                                <div className="text-slate-300">
-                                                  <span className="text-slate-500">Actual:</span> {log.actual_output}
-                                                </div>
-                                                {log.error && (
-                                                  <div className="text-rose-400 break-words mt-1 bg-rose-500/10 p-2 rounded">
-                                                    {log.error}
+                                                {[
+                                                  ["Input (stdin)", log.input],
+                                                  ["Output (stdout)", log.stdout ?? log.actual_output],
+                                                  ["Errors (stderr)", log.stderr ?? log.error],
+                                                ].map(([label, value]) => (
+                                                  <div key={label} className="mt-2">
+                                                    <p className="mb-1 text-[var(--color-muted)]">{label}</p>
+                                                    <pre className="whitespace-pre-wrap break-all rounded-md bg-[var(--color-paper)] p-2 text-[var(--color-ink-2)]">{value || "(empty)"}</pre>
                                                   </div>
-                                                )}
+                                                ))}
                                               </div>
                                             ))}
                                           </div>
