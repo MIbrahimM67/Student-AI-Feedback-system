@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.grading import config
-from app.grading.grader import ProgressCallback, grade
+from app.grading.grader import ProgressCallback, grade, _request_stage_json
 from app.grading.rubric import _extract_json
 from app.grading.types import Criterion, DocumentPayload, GradingResult, Tier
 from app.router.router import _dedicated_available
@@ -51,7 +51,10 @@ Your job:
 2. Identify concrete mistakes, contradictions, weak explanations, or missing support visible in this chunk.
 3. If previous chunks requested missing sections, check whether THIS chunk contains them.
 4. Do not penalize absent material yet. If a section is still missing, carry it forward in unresolved_missing_sections so the next chunk can search for it.
-5. Be faithful to the chunk. Do not invent evidence.
+5. Compare any carried-forward missing sections with this chunk. Put only sections ACTUALLY supported by this chunk in found_requested_sections; include specific supporting evidence.
+6. If this chunk makes new rubric-related sections appear absent, record them in unresolved_missing_sections to be checked in later chunks. These are questions for subsequent chunks, NOT deductions.
+7. Include every rubric criterion ID in evidence_by_criterion, using an empty list if this chunk contains no evidence for it.
+8. Be faithful to the chunk. Do not invent evidence, and do not assign marks.
 
 Output ONLY valid JSON matching this schema:
 {
@@ -102,7 +105,10 @@ async def grade_tier3(
             unresolved_missing=unresolved_missing,
         )
         reviews.append(review)
-        unresolved_missing = _dedupe(review.unresolved_missing_sections)
+        unresolved_missing = _carry_unresolved_missing(
+            unresolved_missing, review.found_requested_sections,
+            review.unresolved_missing_sections,
+        )
         total_latency += review.latency_ms
         total_cost += review.est_cost_usd
 
@@ -140,18 +146,30 @@ def _build_chunks(submission: DocumentPayload) -> list[DocumentPayload]:
     if submission.text_only and submission.plain_text:
         text = submission.plain_text
         chunks: list[DocumentPayload] = []
-        for start in range(0, len(text), TEXT_CHUNK_CHARS):
-            part = text[start:start + TEXT_CHUNK_CHARS]
+        start = 0
+        while start < len(text):
+            end = min(start + TEXT_CHUNK_CHARS, len(text))
+            if end < len(text):
+                # Prefer paragraph/sentence/word boundaries without exceeding
+                # the chunk budget. Keep every character across all chunks.
+                lower_bound = start + TEXT_CHUNK_CHARS // 2
+                for separator in ("\n\n", "\n", ". ", " "):
+                    boundary = text.rfind(separator, lower_bound, end)
+                    if boundary >= 0:
+                        end = boundary + len(separator)
+                        break
+            part = text[start:end]
             chunks.append(
                 DocumentPayload(
-                    source_path=f"{submission.source_path} (chars {start + 1}-{start + len(part)})",
+                    source_path=f"{submission.source_path} (chars {start + 1}-{end})",
                     pages=[],
-                    est_tokens=len(part) // 4,
+                    est_tokens=(len(part) + 3) // 4,
                     has_structure=False,
                     text_only=True,
                     plain_text=part,
                 )
             )
+            start = end
         return chunks or [submission]
 
     chunk_size = DEDICATED_CHUNK_SIZE if _dedicated_available() else SERVERLESS_CHUNK_SIZE
@@ -198,17 +216,20 @@ async def _review_chunk(
     )
 
     t0 = time.perf_counter()
-    resp = await llm.chat(
+    resp, data = await _request_stage_json(
+        llm,
+        stage=f"Chunk {chunk_index + 1}",
         messages=[
             ChatMessage(role="system", content=CHUNK_REVIEW_SYSTEM),
             ChatMessage(role="user", content=prompt),
         ],
         model=model_name,
-        temperature=0.1,
-        max_tokens=1800,
-        response_format="json_object",
+        section="evidence_by_criterion",
+        criterion_ids=[criterion.id for criterion in criteria],
     )
-    data = _safe_json(resp.text)
+    for key in ("mistakes_or_shortcomings", "found_requested_sections", "unresolved_missing_sections"):
+        if not isinstance(data.get(key), list):
+            raise ValueError(f"Chunk {chunk_index + 1} did not provide required {key} array")
 
     latency_ms = int((time.perf_counter() - t0) * 1000)
     est_cost = (resp.input_tokens * 0.075 / 1e6) + (resp.output_tokens * 0.3 / 1e6)
@@ -267,6 +288,7 @@ def _build_aggregate_submission_text(
         "This is an aggregated evidence report from a chunked student submission.",
         "Earlier chunks did not receive marks. The final grade must be based on all evidence below.",
         "Only treat unresolved missing sections as real gaps if they were not found in any later chunk.",
+        "Do not deduct marks for a section missing in an early chunk if later chunks supplied evidence.",
         "",
         "=== RUBRIC CRITERIA ===",
     ]
@@ -317,20 +339,6 @@ def _chunk_label(chunk: DocumentPayload, chunk_index: int) -> str:
     return f"Submission text chunk {chunk_index + 1}"
 
 
-def _safe_json(text: str) -> dict[str, Any]:
-    try:
-        return _extract_json(text)
-    except Exception:
-        logger.warning("Tier 3 chunk review returned non-JSON output; preserving as summary")
-        return {
-            "evidence_by_criterion": {},
-            "mistakes_or_shortcomings": [],
-            "found_requested_sections": [],
-            "unresolved_missing_sections": [],
-            "summary": text.strip(),
-        }
-
-
 def _normalise_evidence(value: Any) -> dict[str, list[str]]:
     if not isinstance(value, dict):
         return {}
@@ -343,6 +351,23 @@ def _as_string_list(value: Any) -> list[str]:
     if isinstance(value, str) and value.strip():
         return [value.strip()]
     return []
+
+
+def _carry_unresolved_missing(
+    previously_missing: list[str],
+    found_here: list[str],
+    newly_missing: list[str],
+) -> list[str]:
+    """Retain unsatisfied requests until explicitly found in a later chunk.
+
+    Models can omit a previously missing item from an individual chunk's
+    unresolved list. Omission is not proof that the material was found.
+    """
+    resolved = {item.strip().casefold() for item in found_here if item.strip()}
+    return _dedupe([
+        item for item in [*previously_missing, *newly_missing]
+        if item.strip().casefold() not in resolved
+    ])
 
 
 def _dedupe(items: list[str]) -> list[str]:
