@@ -135,33 +135,38 @@ async def grade_tier3(
         reference_payload.pages, criteria, reference_text,
     ))
     if final_context_chars > FINAL_CONTEXT_MAX_CHARS:
-        # One deterministic compaction, never recursive. Preserve ALL distinct
-        # evidence and explicit unresolved requirements: duplicate observations
-        # can be collapsed, but unique grading evidence must never disappear.
-        aggregate_text = _build_compact_aggregate_submission_text(
-            reviews, unresolved_missing, criteria,
+        # Generate one very short evidence digest. Never invoke the router again.
+        # Cap reference text separately: its original text was already limited
+        # to 12k chars for the chunk reviewers.
+        reference_text = _shorten_reference(reference_text, 10_000)
+        overhead = len(_build_document_context(
+            DocumentPayload("empty", [], 0, False, True, ""),
+            reference_payload.pages, criteria, reference_text,
+        ))
+        available = min(14_000, FINAL_CONTEXT_MAX_CHARS - overhead - 1_000)
+        if available < 400:
+            raise ValueError(
+                "The rubric and reference leave insufficient space for a fair "
+                "grading summary. No final grade was issued."
+            )
+        aggregate_text = _build_short_aggregate_submission_text(
+            reviews, unresolved_missing, criteria, available,
         )
         final_context_chars = len(_build_document_context(
             DocumentPayload(
-                source_path="compact aggregate", pages=[],
-                est_tokens=len(aggregate_text) // 4,
-                has_structure=False, text_only=True, plain_text=aggregate_text,
+                "short aggregate", [], (len(aggregate_text) + 3) // 4,
+                False, True, aggregate_text,
             ),
             reference_payload.pages, criteria, reference_text,
         ))
         logger.info(
-            "Tier 3 consolidation: original evidence=%d chars, compact=%d chars, "
-            "complete final context=%d chars, limit=%d",
-            original_chars, len(aggregate_text), final_context_chars, FINAL_CONTEXT_MAX_CHARS,
+            "Tier 3 summarized %d chars of evidence into %d chars; total "
+            "grading context %d/%d chars",
+            original_chars, len(aggregate_text), final_context_chars,
+            FINAL_CONTEXT_MAX_CHARS,
         )
     if final_context_chars > FINAL_CONTEXT_MAX_CHARS:
-        # Never feed an over-budget context back into route() or grade_tier3().
-        # Truncating unique evidence would risk unfair marks; fail explicitly.
-        raise ValueError(
-            "Chunked grading has more unique evidence or reference material than the "
-            "safe final context budget. No final grade was issued; instructor review "
-            "or a smaller document/reference is required."
-        )
+        raise ValueError("The rubric is too large for final grading. No final grade was issued.")
     logger.info(
         "Tier 3 final context budget: %d/%d chars (approx. %d tokens), %d chunks",
         final_context_chars, FINAL_CONTEXT_MAX_CHARS, (final_context_chars + 3) // 4, len(chunks),
@@ -371,70 +376,124 @@ def _build_aggregate_submission_text(
 
 
 
-def _build_compact_aggregate_submission_text(
+
+def _shorten_reference(reference: str | None, limit: int) -> str | None:
+    """Bound grounding length without creating any further grading passes."""
+    if not reference or len(reference) <= limit:
+        return reference
+    # All chunks already used the beginning of this reference for grounding.
+    return (
+        reference[:limit - 140] +
+        "\n[Additional reference text omitted from the brief summary. "
+        "Manual review is required for uncited content.]"
+    )
+
+
+def _build_short_aggregate_submission_text(
     reviews: list[ChunkReview],
     unresolved_missing: list[str],
     criteria: list[Criterion],
+    max_chars: int,
 ) -> str:
-    """Non-LLM, non-recursive consolidation; never discard distinct evidence.
+    """Produce a very short, source-labelled, rubric-oriented evidence digest.
 
-    Duplicate statements across chunks are merged by exact case-insensitive
-    comparison. All distinct criterion evidence, reported mistakes, discovered
-    requirements and final unresolved requirements remain in the context.
+    This is ONE deterministic pass. Its output is not re-routed or chunked.
+    When there are more unique facts than can fit, sample across the document
+    and label coverage as partial rather than pretending evidence was complete.
     """
-    parts = [
-        "=== CONSOLIDATED CHUNK EVIDENCE (NO CHUNK-LEVEL SCORES) ===",
-        "Use evidence from ALL chunks to grade once; early omissions are not "
-        "penalties when later chunks provide the material.",
-        "Do not invent evidence. Only deduct marks for gaps unresolved after the last chunk.",
+    if max_chars < 400:
+        raise ValueError("Final digest budget is too small")
+    header = (
+        "BRIEF CROSS-CHUNK EVIDENCE DIGEST (not the full submission). "
+        "The evidence below is sampled if extensive; check coverage before "
+        "deducting marks. Do not treat omitted details as missing. "
+        "Only the final unresolved list represents outstanding questions.\n"
+    )
+    # Reserve room for unresolved requirements, which are relevant to deductions.
+    missing = _dedupe(unresolved_missing)
+    missing_items = [
+        "- " + _ellipsize(item, 145) for item in missing[:8]
     ]
-    for criterion in criteria:
-        parts.append(f"\n=== CRITERION {criterion.id} (max {criterion.max_points}) ===")
-        parts.append(criterion.description)
-        unique: dict[str, tuple[str, str]] = {}
+    missing_text = (
+        "UNRESOLVED AFTER LAST CHUNK:\n" +
+        ("\n".join(missing_items) if missing_items else "None.")
+    )
+    if len(missing) > 8:
+        missing_text += f"\n[+{len(missing)-8} more unresolved checks: manual review required.]"
+    footer = "\n" + missing_text
+    budget = max_chars - len(header) - len(footer)
+    if budget < 120:
+        # Preserve the fact that something could not be verified, rather than
+        # omitting unresolved questions and falsely awarding full marks.
+        return (header + "\nInsufficient summary space. Human review required.\n" +
+                _ellipsize(missing_text, max(0, max_chars - len(header) - 43)))[:max_chars]
+
+    sections: list[str] = []
+    remaining = budget
+    for index, criterion in enumerate(criteria):
+        # Fair share for each criterion, even when many are present.
+        remaining_criteria = max(1, len(criteria) - index)
+        allowance = min(2500, max(90, remaining // remaining_criteria))
+        evidence: list[tuple[str, str]] = []
+        seen: set[str] = set()
         for review in reviews:
             for item in review.evidence_by_criterion.get(criterion.id, []):
-                content = item.strip()
-                if content:
-                    key = content.casefold()
-                    if key not in unique:
-                        unique[key] = (review.chunk_label, content)
-        if unique:
-            parts.extend(f"- [{source}] {content}" for source, content in unique.values())
-        else:
-            parts.append("No supporting evidence was identified in any chunk.")
+                key = item.strip().casefold()
+                if key and key not in seen:
+                    seen.add(key)
+                    evidence.append((review.chunk_label, item.strip()))
+        picked = _sample_across(evidence, 3)
+        section_lines = [f"\n{criterion.id}:"]
+        for label, item in picked:
+            section_lines.append(f"- [{label}] {_ellipsize(item, 175)}")
+        if not evidence:
+            section_lines.append("- No evidence identified in the chunk review.")
+        if len(evidence) > len(picked):
+            section_lines.append(
+                f"- [+{len(evidence)-len(picked)} additional distinct observations not reproduced; "
+                "coverage is partial.]"
+            )
+        entry = "\n".join(section_lines)
+        if len(entry) > allowance:
+            entry = _ellipsize(entry, allowance)
+        sections.append(entry)
+        remaining -= len(entry)
+        if remaining <= 90:
+            break
 
-    for heading, attribute in [
-        ("OBSERVED MISTAKES OR SHORTCOMINGS", "mistakes_or_shortcomings"),
-        ("PREVIOUSLY MISSING REQUIREMENTS FOUND LATER", "found_requested_sections"),
-    ]:
-        parts.append(f"\n=== {heading} ===")
-        unique_items: dict[str, tuple[str, str]] = {}
-        for review in reviews:
-            for item in getattr(review, attribute):
-                value = item.strip()
-                if value and value.casefold() not in unique_items:
-                    unique_items[value.casefold()] = (review.chunk_label, value)
-        if unique_items:
-            parts.extend(f"- [{source}] {value}" for source, value in unique_items.values())
-        else:
-            parts.append("None.")
+    # Error signals are also useful for the Judge/Senior review.
+    if remaining > 180:
+        issues = _dedupe([
+            item for review in reviews for item in review.mistakes_or_shortcomings
+        ])
+        for issue in issues[:3]:
+            line = "\nISSUE: " + _ellipsize(issue, 150)
+            if len(line) <= remaining:
+                sections.append(line)
+                remaining -= len(line)
+        if len(issues) > 3:
+            line = f"\n[{len(issues)-3} more issues reviewed in source chunks.]"
+            if len(line) <= remaining:
+                sections.append(line)
 
-    # A summary can be the ONLY evidence for a poorly formed chunk; retain
-    # it when the chunk has no extracted criterion evidence or errors.
-    summaries = [
-        (review.chunk_label, review.summary)
-        for review in reviews
-        if review.summary and not any(review.evidence_by_criterion.values())
-        and not review.mistakes_or_shortcomings
-    ]
-    if summaries:
-        parts.append("\n=== CHUNKS WITHOUT STRUCTURED EVIDENCE ===")
-        parts.extend(f"- [{source}] {value}" for source, value in summaries)
+    return (header + "".join(sections) + footer)[:max_chars]
 
-    parts.append("\n=== UNRESOLVED AFTER LAST CHUNK ===")
-    parts.extend(f"- {item}" for item in _dedupe(unresolved_missing)) if unresolved_missing else parts.append("None.")
-    return "\n".join(parts)
+
+def _ellipsize(value: str, limit: int) -> str:
+    value = str(value).strip()
+    if len(value) <= limit:
+        return value
+    return value[:max(0, limit - 4)].rstrip() + " ..."
+
+
+def _sample_across(items: list[tuple[str, str]], count: int) -> list[tuple[str, str]]:
+    if len(items) <= count:
+        return items
+    if count == 1:
+        return [items[0]]
+    positions = sorted({round(i * (len(items) - 1) / (count - 1)) for i in range(count)})
+    return [items[position] for position in positions]
+
 
 
 def _payload_text(payload: DocumentPayload) -> str:
