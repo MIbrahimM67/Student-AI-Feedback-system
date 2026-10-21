@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 
 SERVERLESS_INPUT_CAP = 2_000
 TIER0_BUDGET = SERVERLESS_INPUT_CAP  # DigitalOcean serverless ceiling for grading calls
-DEDICATED_CONTEXT_CAP = 120_000  # Groq/Llama-3.3-70B: 128k window, leave headroom
+DEDICATED_CONTEXT_CAP = 120_000  # Conservative context headroom for the dedicated endpoint
+DEMO_CHUNK_THRESHOLD = 8_000  # Above this submission size, review evidence chunk by chunk
 
 
 def _dedicated_available() -> bool:
@@ -35,11 +36,23 @@ def route(sub_payload: DocumentPayload, ref_payload: DocumentPayload) -> Tier:
     combined = sub_payload.est_tokens + ref_payload.est_tokens
     from app.config import settings
     if settings.DOCUMENT_DEMO:
-        # Uploaded references are not necessarily indexed. Grade from the actual
-        # document, and fail explicitly when the configured model is too small.
+        # Reference search is not necessarily pre-indexed in the hosted demo.
+        # Above 8k submission tokens, inspect the submission in evidence-only
+        # chunks and grade once at the end. This is independent of whether the
+        # dedicated model could fit the whole document in its context window.
+        if sub_payload.est_tokens > DEMO_CHUNK_THRESHOLD:
+            logger.info(
+                "Demo decision: Tier 3 sequential evidence review; submission=%d tokens, "
+                "reference=%d tokens, threshold=%d",
+                sub_payload.est_tokens, ref_payload.est_tokens, DEMO_CHUNK_THRESHOLD,
+            )
+            return Tier.MAP_REDUCE
         budget = DEDICATED_CONTEXT_CAP if _dedicated_available() else TIER0_BUDGET
         if combined > budget:
-            raise ValueError("Document demo requires a configured high-context dedicated model for documents this size")
+            raise ValueError(
+                "Document demo requires a high-context dedicated model for the combined "
+                "reference and submission size"
+            )
         return Tier.CONTEXT
     logger.info("Routing payload: combined_tokens=%d, sub_tokens=%d, dedicated=%s",
                 combined, sub_payload.est_tokens, _dedicated_available())
