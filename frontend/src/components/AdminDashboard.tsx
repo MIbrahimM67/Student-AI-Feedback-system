@@ -93,6 +93,9 @@ export const AdminDashboard: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [pendingRoleUser, setPendingRoleUser] = useState<UserRow | null>(null);
+  const [roleSaving, setRoleSaving] = useState(false);
+  const [roleError, setRoleError] = useState<string | null>(null);
 
   const fetchAdminData = async () => {
     setLoading(true);
@@ -176,18 +179,32 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  const handleInstructorAccess = async (target: UserRow) => {
+  const handleInstructorAccess = (target: UserRow) => {
     if (target.role === "admin") return;
-    const nextRole = target.role === "instructor" ? "student" : "instructor";
-    const action = nextRole === "instructor" ? "grant instructor access to" : "revoke instructor access from";
-    if (!window.confirm(`Do you want to ${action} ${target.email}?`)) return;
+    setRoleError(null);
+    setPendingRoleUser(target);
+  };
+
+  const confirmInstructorAccess = async () => {
+    if (!pendingRoleUser || roleSaving) return;
+    const nextRole = pendingRoleUser.role === "instructor" ? "student" : "instructor";
+    const email = pendingRoleUser.email;
+    setRoleSaving(true);
+    setRoleError(null);
     try {
-      await api.patch(`/api/admin/users/${encodeURIComponent(target.uid)}/role`, { role: nextRole });
-      setSuccessMsg(`Instructor access ${nextRole === "instructor" ? "granted" : "revoked"} for ${target.email}.`);
+      const response = await api.patch(
+        `/api/admin/users/${encodeURIComponent(pendingRoleUser.uid)}/role`,
+        { role: nextRole },
+      );
+      if (response.data?.role !== nextRole) throw new Error("Server did not confirm the role update.");
+      setPendingRoleUser(null);
+      await fetchAdminData();
+      setSuccessMsg(`Instructor access ${nextRole === "instructor" ? "granted" : "revoked"} for ${email}.`);
       setTimeout(() => setSuccessMsg(null), 4000);
-      fetchAdminData();
     } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || "Could not update instructor access.");
+      setRoleError(err.response?.data?.detail || err.message || "Could not update instructor access.");
+    } finally {
+      setRoleSaving(false);
     }
   };
 
@@ -204,6 +221,48 @@ export const AdminDashboard: React.FC = () => {
 
   return (
     <div className="flex-1 p-6 overflow-y-auto space-y-6">
+      {pendingRoleUser && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/65 p-4"
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && !roleSaving) setPendingRoleUser(null);
+          }}>
+          <div role="alertdialog" aria-modal="true" aria-labelledby="instructor-access-title"
+            aria-describedby="instructor-access-description"
+            className="w-full max-w-md rounded-xl border border-[var(--color-rule)] bg-[var(--color-surface)] p-6 text-[var(--color-ink)] shadow-2xl">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="rounded-lg border border-[var(--color-rule)] bg-[var(--color-surface-2)] p-2">
+                <ShieldAlert className="h-5 w-5 text-[var(--color-accent)]" />
+              </div>
+              <h3 id="instructor-access-title" className="text-lg font-bold">
+                {pendingRoleUser.role === "instructor" ? "Revoke instructor access?" : "Grant instructor access?"}
+              </h3>
+            </div>
+            <p id="instructor-access-description" className="text-sm leading-relaxed text-[var(--color-muted)]">
+              {pendingRoleUser.role === "instructor"
+                ? "This account will lose instructor permissions and return to student access. An administrator can restore it later."
+                : "This account will receive approved instructor permissions."}
+            </p>
+            <p className="mt-3 break-all rounded-md border border-[var(--color-rule)] bg-[var(--color-surface-2)] px-3 py-2 text-sm font-semibold">
+              {pendingRoleUser.email || pendingRoleUser.displayName}
+            </p>
+            {roleError && (
+              <p role="alert" className="mt-3 text-xs font-semibold text-[var(--color-error)]">{roleError}</p>
+            )}
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" autoFocus disabled={roleSaving}
+                onClick={() => setPendingRoleUser(null)}
+                className="rounded-lg border border-[var(--color-rule)] px-4 py-2 text-xs font-bold hover:bg-[var(--color-surface-2)] disabled:opacity-50">
+                Cancel
+              </button>
+              <button type="button" disabled={roleSaving} onClick={confirmInstructorAccess}
+                className="inline-flex items-center gap-2 rounded-lg bg-[var(--color-accent)] px-4 py-2 text-xs font-bold text-[var(--color-ink)] disabled:opacity-50">
+                {roleSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+                {pendingRoleUser.role === "instructor" ? "Revoke access" : "Grant access"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between pb-4 border-b border-[#eae7e1]">
